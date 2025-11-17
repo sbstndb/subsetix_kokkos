@@ -21,3 +21,15 @@ target_link_libraries(csr_interval_set_smoke_test
 
 add_test(NAME CSRIntervalSetSmokeTest
          COMMAND csr_interval_set_smoke_test)
+
+add_executable(csr_builders_smoke_test
+    csr_builders_smoke_test.cpp
+)
+
+target_link_libraries(csr_builders_smoke_test
+    PRIVATE
+        subsetix_core
+)
+
+add_test(NAME CSRBuildersSmokeTest
+         COMMAND csr_builders_smoke_test)
