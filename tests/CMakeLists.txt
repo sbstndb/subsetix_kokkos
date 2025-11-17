@@ -45,3 +45,27 @@ target_link_libraries(csr_field_smoke_test
 
 add_test(NAME CSRFieldSmokeTest
          COMMAND csr_field_smoke_test)
+
+add_executable(csr_union_smoke_test
+    csr_union_smoke_test.cpp
+)
+
+target_link_libraries(csr_union_smoke_test
+    PRIVATE
+        subsetix_core
+)
+
+add_test(NAME CSRUnionSmokeTest
+         COMMAND csr_union_smoke_test)
+
+add_executable(csr_union_components_smoke_test
+    csr_union_components_smoke_test.cpp
+)
+
+target_link_libraries(csr_union_components_smoke_test
+    PRIVATE
+        subsetix_core
+)
+
+add_test(NAME CSRUnionComponentsSmokeTest
+         COMMAND csr_union_components_smoke_test)

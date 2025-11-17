@@ -1,0 +1,88 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "serial",
+      "displayName": "Kokkos SERIAL backend",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-serial",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "openmp",
+      "displayName": "Kokkos OPENMP + SERIAL backends",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-openmp",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_KOKKOS_OPENMP": "ON"
+      }
+    },
+    {
+      "name": "cuda-clang",
+      "displayName": "Kokkos CUDA + SERIAL backends (Clang)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-cuda-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CUDAToolkit_ROOT": "/usr/local/cuda"
+      }
+    },
+    {
+      "name": "serial-asan",
+      "displayName": "Kokkos SERIAL backend with sanitizers (Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-serial-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-g -O1 -fsanitize=address,undefined",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "serial",
+      "configurePreset": "serial"
+    },
+    {
+      "name": "openmp",
+      "configurePreset": "openmp"
+    },
+    {
+      "name": "cuda-clang",
+      "configurePreset": "cuda-clang"
+    },
+    {
+      "name": "serial-asan",
+      "configurePreset": "serial-asan"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "serial",
+      "configurePreset": "serial"
+    },
+    {
+      "name": "openmp",
+      "configurePreset": "openmp"
+    },
+    {
+      "name": "cuda-clang",
+      "configurePreset": "cuda-clang"
+    },
+    {
+      "name": "serial-asan",
+      "configurePreset": "serial-asan"
+    }
+  ]
+}

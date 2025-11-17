@@ -16,8 +16,10 @@
   - `cmake --preset serial`  
   - `cmake --build --preset serial`
 - Configure + build (OpenMP): `cmake --build --preset openmp`
-- Configure + build (CUDA with clang): `cmake --build --preset cuda-clang`
-- Run tests via CTest: `ctest --preset <serial|openmp|cuda-clang|serial-asan>`
+- Configure + build (CUDA with GCC 12):  
+  - `cmake --preset cuda-gcc12`  
+  - `cmake --build --preset cuda-gcc12`
+- Run tests via CTest: `ctest --preset <serial|openmp|cuda-gcc12|serial-asan>`
 - Prefer presets (Ninja generator) over calling `make` directly.
 
 ## Coding Style & Naming Conventions
@@ -34,6 +36,7 @@
 - Keep tests fast and deterministic; they must pass on serial and OpenMP.  
 - Use simple `main(int, char**)` returning non‑zero on failure (no heavy test framework).
 - When adding device code, exercise it at least in the serial preset.
+- For set‑algebra primitives (e.g. `set_union_device`), add both high‑level tests and focused tests for low‑level building blocks to simplify debugging.
 
 ## Commit & Pull Request Guidelines
 
@@ -47,4 +50,3 @@
 - Respect this layout when adding new geometry/field features; reuse existing CSR types.
 - Prefer adding example usage in `examples/` for new public capabilities.
 - When modifying CMake or presets, preserve existing presets and options unless there is a clear reason to change them.
-
