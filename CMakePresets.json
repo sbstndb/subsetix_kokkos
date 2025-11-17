@@ -26,15 +26,14 @@
       }
     },
     {
-      "name": "cuda-clang",
-      "displayName": "Kokkos CUDA + SERIAL backends (Clang)",
+      "name": "cuda-gcc12",
+      "displayName": "Kokkos CUDA + SERIAL backends (GCC 12)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-cuda-clang",
+      "binaryDir": "${sourceDir}/build-cuda-gcc12",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
-        "CUDAToolkit_ROOT": "/usr/local/cuda"
+        "CMAKE_CXX_COMPILER": "g++-12"
       }
     },
     {
@@ -59,8 +58,8 @@
       "configurePreset": "openmp"
     },
     {
-      "name": "cuda-clang",
-      "configurePreset": "cuda-clang"
+      "name": "cuda-gcc12",
+      "configurePreset": "cuda-gcc12"
     },
     {
       "name": "serial-asan",
@@ -77,8 +76,8 @@
       "configurePreset": "openmp"
     },
     {
-      "name": "cuda-clang",
-      "configurePreset": "cuda-clang"
+      "name": "cuda-gcc12",
+      "configurePreset": "cuda-gcc12"
     },
     {
       "name": "serial-asan",
