@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <stdexcept>
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Sort.hpp>
@@ -1136,6 +1137,33 @@ build_row_coarsen_mapping(const IntervalSet2DDevice& fine) {
 } // namespace detail
 
 /**
+ * @brief Reset a preallocated IntervalSet2DDevice buffer.
+ *
+ * For now we simply fill the full capacity with zeros for all views.
+ * TODO: consider restricting the zeroing to the portions actually used.
+ */
+inline void reset_preallocated_interval_set(IntervalSet2DDevice& out) {
+  out.num_rows = 0;
+  out.num_intervals = 0;
+
+  const std::size_t rows_cap = out.row_keys.extent(0);
+  const std::size_t row_ptr_cap = out.row_ptr.extent(0);
+  const std::size_t intervals_cap = out.intervals.extent(0);
+
+  if (rows_cap > 0) {
+    RowKey2D zero_key{};
+    Kokkos::deep_copy(out.row_keys, zero_key);
+  }
+  if (row_ptr_cap > 0) {
+    Kokkos::deep_copy(out.row_ptr, std::size_t(0));
+  }
+  if (intervals_cap > 0) {
+    Interval zero_interval{};
+    Kokkos::deep_copy(out.intervals, zero_interval);
+  }
+}
+
+/**
  * @brief Context object carrying reusable workspaces for CSR set
  *        algebra operations.
  *
@@ -1150,45 +1178,69 @@ struct CsrSetAlgebraContext {
 };
 
 /**
- * @brief Compute the set union of two 2D CSR interval sets on device.
+ * @brief Compute the set union into a preallocated CSR buffer on device.
  *
- * Both inputs are assumed to satisfy the usual invariants:
- *  - row_keys sorted by Y, strictly increasing
- *  - row_ptr.size() == num_rows + 1
- *  - intervals sorted by X within each row, non-overlapping
+ * The views in @p out must already be allocated with sufficient capacity:
+/**
+ * @brief Compute the set difference A \ B into a preallocated CSR buffer
+ *        on device.
  *
- * The output satisfies the same invariants and is built entirely via
- * device-side Kokkos operations (no host-side interval loops).
+ * The views in @p out must already be allocated with sufficient capacity:
+ *  - out.row_keys.extent(0)   >= num_rows_out,
+ *  - out.row_ptr.extent(0)    >= num_rows_out + 1,
+ *  - out.intervals.extent(0)  >= num_intervals_out.
+ *
+ * If the capacity is insufficient, this function throws std::runtime_error.
+ * The buffer is reset to zeros before writing into it.
  */
-inline IntervalSet2DDevice
+inline void
 set_union_device(const IntervalSet2DDevice& A,
                  const IntervalSet2DDevice& B,
+                 IntervalSet2DDevice& out,
                  CsrSetAlgebraContext& ctx) {
-  IntervalSet2DDevice out;
+  reset_preallocated_interval_set(out);
 
   const std::size_t num_rows_a = A.num_rows;
   const std::size_t num_rows_b = B.num_rows;
 
   if (num_rows_a == 0 && num_rows_b == 0) {
-    return out;
+    return;
   }
 
-  // 1) Merge row keys and build mapping A/B -> output rows.
   detail::RowMergeResult merge =
-      detail::build_row_union_mapping(
-          A, B, ctx.union_workspace);
+      detail::build_row_union_mapping(A, B, ctx.union_workspace);
+
   const std::size_t num_rows_out = merge.num_rows;
   if (num_rows_out == 0) {
-    return out;
+    return;
   }
 
-  auto row_keys_out = merge.row_keys;
+  const std::size_t rows_cap = out.row_keys.extent(0);
+  const std::size_t row_ptr_cap = out.row_ptr.extent(0);
+
+  if (num_rows_out > rows_cap || num_rows_out + 1 > row_ptr_cap) {
+    throw std::runtime_error(
+        "subsetix::csr::set_union_device (preallocated): "
+        "insufficient row capacity in output IntervalSet2DDevice");
+  }
+
+  auto row_keys_out_tmp = merge.row_keys;
   auto row_index_a = merge.row_index_a;
   auto row_index_b = merge.row_index_b;
 
-  // 2) For each row, count how many intervals will be in the union.
+  auto row_keys_out = out.row_keys;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_union_copy_row_keys",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        row_keys_out(i) = row_keys_out_tmp(i);
+      });
+
+  ExecSpace().fence();
+
   Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
-      "subsetix_csr_union_row_counts", num_rows_out);
+      "subsetix_csr_union_row_counts_prealloc", num_rows_out);
 
   auto row_ptr_a = A.row_ptr;
   auto row_ptr_b = B.row_ptr;
@@ -1196,7 +1248,7 @@ set_union_device(const IntervalSet2DDevice& A,
   auto intervals_b = B.intervals;
 
   Kokkos::parallel_for(
-      "subsetix_csr_union_count",
+      "subsetix_csr_union_count_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
         const int ia = row_index_a(i);
@@ -1230,15 +1282,13 @@ set_union_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  // 3) Exclusive scan on row_counts to build row_ptr for the union and
-  //    obtain the total number of intervals.
-  IntervalSet2DDevice::IndexView row_ptr_out(
-      "subsetix_csr_union_row_ptr", num_rows_out + 1);
   Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_union_total_intervals");
+      "subsetix_csr_union_total_intervals_prealloc");
+
+  auto row_ptr_out = out.row_ptr;
 
   Kokkos::parallel_scan(
-      "subsetix_csr_union_scan",
+      "subsetix_csr_union_scan_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i,
                     std::size_t& update,
@@ -1259,22 +1309,24 @@ set_union_device(const IntervalSet2DDevice& A,
   std::size_t num_intervals_out = 0;
   Kokkos::deep_copy(num_intervals_out, total_intervals);
 
-  out.num_rows = num_rows_out;
-  out.num_intervals = num_intervals_out;
-  out.row_keys = row_keys_out;
-  out.row_ptr = row_ptr_out;
-
-  if (num_intervals_out == 0) {
-    out.intervals = IntervalSet2DDevice::IntervalView();
-    return out;
+  const std::size_t intervals_cap = out.intervals.extent(0);
+  if (num_intervals_out > intervals_cap) {
+    throw std::runtime_error(
+        "subsetix::csr::set_union_device (preallocated): "
+        "insufficient interval capacity in output IntervalSet2DDevice");
   }
 
-  IntervalSet2DDevice::IntervalView intervals_out(
-      "subsetix_csr_union_intervals", num_intervals_out);
+  out.num_rows = num_rows_out;
+  out.num_intervals = num_intervals_out;
 
-  // 4) Fill intervals for each row using the offsets defined by row_ptr_out.
+  if (num_intervals_out == 0) {
+    return;
+  }
+
+  auto intervals_out = out.intervals;
+
   Kokkos::parallel_for(
-      "subsetix_csr_union_fill",
+      "subsetix_csr_union_fill_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
         const int ia = row_index_a(i);
@@ -1307,34 +1359,32 @@ set_union_device(const IntervalSet2DDevice& A,
       });
 
   ExecSpace().fence();
-
-  out.intervals = intervals_out;
-
-  return out;
-}
-
-inline IntervalSet2DDevice
-set_union_device(const IntervalSet2DDevice& A,
-                 const IntervalSet2DDevice& B) {
-  CsrSetAlgebraContext ctx;
-  return set_union_device(A, B, ctx);
 }
 
 /**
- * @brief Compute the set intersection of two 2D CSR interval sets on
+ * @brief Compute the set intersection into a preallocated CSR buffer on
  *        device.
+ *
+ * The views in @p out must already be allocated with sufficient capacity:
+ *  - out.row_keys.extent(0)   >= num_rows_out,
+ *  - out.row_ptr.extent(0)    >= num_rows_out + 1,
+ *  - out.intervals.extent(0)  >= num_intervals_out.
+ *
+ * If the capacity is insufficient, this function throws std::runtime_error.
+ * The buffer is reset to zeros before writing into it.
  */
-inline IntervalSet2DDevice
+inline void
 set_intersection_device(const IntervalSet2DDevice& A,
                         const IntervalSet2DDevice& B,
+                        IntervalSet2DDevice& out,
                         CsrSetAlgebraContext& ctx) {
-  IntervalSet2DDevice out;
+  reset_preallocated_interval_set(out);
 
   const std::size_t num_rows_a = A.num_rows;
   const std::size_t num_rows_b = B.num_rows;
 
   if (num_rows_a == 0 || num_rows_b == 0) {
-    return out;
+    return;
   }
 
   detail::RowMergeResult merge =
@@ -1342,15 +1392,34 @@ set_intersection_device(const IntervalSet2DDevice& A,
           A, B, ctx.intersection_workspace);
   const std::size_t num_rows_out = merge.num_rows;
   if (num_rows_out == 0) {
-    return out;
+    return;
   }
 
-  auto row_keys_out = merge.row_keys;
+  const std::size_t rows_cap = out.row_keys.extent(0);
+  const std::size_t row_ptr_cap = out.row_ptr.extent(0);
+
+  if (num_rows_out > rows_cap || num_rows_out + 1 > row_ptr_cap) {
+    throw std::runtime_error(
+        "subsetix::csr::set_intersection_device (preallocated): "
+        "insufficient row capacity in output IntervalSet2DDevice");
+  }
+
+  auto row_keys_out_tmp = merge.row_keys;
   auto row_index_a = merge.row_index_a;
   auto row_index_b = merge.row_index_b;
+  auto row_keys_out = out.row_keys;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_intersection_copy_row_keys",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        row_keys_out(i) = row_keys_out_tmp(i);
+      });
+
+  ExecSpace().fence();
 
   Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
-      "subsetix_csr_intersection_row_counts", num_rows_out);
+      "subsetix_csr_intersection_row_counts_prealloc", num_rows_out);
 
   auto row_ptr_a = A.row_ptr;
   auto row_ptr_b = B.row_ptr;
@@ -1358,7 +1427,7 @@ set_intersection_device(const IntervalSet2DDevice& A,
   auto intervals_b = B.intervals;
 
   Kokkos::parallel_for(
-      "subsetix_csr_intersection_count",
+      "subsetix_csr_intersection_count_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
         const int ia = row_index_a(i);
@@ -1389,13 +1458,13 @@ set_intersection_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  IntervalSet2DDevice::IndexView row_ptr_out(
-      "subsetix_csr_intersection_row_ptr", num_rows_out + 1);
   Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_intersection_total_intervals");
+      "subsetix_csr_intersection_total_intervals_prealloc");
+
+  auto row_ptr_out = out.row_ptr;
 
   Kokkos::parallel_scan(
-      "subsetix_csr_intersection_scan",
+      "subsetix_csr_intersection_scan_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i,
                     std::size_t& update,
@@ -1416,21 +1485,24 @@ set_intersection_device(const IntervalSet2DDevice& A,
   std::size_t num_intervals_out = 0;
   Kokkos::deep_copy(num_intervals_out, total_intervals);
 
-  out.num_rows = num_rows_out;
-  out.num_intervals = num_intervals_out;
-  out.row_keys = row_keys_out;
-  out.row_ptr = row_ptr_out;
-
-  if (num_intervals_out == 0) {
-    out.intervals = IntervalSet2DDevice::IntervalView();
-    return out;
+  const std::size_t intervals_cap = out.intervals.extent(0);
+  if (num_intervals_out > intervals_cap) {
+    throw std::runtime_error(
+        "subsetix::csr::set_intersection_device (preallocated): "
+        "insufficient interval capacity in output IntervalSet2DDevice");
   }
 
-  IntervalSet2DDevice::IntervalView intervals_out(
-      "subsetix_csr_intersection_intervals", num_intervals_out);
+  out.num_rows = num_rows_out;
+  out.num_intervals = num_intervals_out;
+
+  if (num_intervals_out == 0) {
+    return;
+  }
+
+  auto intervals_out = out.intervals;
 
   Kokkos::parallel_for(
-      "subsetix_csr_intersection_fill",
+      "subsetix_csr_intersection_fill_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
         const int ia = row_index_a(i);
@@ -1448,10 +1520,6 @@ set_intersection_device(const IntervalSet2DDevice& A,
         const std::size_t begin_b = row_ptr_b(row_b);
         const std::size_t end_b = row_ptr_b(row_b + 1);
 
-        if (begin_a == end_a || begin_b == end_b) {
-          return;
-        }
-
         const std::size_t out_offset = row_ptr_out(i);
         detail::row_intersection_fill(
             intervals_a, begin_a, end_a,
@@ -1460,32 +1528,30 @@ set_intersection_device(const IntervalSet2DDevice& A,
       });
 
   ExecSpace().fence();
-
-  out.intervals = intervals_out;
-
-  return out;
-}
-
-inline IntervalSet2DDevice
-set_intersection_device(const IntervalSet2DDevice& A,
-                        const IntervalSet2DDevice& B) {
-  CsrSetAlgebraContext ctx;
-  return set_intersection_device(A, B, ctx);
 }
 
 /**
- * @brief Compute the set difference A \ B of two 2D CSR interval sets
+ * @brief Compute the set difference A \ B into a preallocated CSR buffer
  *        on device.
+ *
+ * The views in @p out must already be allocated with sufficient capacity:
+ *  - out.row_keys.extent(0)   >= num_rows_out,
+ *  - out.row_ptr.extent(0)    >= num_rows_out + 1,
+ *  - out.intervals.extent(0)  >= num_intervals_out.
+ *
+ * If the capacity is insufficient, this function throws std::runtime_error.
+ * The buffer is reset to zeros before writing into it.
  */
-inline IntervalSet2DDevice
+inline void
 set_difference_device(const IntervalSet2DDevice& A,
                       const IntervalSet2DDevice& B,
+                      IntervalSet2DDevice& out,
                       CsrSetAlgebraContext& ctx) {
-  IntervalSet2DDevice out;
+  reset_preallocated_interval_set(out);
 
   const std::size_t num_rows_a = A.num_rows;
   if (num_rows_a == 0) {
-    return out;
+    return;
   }
 
   detail::RowDifferenceResult diff_rows =
@@ -1493,11 +1559,30 @@ set_difference_device(const IntervalSet2DDevice& A,
   const std::size_t num_rows_out = diff_rows.num_rows;
 
   if (num_rows_out == 0) {
-    return out;
+    return;
   }
 
-  auto row_keys_out = diff_rows.row_keys;
+  const std::size_t rows_cap = out.row_keys.extent(0);
+  const std::size_t row_ptr_cap = out.row_ptr.extent(0);
+
+  if (num_rows_out > rows_cap || num_rows_out + 1 > row_ptr_cap) {
+    throw std::runtime_error(
+        "subsetix::csr::set_difference_device (preallocated): "
+        "insufficient row capacity in output IntervalSet2DDevice");
+  }
+
+  auto row_keys_out_tmp = diff_rows.row_keys;
   auto row_index_b = diff_rows.row_index_b;
+  auto row_keys_out = out.row_keys;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_difference_copy_row_keys",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        row_keys_out(i) = row_keys_out_tmp(i);
+      });
+
+  ExecSpace().fence();
 
   ctx.difference_workspace.ensure_capacity(num_rows_out);
   auto row_counts = ctx.difference_workspace.row_counts;
@@ -1508,7 +1593,7 @@ set_difference_device(const IntervalSet2DDevice& A,
   auto intervals_b = B.intervals;
 
   Kokkos::parallel_for(
-      "subsetix_csr_difference_count",
+      "subsetix_csr_difference_count_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
         const std::size_t row_a = i;
@@ -1537,12 +1622,11 @@ set_difference_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  IntervalSet2DDevice::IndexView row_ptr_out(
-      "subsetix_csr_difference_row_ptr", num_rows_out + 1);
   auto total_intervals = ctx.difference_workspace.total_intervals;
+  auto row_ptr_out = out.row_ptr;
 
   Kokkos::parallel_scan(
-      "subsetix_csr_difference_scan",
+      "subsetix_csr_difference_scan_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i,
                     std::size_t& update,
@@ -1563,21 +1647,24 @@ set_difference_device(const IntervalSet2DDevice& A,
   std::size_t num_intervals_out = 0;
   Kokkos::deep_copy(num_intervals_out, total_intervals);
 
-  out.num_rows = num_rows_out;
-  out.num_intervals = num_intervals_out;
-  out.row_keys = row_keys_out;
-  out.row_ptr = row_ptr_out;
-
-  if (num_intervals_out == 0) {
-    out.intervals = IntervalSet2DDevice::IntervalView();
-    return out;
+  const std::size_t intervals_cap = out.intervals.extent(0);
+  if (num_intervals_out > intervals_cap) {
+    throw std::runtime_error(
+        "subsetix::csr::set_difference_device (preallocated): "
+        "insufficient interval capacity in output IntervalSet2DDevice");
   }
 
-  IntervalSet2DDevice::IntervalView intervals_out(
-      "subsetix_csr_difference_intervals", num_intervals_out);
+  out.num_rows = num_rows_out;
+  out.num_intervals = num_intervals_out;
+
+  if (num_intervals_out == 0) {
+    return;
+  }
+
+  auto intervals_out = out.intervals;
 
   Kokkos::parallel_for(
-      "subsetix_csr_difference_fill",
+      "subsetix_csr_difference_fill_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
         const std::size_t row_a = i;
@@ -1606,17 +1693,6 @@ set_difference_device(const IntervalSet2DDevice& A,
       });
 
   ExecSpace().fence();
-
-  out.intervals = intervals_out;
-
-  return out;
-}
-
-inline IntervalSet2DDevice
-set_difference_device(const IntervalSet2DDevice& A,
-                      const IntervalSet2DDevice& B) {
-  CsrSetAlgebraContext ctx;
-  return set_difference_device(A, B, ctx);
 }
 
 /**

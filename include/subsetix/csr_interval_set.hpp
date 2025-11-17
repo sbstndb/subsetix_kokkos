@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -65,6 +66,50 @@ using HostMemorySpace = Kokkos::HostSpace;
 
 using IntervalSet2DDevice = IntervalSet2DView<DeviceMemorySpace>;
 using IntervalSet2DHostView = IntervalSet2DView<HostMemorySpace>;
+
+inline IntervalSet2DDevice
+allocate_interval_set_device(std::size_t row_capacity,
+                             std::size_t interval_capacity) {
+  IntervalSet2DDevice dev;
+
+  const std::size_t row_ptr_size =
+      (row_capacity > 0) ? (row_capacity + 1) : std::size_t(1);
+
+  dev.row_keys = IntervalSet2DDevice::RowKeyView(
+      "subsetix_csr_prealloc_row_keys", row_capacity);
+  dev.row_ptr = IntervalSet2DDevice::IndexView(
+      "subsetix_csr_prealloc_row_ptr", row_ptr_size);
+  dev.intervals = IntervalSet2DDevice::IntervalView(
+      "subsetix_csr_prealloc_intervals", interval_capacity);
+
+  dev.num_rows = 0;
+  dev.num_intervals = 0;
+  return dev;
+}
+
+inline IntervalSet2DDevice
+allocate_union_output_buffer(const IntervalSet2DDevice& A,
+                             const IntervalSet2DDevice& B) {
+  return allocate_interval_set_device(A.num_rows + B.num_rows,
+                                      A.num_intervals + B.num_intervals);
+}
+
+inline IntervalSet2DDevice
+allocate_intersection_output_buffer(const IntervalSet2DDevice& A,
+                                    const IntervalSet2DDevice& B) {
+  const std::size_t row_capacity =
+      std::min(A.num_rows, B.num_rows);
+  const std::size_t interval_capacity =
+      A.num_intervals + B.num_intervals;
+  return allocate_interval_set_device(row_capacity, interval_capacity);
+}
+
+inline IntervalSet2DDevice
+allocate_difference_output_buffer(const IntervalSet2DDevice& lhs,
+                                  const IntervalSet2DDevice& rhs) {
+  return allocate_interval_set_device(lhs.num_rows,
+                                      lhs.num_intervals + rhs.num_intervals);
+}
 
 /**
  * @brief Build a device CSR interval set from a host CSR representation.

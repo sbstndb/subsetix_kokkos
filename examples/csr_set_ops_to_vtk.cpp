@@ -37,9 +37,16 @@ int main(int argc, char* argv[]) {
     auto box_dev = make_box_device(box);
     auto disk_dev = make_disk_device(disk);
 
-    auto u = set_union_device(box_dev, disk_dev);
-    auto i = set_intersection_device(box_dev, disk_dev);
-    auto d = set_difference_device(box_dev, disk_dev);
+    CsrSetAlgebraContext ctx;
+
+    auto u = allocate_union_output_buffer(box_dev, disk_dev);
+    set_union_device(box_dev, disk_dev, u, ctx);
+
+    auto i = allocate_intersection_output_buffer(box_dev, disk_dev);
+    set_intersection_device(box_dev, disk_dev, i, ctx);
+
+    auto d = allocate_difference_output_buffer(box_dev, disk_dev);
+    set_difference_device(box_dev, disk_dev, d, ctx);
 
     auto u_host = build_host_from_device(u);
     auto i_host = build_host_from_device(i);

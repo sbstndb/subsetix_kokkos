@@ -9,6 +9,18 @@
 using namespace subsetix::csr;
 using namespace subsetix::csr_test;
 
+namespace {
+
+IntervalSet2DDevice run_union(const IntervalSet2DDevice& lhs,
+                              const IntervalSet2DDevice& rhs) {
+  CsrSetAlgebraContext ctx;
+  auto out = allocate_union_output_buffer(lhs, rhs);
+  set_union_device(lhs, rhs, out, ctx);
+  return out;
+}
+
+} // namespace
+
 TEST(CSRTranslationSmokeTest, TranslationByZeroIsIdentity) {
   Box2D box;
   box.x_min = 0;
@@ -89,7 +101,7 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslation) {
 
   auto B = make_checkerboard_device(dom, 4);
 
-  auto U = set_union_device(A, B);
+  auto U = run_union(A, B);
   auto T = translate_x_device(U, -5);
 
   auto host_U = build_host_from_device(U);
@@ -123,7 +135,7 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslationY) {
 
   auto B = make_checkerboard_device(dom, 4);
 
-  auto U = set_union_device(A, B);
+  auto U = run_union(A, B);
   const Coord dy = -3;
   auto T = translate_y_device(U, dy);
 
@@ -162,13 +174,13 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslation) {
   const Coord dx = 5;
 
   // (A ∪ B) translaté.
-  auto U = set_union_device(A, B);
+  auto U = run_union(A, B);
   auto U_shift = translate_x_device(U, dx);
 
   // A et B translatés puis union.
   auto A_shift = translate_x_device(A, dx);
   auto B_shift = translate_x_device(B, dx);
-  auto U_shift_alt = set_union_device(A_shift, B_shift);
+  auto U_shift_alt = run_union(A_shift, B_shift);
 
   auto host_U_shift = build_host_from_device(U_shift);
   auto host_U_shift_alt = build_host_from_device(U_shift_alt);
@@ -200,12 +212,12 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslationY) {
 
   const Coord dy = 5;
 
-  auto U = set_union_device(A, B);
+  auto U = run_union(A, B);
   auto U_shift = translate_y_device(U, dy);
 
   auto A_shift = translate_y_device(A, dy);
   auto B_shift = translate_y_device(B, dy);
-  auto U_shift_alt = set_union_device(A_shift, B_shift);
+  auto U_shift_alt = run_union(A_shift, B_shift);
 
   auto host_U_shift = build_host_from_device(U_shift);
   auto host_U_shift_alt = build_host_from_device(U_shift_alt);

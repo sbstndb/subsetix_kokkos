@@ -52,15 +52,23 @@ int main(int argc, char* argv[]) {
     disk.radius = 10;
     auto disk_dev = make_disk_device(disk);
 
-    auto u = set_union_device(box_dev, disk_dev);
-    auto inter = set_intersection_device(box_dev, disk_dev);
-    auto diff = set_difference_device(box_dev, disk_dev);
+    CsrSetAlgebraContext ctx;
+
+    auto u = allocate_union_output_buffer(box_dev, disk_dev);
+    set_union_device(box_dev, disk_dev, u, ctx);
+
+    auto inter = allocate_intersection_output_buffer(box_dev, disk_dev);
+    set_intersection_device(box_dev, disk_dev, inter, ctx);
+
+    auto diff = allocate_difference_output_buffer(box_dev, disk_dev);
+    set_difference_device(box_dev, disk_dev, diff, ctx);
 
     fill_on_set_device(field_dev, diff, 1.0);
     fill_on_set_device(field_dev, inter, 2.0);
 
     auto scaled_union =
-        set_difference_device(u, inter);
+        allocate_difference_output_buffer(u, inter);
+    set_difference_device(u, inter, scaled_union, ctx);
     scale_on_set_device(field_dev, scaled_union, 0.5);
 
     auto result_host =

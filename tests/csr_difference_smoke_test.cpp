@@ -9,11 +9,23 @@
 using namespace subsetix::csr;
 using namespace subsetix::csr_test;
 
+namespace {
+
+IntervalSet2DDevice run_difference(const IntervalSet2DDevice& lhs,
+                                   const IntervalSet2DDevice& rhs) {
+  CsrSetAlgebraContext ctx;
+  auto out = allocate_difference_output_buffer(lhs, rhs);
+  set_difference_device(lhs, rhs, out, ctx);
+  return out;
+}
+
+} // namespace
+
 TEST(CSRDifferenceSmokeTest, EmptyAndNonEmpty) {
   IntervalSet2DDevice empty_a;
   IntervalSet2DDevice empty_b;
 
-  auto D0 = set_difference_device(empty_a, empty_b);
+  auto D0 = run_difference(empty_a, empty_b);
   EXPECT_EQ(D0.num_rows, 0u);
   EXPECT_EQ(D0.num_intervals, 0u);
 
@@ -26,7 +38,7 @@ TEST(CSRDifferenceSmokeTest, EmptyAndNonEmpty) {
   IntervalSet2DDevice A = make_box_device(box);
 
   // A \ empty = A
-  auto D1 = set_difference_device(A, empty_b);
+  auto D1 = run_difference(A, empty_b);
   auto host_A = build_host_from_device(A);
   auto host_D1 = build_host_from_device(D1);
 
@@ -46,7 +58,7 @@ TEST(CSRDifferenceSmokeTest, EmptyAndNonEmpty) {
   }
 
   // empty \ A = empty
-  auto D2 = set_difference_device(empty_b, A);
+  auto D2 = run_difference(empty_b, A);
   EXPECT_EQ(D2.num_rows, 0u);
   EXPECT_EQ(D2.num_intervals, 0u);
 }
@@ -61,7 +73,7 @@ TEST(CSRDifferenceSmokeTest, EqualBoxesSameRows) {
   IntervalSet2DDevice A = make_box_device(box);
   IntervalSet2DDevice B = make_box_device(box);
 
-  auto D = set_difference_device(A, B);
+  auto D = run_difference(A, B);
 
   EXPECT_EQ(D.num_rows, 2u);
   EXPECT_EQ(D.num_intervals, 0u);
@@ -83,7 +95,7 @@ TEST(CSRDifferenceSmokeTest, OverlappingBoxesSameRows) {
   IntervalSet2DDevice A = make_box_device(boxA);
   IntervalSet2DDevice B = make_box_device(boxB);
 
-  auto D = set_difference_device(A, B);
+  auto D = run_difference(A, B);
   auto host_D = build_host_from_device(D);
 
   ASSERT_EQ(host_D.row_keys.size(), 2u);
@@ -129,7 +141,7 @@ TEST(CSRDifferenceSmokeTest, BoxesOnDisjointRows) {
   IntervalSet2DDevice A = make_box_device(boxA);
   IntervalSet2DDevice B = make_box_device(boxB);
 
-  auto D = set_difference_device(A, B);
+  auto D = run_difference(A, B);
   auto host_A = build_host_from_device(A);
   auto host_D = build_host_from_device(D);
 

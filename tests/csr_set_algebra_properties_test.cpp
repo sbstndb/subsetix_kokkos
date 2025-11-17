@@ -31,6 +31,30 @@ IntervalSet2DDevice make_checkerboard_in_domain(const Box2D& box,
   return make_checkerboard_device(dom, cell_size);
 }
 
+IntervalSet2DDevice run_union(const IntervalSet2DDevice& lhs,
+                              const IntervalSet2DDevice& rhs,
+                              CsrSetAlgebraContext& ctx) {
+  auto out = allocate_union_output_buffer(lhs, rhs);
+  set_union_device(lhs, rhs, out, ctx);
+  return out;
+}
+
+IntervalSet2DDevice run_intersection(const IntervalSet2DDevice& lhs,
+                                     const IntervalSet2DDevice& rhs,
+                                     CsrSetAlgebraContext& ctx) {
+  auto out = allocate_intersection_output_buffer(lhs, rhs);
+  set_intersection_device(lhs, rhs, out, ctx);
+  return out;
+}
+
+IntervalSet2DDevice run_difference(const IntervalSet2DDevice& lhs,
+                                   const IntervalSet2DDevice& rhs,
+                                   CsrSetAlgebraContext& ctx) {
+  auto out = allocate_difference_output_buffer(lhs, rhs);
+  set_difference_device(lhs, rhs, out, ctx);
+  return out;
+}
+
 } // namespace
 
 TEST(CSRSetAlgebraPropertiesTest, PartitionOfAByB) {
@@ -50,9 +74,11 @@ TEST(CSRSetAlgebraPropertiesTest, PartitionOfAByB) {
   boxB.y_max = 24;
   auto B = make_box_device(boxB);
 
-  auto I = set_intersection_device(A, B);
-  auto D1 = set_difference_device(A, B); // A \ B
-  auto U = set_union_device(I, D1);
+  CsrSetAlgebraContext ctx;
+
+  auto I = run_intersection(A, B, ctx);
+  auto D1 = run_difference(A, B, ctx); // A \ B
+  auto U = run_union(I, D1, ctx);
 
   auto host_A = build_host_from_device(A);
   auto host_I = build_host_from_device(I);
@@ -63,7 +89,7 @@ TEST(CSRSetAlgebraPropertiesTest, PartitionOfAByB) {
   expect_equal_csr(host_A, host_U);
 
   // Intersection nulle entre (A ∩ B) et (A \ B) en termes de cellules.
-  auto I_cap_D1 = set_intersection_device(I, D1);
+  auto I_cap_D1 = run_intersection(I, D1, ctx);
   auto host_I_cap_D1 = build_host_from_device(I_cap_D1);
   EXPECT_EQ(I_cap_D1.num_intervals, 0u);
   EXPECT_EQ(cardinality(host_I_cap_D1), 0u);
@@ -85,8 +111,10 @@ TEST(CSRSetAlgebraPropertiesTest, InclusionExclusionCardinality) {
   auto A = make_disk_in_box(domain, 20, 16, 10);
   auto B = make_disk_in_box(domain, 40, 16, 10);
 
-  auto U = set_union_device(A, B);
-  auto I = set_intersection_device(A, B);
+  CsrSetAlgebraContext ctx;
+
+  auto U = run_union(A, B, ctx);
+  auto I = run_intersection(A, B, ctx);
 
   auto host_A = build_host_from_device(A);
   auto host_B = build_host_from_device(B);
@@ -113,23 +141,25 @@ TEST(CSRSetAlgebraPropertiesTest, DeMorganRelativeToBoxDomain) {
   auto A = make_disk_in_box(domain, 20, 16, 10);
   auto B = make_checkerboard_in_domain(domain, 4);
 
+  CsrSetAlgebraContext ctx;
+
   // Compléments relatifs dans D_full.
-  auto Ac = set_difference_device(D_full, A);
-  auto Bc = set_difference_device(D_full, B);
+  auto Ac = run_difference(D_full, A, ctx);
+  auto Bc = run_difference(D_full, B, ctx);
 
   // 1) D \ (A ∪ B) == (D \ A) ∩ (D \ B)
-  auto A_union_B = set_union_device(A, B);
-  auto left1 = set_difference_device(D_full, A_union_B);
-  auto right1 = set_intersection_device(Ac, Bc);
+  auto A_union_B = run_union(A, B, ctx);
+  auto left1 = run_difference(D_full, A_union_B, ctx);
+  auto right1 = run_intersection(Ac, Bc, ctx);
 
   auto host_left1 = build_host_from_device(left1);
   auto host_right1 = build_host_from_device(right1);
   expect_equal_csr(host_left1, host_right1);
 
   // 2) D \ (A ∩ B) == (D \ A) ∪ (D \ B)
-  auto A_inter_B = set_intersection_device(A, B);
-  auto left2 = set_difference_device(D_full, A_inter_B);
-  auto right2 = set_union_device(Ac, Bc);
+  auto A_inter_B = run_intersection(A, B, ctx);
+  auto left2 = run_difference(D_full, A_inter_B, ctx);
+  auto right2 = run_union(Ac, Bc, ctx);
 
   auto host_left2 = build_host_from_device(left2);
   auto host_right2 = build_host_from_device(right2);

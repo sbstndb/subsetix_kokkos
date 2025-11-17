@@ -9,11 +9,23 @@
 using namespace subsetix::csr;
 using namespace subsetix::csr_test;
 
+namespace {
+
+IntervalSet2DDevice run_union(const IntervalSet2DDevice& lhs,
+                              const IntervalSet2DDevice& rhs) {
+  CsrSetAlgebraContext ctx;
+  auto out = allocate_union_output_buffer(lhs, rhs);
+  set_union_device(lhs, rhs, out, ctx);
+  return out;
+}
+
+} // namespace
+
 TEST(CSRUnionSmokeTest, EmptyUnion) {
   IntervalSet2DDevice empty_a;
   IntervalSet2DDevice empty_b;
 
-  auto u = set_union_device(empty_a, empty_b);
+  auto u = run_union(empty_a, empty_b);
   EXPECT_EQ(u.num_rows, 0u);
   EXPECT_EQ(u.num_intervals, 0u);
 }
@@ -28,8 +40,8 @@ TEST(CSRUnionSmokeTest, EmptyAndNonEmpty) {
   IntervalSet2DDevice A = make_box_device(box);
   IntervalSet2DDevice B; // empty
 
-  auto u1 = set_union_device(A, B);
-  auto u2 = set_union_device(B, A);
+  auto u1 = run_union(A, B);
+  auto u2 = run_union(B, A);
 
   auto host_A = build_host_from_device(A);
   auto host_u1 = build_host_from_device(u1);
@@ -55,7 +67,7 @@ TEST(CSRUnionSmokeTest, OverlappingBoxesSameRows) {
   IntervalSet2DDevice A = make_box_device(boxA);
   IntervalSet2DDevice B = make_box_device(boxB);
 
-  auto U = set_union_device(A, B);
+  auto U = run_union(A, B);
   auto host_U = build_host_from_device(U);
 
   ASSERT_EQ(host_U.row_keys.size(), 2u);
@@ -92,7 +104,7 @@ TEST(CSRUnionSmokeTest, BoxesOnDisjointRows) {
   IntervalSet2DDevice A = make_box_device(boxA);
   IntervalSet2DDevice B = make_box_device(boxB);
 
-  auto U = set_union_device(A, B);
+  auto U = run_union(A, B);
   auto host_U = build_host_from_device(U);
 
   ASSERT_EQ(host_U.row_keys.size(), 4u);
@@ -131,7 +143,7 @@ TEST(CSRUnionSmokeTest, SameRowMultipleDisjointIntervals) {
   auto A = build_device_from_host(hostA);
   auto B = build_device_from_host(hostB);
 
-  auto U = set_union_device(A, B);
+  auto U = run_union(A, B);
   auto host_U = build_host_from_device(U);
 
   ASSERT_EQ(host_U.row_keys.size(), 1u);

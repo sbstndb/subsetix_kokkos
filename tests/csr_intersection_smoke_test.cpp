@@ -6,11 +6,23 @@
 
 using namespace subsetix::csr;
 
+namespace {
+
+IntervalSet2DDevice run_intersection(const IntervalSet2DDevice& lhs,
+                                     const IntervalSet2DDevice& rhs) {
+  CsrSetAlgebraContext ctx;
+  auto out = allocate_intersection_output_buffer(lhs, rhs);
+  set_intersection_device(lhs, rhs, out, ctx);
+  return out;
+}
+
+} // namespace
+
 TEST(CSRIntersectionSmokeTest, EmptyIntersection) {
   IntervalSet2DDevice empty_a;
   IntervalSet2DDevice empty_b;
 
-  auto I = set_intersection_device(empty_a, empty_b);
+  auto I = run_intersection(empty_a, empty_b);
   EXPECT_EQ(I.num_rows, 0u);
   EXPECT_EQ(I.num_intervals, 0u);
 
@@ -22,8 +34,8 @@ TEST(CSRIntersectionSmokeTest, EmptyIntersection) {
 
   IntervalSet2DDevice A = make_box_device(box);
 
-  auto I2 = set_intersection_device(A, empty_b);
-  auto I3 = set_intersection_device(empty_b, A);
+  auto I2 = run_intersection(A, empty_b);
+  auto I3 = run_intersection(empty_b, A);
 
   EXPECT_EQ(I2.num_rows, 0u);
   EXPECT_EQ(I2.num_intervals, 0u);
@@ -47,7 +59,7 @@ TEST(CSRIntersectionSmokeTest, OverlappingBoxesSameRows) {
   IntervalSet2DDevice A = make_box_device(boxA);
   IntervalSet2DDevice B = make_box_device(boxB);
 
-  auto I = set_intersection_device(A, B);
+  auto I = run_intersection(A, B);
   auto host_I = build_host_from_device(I);
 
   ASSERT_EQ(host_I.row_keys.size(), 2u);
@@ -83,9 +95,8 @@ TEST(CSRIntersectionSmokeTest, BoxesOnDisjointRows) {
   IntervalSet2DDevice A = make_box_device(boxA);
   IntervalSet2DDevice B = make_box_device(boxB);
 
-  auto I = set_intersection_device(A, B);
+  auto I = run_intersection(A, B);
 
   EXPECT_EQ(I.num_rows, 0u);
   EXPECT_EQ(I.num_intervals, 0u);
 }
-
