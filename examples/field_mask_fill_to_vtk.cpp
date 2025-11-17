@@ -1,10 +1,14 @@
 #include <Kokkos_Core.hpp>
 
+#include "example_output.hpp"
+
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_field.hpp>
 #include <subsetix/csr_field_ops.hpp>
 #include <subsetix/csr_set_ops.hpp>
 #include <subsetix/vtk_export.hpp>
+
+#include <string_view>
 
 int main(int argc, char* argv[]) {
   Kokkos::initialize(argc, argv);
@@ -12,6 +16,14 @@ int main(int argc, char* argv[]) {
   {
     using namespace subsetix::csr;
     using subsetix::vtk::write_legacy_quads;
+
+    const auto output_dir =
+        subsetix_examples::make_example_output_dir("field_mask_fill_to_vtk",
+                                                   argc,
+                                                   argv);
+    const auto output_path = [&output_dir](std::string_view filename) {
+      return subsetix_examples::output_file(output_dir, filename);
+    };
 
     Box2D domain;
     domain.x_min = 0;
@@ -47,7 +59,7 @@ int main(int argc, char* argv[]) {
     auto field_modified_host =
         build_host_field_from_device(field_dev);
     write_legacy_quads(field_modified_host,
-                       "field_mask_fill.vtk", "value");
+                       output_path("field_mask_fill.vtk"), "value");
 
     auto field_copy_host =
         make_field_like_geometry<double>(geom_host, 0.0);
@@ -60,11 +72,10 @@ int main(int argc, char* argv[]) {
     auto field_copy_result_host =
         build_host_field_from_device(field_copy_dev);
     write_legacy_quads(field_copy_result_host,
-                       "field_mask_fill_copy.vtk",
+                       output_path("field_mask_fill_copy.vtk"),
                        "value");
   }
 
   Kokkos::finalize();
   return 0;
 }
-

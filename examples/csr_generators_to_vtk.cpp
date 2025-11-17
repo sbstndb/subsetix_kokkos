@@ -1,8 +1,12 @@
-﻿#include <Kokkos_Core.hpp>
+#include <Kokkos_Core.hpp>
+
+#include "example_output.hpp"
 
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_field.hpp>
 #include <subsetix/vtk_export.hpp>
+
+#include <string_view>
 
 int main(int argc, char* argv[]) {
   Kokkos::initialize(argc, argv);
@@ -11,7 +15,14 @@ int main(int argc, char* argv[]) {
     using namespace subsetix::csr;
     using subsetix::vtk::write_legacy_quads;
 
-    // Example 1: simple box (upscaled by 4x).
+    const auto output_dir =
+        subsetix_examples::make_example_output_dir("csr_generators_to_vtk",
+                                                   argc,
+                                                   argv);
+    const auto output_path = [&output_dir](std::string_view filename) {
+      return subsetix_examples::output_file(output_dir, filename);
+    };
+
     Box2D box;
     box.x_min = 0;
     box.x_max = 64;
@@ -20,14 +31,13 @@ int main(int argc, char* argv[]) {
 
     auto box_dev = make_box_device(box);
     auto box_host = build_host_from_device(box_dev);
-    write_legacy_quads(box_host, "box.vtk");
+    write_legacy_quads(box_host, output_path("box.vtk"));
 
-    // Also build a constant field on top of the box geometry.
     auto box_field_host =
         make_field_like_geometry<float>(box_host, 1.0f);
-    write_legacy_quads(box_field_host, "box_field.vtk", "value");
+    write_legacy_quads(box_field_host, output_path("box_field.vtk"),
+                       "value");
 
-    // Example 2: disk centered in the box (upscaled by 4x).
     Disk2D disk;
     disk.cx = 32;
     disk.cy = 16;
@@ -35,13 +45,13 @@ int main(int argc, char* argv[]) {
 
     auto disk_dev = make_disk_device(disk);
     auto disk_host = build_host_from_device(disk_dev);
-    write_legacy_quads(disk_host, "disk.vtk");
+    write_legacy_quads(disk_host, output_path("disk.vtk"));
 
     auto disk_field_host =
         make_field_like_geometry<float>(disk_host, 2.0f);
-    write_legacy_quads(disk_field_host, "disk_field.vtk", "value");
+    write_legacy_quads(disk_field_host, output_path("disk_field.vtk"),
+                       "value");
 
-    // Example 3: random geometry on a larger domain (upscaled by 4x).
     Domain2D dom;
     dom.x_min = 0;
     dom.x_max = 128;
@@ -50,21 +60,23 @@ int main(int argc, char* argv[]) {
 
     auto rand_dev = make_random_device(dom, 0.2, 123456);
     auto rand_host = build_host_from_device(rand_dev);
-    write_legacy_quads(rand_host, "random.vtk");
+    write_legacy_quads(rand_host, output_path("random.vtk"));
 
     auto rand_field_host =
         make_field_like_geometry<float>(rand_host, 3.0f);
-    write_legacy_quads(rand_field_host, "random_field.vtk", "value");
+    write_legacy_quads(rand_field_host, output_path("random_field.vtk"),
+                       "value");
 
-    // Example 4: checkerboard on the same domain with square size 4.
     Domain2D cb_dom = dom;
     auto cb_dev = make_checkerboard_device(cb_dom, 4);
     auto cb_host = build_host_from_device(cb_dev);
-    write_legacy_quads(cb_host, "checkerboard.vtk");
+    write_legacy_quads(cb_host, output_path("checkerboard.vtk"));
 
     auto cb_field_host =
         make_field_like_geometry<float>(cb_host, 4.0f);
-    write_legacy_quads(cb_field_host, "checkerboard_field.vtk", "value");
+    write_legacy_quads(cb_field_host,
+                       output_path("checkerboard_field.vtk"),
+                       "value");
   }
 
   Kokkos::finalize();

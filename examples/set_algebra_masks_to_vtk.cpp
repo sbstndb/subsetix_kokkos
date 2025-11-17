@@ -1,10 +1,14 @@
 #include <Kokkos_Core.hpp>
 
+#include "example_output.hpp"
+
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_field.hpp>
 #include <subsetix/csr_field_ops.hpp>
 #include <subsetix/csr_set_ops.hpp>
 #include <subsetix/vtk_export.hpp>
+
+#include <string_view>
 
 int main(int argc, char* argv[]) {
   Kokkos::initialize(argc, argv);
@@ -12,6 +16,14 @@ int main(int argc, char* argv[]) {
   {
     using namespace subsetix::csr;
     using subsetix::vtk::write_legacy_quads;
+
+    const auto output_dir =
+        subsetix_examples::make_example_output_dir("set_algebra_masks_to_vtk",
+                                                   argc,
+                                                   argv);
+    const auto output_path = [&output_dir](std::string_view filename) {
+      return subsetix_examples::output_file(output_dir, filename);
+    };
 
     Box2D domain;
     domain.x_min = 0;
@@ -54,21 +66,20 @@ int main(int argc, char* argv[]) {
     auto result_host =
         build_host_field_from_device(field_dev);
     write_legacy_quads(result_host,
-                       "set_algebra_masks_field.vtk",
+                       output_path("set_algebra_masks_field.vtk"),
                        "value");
 
     auto u_host = build_host_from_device(u);
     auto inter_host = build_host_from_device(inter);
     auto diff_host = build_host_from_device(diff);
     write_legacy_quads(u_host,
-                       "set_algebra_union.vtk");
+                       output_path("set_algebra_union.vtk"));
     write_legacy_quads(inter_host,
-                       "set_algebra_intersection.vtk");
+                       output_path("set_algebra_intersection.vtk"));
     write_legacy_quads(diff_host,
-                       "set_algebra_difference.vtk");
+                       output_path("set_algebra_difference.vtk"));
   }
 
   Kokkos::finalize();
   return 0;
 }
-

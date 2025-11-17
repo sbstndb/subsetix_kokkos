@@ -1,11 +1,31 @@
 #include <Kokkos_Core.hpp>
 
+#include "example_output.hpp"
+
+#include <algorithm>
+#include <cstdlib>
+#include <limits>
+#include <string_view>
+
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_field.hpp>
 #include <subsetix/csr_field_ops.hpp>
 #include <subsetix/vtk_export.hpp>
 
 namespace {
+
+int parse_positive_int(const char* token, int fallback) {
+  if (token == nullptr) {
+    return fallback;
+  }
+  char* end = nullptr;
+  const long value = std::strtol(token, &end, 10);
+  if (end == token || value < 0 ||
+      value > static_cast<long>(std::numeric_limits<int>::max())) {
+    return fallback;
+  }
+  return static_cast<int>(value);
+}
 
 using namespace subsetix::csr;
 
@@ -33,6 +53,27 @@ int main(int argc, char* argv[]) {
   {
     using namespace subsetix::csr;
     using subsetix::vtk::write_legacy_quads;
+
+    const auto output_dir =
+        subsetix_examples::make_example_output_dir(
+            "field_stencil_smoothing_to_vtk", argc, argv);
+    const auto output_path = [&output_dir](std::string_view filename) {
+      return subsetix_examples::output_file(output_dir, filename);
+    };
+
+    int iterations = 10;
+    int inner_margin = 1;
+    for (int i = 1; i < argc; ++i) {
+      std::string_view arg = argv[i];
+      if (arg == "--iterations" && i + 1 < argc) {
+        iterations = parse_positive_int(argv[++i], iterations);
+      } else if (arg == "--inner-margin" && i + 1 < argc) {
+        inner_margin = parse_positive_int(argv[++i], inner_margin);
+      } else if (arg == "--output-dir" && i + 1 < argc) {
+        ++i;
+      }
+    }
+    inner_margin = std::clamp(inner_margin, 0, 31);
 
     Box2D box;
     box.x_min = 0;
@@ -67,7 +108,7 @@ int main(int argc, char* argv[]) {
     }
 
     write_legacy_quads(field_host,
-                       "field_stencil_initial.vtk",
+                       output_path("field_stencil_initial.vtk"),
                        "value");
 
     auto field_curr_dev =
@@ -76,13 +117,12 @@ int main(int argc, char* argv[]) {
         build_device_field_from_host(field_host);
 
     Box2D inner;
-    inner.x_min = 1;
-    inner.x_max = 63;
-    inner.y_min = 1;
-    inner.y_max = 63;
+    inner.x_min = inner_margin;
+    inner.x_max = 64 - inner_margin;
+    inner.y_min = inner_margin;
+    inner.y_max = 64 - inner_margin;
     auto mask_dev = make_box_device(inner);
 
-    const int iterations = 10;
     for (int it = 0; it < iterations; ++it) {
       apply_stencil_on_set_device(field_next_dev,
                                   field_curr_dev,
@@ -94,11 +134,10 @@ int main(int argc, char* argv[]) {
     auto smoothed_host =
         build_host_field_from_device(field_curr_dev);
     write_legacy_quads(smoothed_host,
-                       "field_stencil_smoothed.vtk",
+                       output_path("field_stencil_smoothed.vtk"),
                        "value");
   }
 
   Kokkos::finalize();
   return 0;
 }
-
