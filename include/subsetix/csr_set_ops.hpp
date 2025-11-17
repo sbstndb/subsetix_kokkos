@@ -3,6 +3,7 @@
 #include <cstddef>
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_Sort.hpp>
 
 #include <subsetix/csr_interval_set.hpp>
 
@@ -368,6 +369,20 @@ struct RowMergeResult {
   std::size_t num_rows = 0;
 };
 
+struct RowUnionElement {
+  RowKey2D key;
+  int src; // 0 = A, 1 = B
+  int idx;
+};
+
+struct RowUnionLess {
+  KOKKOS_INLINE_FUNCTION
+  bool operator()(const RowUnionElement& a,
+                  const RowUnionElement& b) const {
+    return a.key.y < b.key.y;
+  }
+};
+
 /**
  * @brief Build the union of row keys between two IntervalSet2DDevice sets.
  *
@@ -387,57 +402,87 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
     return result;
   }
 
-  // Temporary storage large enough for all rows from A and B.
-  IntervalSet2DDevice::RowKeyView tmp_rows(
-      "subsetix_csr_union_tmp_rows", num_rows_a + num_rows_b);
-  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_a(
-      "subsetix_csr_union_tmp_idx_a", num_rows_a + num_rows_b);
-  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_b(
-      "subsetix_csr_union_tmp_idx_b", num_rows_a + num_rows_b);
-
-  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows(
-      "subsetix_csr_union_num_rows");
-
   auto rows_a = A.row_keys;
   auto rows_b = B.row_keys;
 
+  const std::size_t total = num_rows_a + num_rows_b;
+
+  // Pack all row keys from A and B into a single device array with
+  // source tags, then sort by Y and compact uniques.
+  Kokkos::View<RowUnionElement*, DeviceMemorySpace> elems(
+      "subsetix_csr_union_elems", total);
+
+  // Fill from A.
   Kokkos::parallel_for(
-      "subsetix_csr_union_row_merge",
-      Kokkos::RangePolicy<ExecSpace>(0, 1),
-      KOKKOS_LAMBDA(const int) {
-        std::size_t ia = 0;
-        std::size_t ib = 0;
-        std::size_t out = 0;
+      "subsetix_csr_union_pack_a",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        elems(i).key = rows_a(i);
+        elems(i).src = 0;
+        elems(i).idx = static_cast<int>(i);
+      });
 
-        while (ia < num_rows_a || ib < num_rows_b) {
-          const bool has_a = ia < num_rows_a;
-          const bool has_b = ib < num_rows_b;
+  // Fill from B.
+  Kokkos::parallel_for(
+      "subsetix_csr_union_pack_b",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
+      KOKKOS_LAMBDA(const std::size_t j) {
+        const std::size_t pos = num_rows_a + j;
+        elems(pos).key = rows_b(j);
+        elems(pos).src = 1;
+        elems(pos).idx = static_cast<int>(j);
+      });
 
-          if (has_a && (!has_b || rows_a(ia).y < rows_b(ib).y)) {
-            tmp_rows(out) = rows_a(ia);
-            tmp_idx_a(out) = static_cast<int>(ia);
-            tmp_idx_b(out) = -1;
-            ++ia;
-            ++out;
-          } else if (has_b &&
-                     (!has_a || rows_b(ib).y < rows_a(ia).y)) {
-            tmp_rows(out) = rows_b(ib);
-            tmp_idx_a(out) = -1;
-            tmp_idx_b(out) = static_cast<int>(ib);
-            ++ib;
-            ++out;
-          } else {
-            // Same Y value in A and B.
-            tmp_rows(out) = rows_a(ia);
-            tmp_idx_a(out) = static_cast<int>(ia);
-            tmp_idx_b(out) = static_cast<int>(ib);
-            ++ia;
-            ++ib;
-            ++out;
+  ExecSpace().fence();
+
+  ExecSpace exec;
+  Kokkos::sort(exec, elems, RowUnionLess{});
+  exec.fence();
+
+  if (total == 0) {
+    return result;
+  }
+
+  // Mark the first occurrence of each distinct row key.
+  Kokkos::View<int*, DeviceMemorySpace> is_head(
+      "subsetix_csr_union_is_head", total);
+
+  Kokkos::parallel_for(
+      "subsetix_csr_union_mark_heads",
+      Kokkos::RangePolicy<ExecSpace>(0, total),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        if (i == 0) {
+          is_head(i) = 1;
+        } else {
+          const Coord y_curr = elems(i).key.y;
+          const Coord y_prev = elems(i - 1).key.y;
+          is_head(i) = (y_curr != y_prev) ? 1 : 0;
+        }
+      });
+
+  ExecSpace().fence();
+
+  // Exclusive scan of heads to get output positions and count.
+  Kokkos::View<std::size_t*, DeviceMemorySpace> head_pos(
+      "subsetix_csr_union_head_pos", total);
+  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows(
+      "subsetix_csr_union_num_rows");
+
+  Kokkos::parallel_scan(
+      "subsetix_csr_union_head_scan",
+      Kokkos::RangePolicy<ExecSpace>(0, total),
+      KOKKOS_LAMBDA(const std::size_t i,
+                    std::size_t& update,
+                    const bool final_pass) {
+        const std::size_t flag =
+            static_cast<std::size_t>(is_head(i));
+        if (final_pass) {
+          head_pos(i) = update;
+          if (i + 1 == total) {
+            d_num_rows() = update + flag;
           }
         }
-
-        d_num_rows() = out;
+        update += flag;
       });
 
   ExecSpace().fence();
@@ -461,13 +506,40 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
   auto out_idx_a = result.row_index_a;
   auto out_idx_b = result.row_index_b;
 
+  // Compact grouped entries (at most two per Y: one from A, one from B).
   Kokkos::parallel_for(
-      "subsetix_csr_union_row_merge_copy",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      "subsetix_csr_union_compact",
+      Kokkos::RangePolicy<ExecSpace>(0, total),
       KOKKOS_LAMBDA(const std::size_t i) {
-        out_rows(i) = tmp_rows(i);
-        out_idx_a(i) = tmp_idx_a(i);
-        out_idx_b(i) = tmp_idx_b(i);
+        if (!is_head(i)) {
+          return;
+        }
+
+        const std::size_t pos = head_pos(i);
+        const RowUnionElement e0 = elems(i);
+
+        int ia = -1;
+        int ib = -1;
+
+        if (e0.src == 0) {
+          ia = e0.idx;
+        } else {
+          ib = e0.idx;
+        }
+
+        if (i + 1 < total &&
+            elems(i + 1).key.y == e0.key.y) {
+          const RowUnionElement e1 = elems(i + 1);
+          if (e1.src == 0 && ia < 0) {
+            ia = e1.idx;
+          } else if (e1.src == 1 && ib < 0) {
+            ib = e1.idx;
+          }
+        }
+
+        out_rows(pos) = e0.key;
+        out_idx_a(pos) = ia;
+        out_idx_b(pos) = ib;
       });
 
   ExecSpace().fence();
