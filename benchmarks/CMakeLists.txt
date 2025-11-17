@@ -16,3 +16,13 @@ target_link_libraries(csr_intersection_bench
         subsetix_core
         benchmark::benchmark
 )
+
+add_executable(csr_transform_bench
+    csr_transform_bench.cpp
+)
+
+target_link_libraries(csr_transform_bench
+    PRIVATE
+        subsetix_core
+        benchmark::benchmark
+)

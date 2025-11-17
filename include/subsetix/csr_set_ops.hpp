@@ -709,6 +709,16 @@ apply_row_key_transform_device(const IntervalSet2DDevice& in,
   return out;
 }
 
+struct RowRefineTransform {
+  KOKKOS_INLINE_FUNCTION
+  RowKey2D operator()(const RowKey2D& key) const {
+    RowKey2D out_key = key;
+    out_key.y = static_cast<Coord>(out_key.y * 2);
+    return out_key;
+  }
+};
+
+
 KOKKOS_INLINE_FUNCTION
 Coord floor_div2(Coord x) {
   // Floor division by 2 for both positive and negative coordinates.
@@ -786,6 +796,39 @@ apply_interval_transform_device(const IntervalSet2DDevice& in,
   out.intervals = intervals_out;
   return out;
 }
+
+struct IntervalRefineTransform {
+  KOKKOS_INLINE_FUNCTION
+  Interval operator()(const Interval& iv) const {
+    Interval out_iv;
+    out_iv.begin = static_cast<Coord>(iv.begin * 2);
+    out_iv.end = static_cast<Coord>(iv.end * 2);
+    return out_iv;
+  }
+};
+
+struct TranslateXTransform {
+  Coord dx;
+
+  KOKKOS_INLINE_FUNCTION
+  Interval operator()(const Interval& iv) const {
+    Interval out_iv = iv;
+    out_iv.begin = static_cast<Coord>(out_iv.begin + dx);
+    out_iv.end = static_cast<Coord>(out_iv.end + dx);
+    return out_iv;
+  }
+};
+
+struct TranslateYTransform {
+  Coord dy;
+
+  KOKKOS_INLINE_FUNCTION
+  RowKey2D operator()(const RowKey2D& key) const {
+    RowKey2D out_key = key;
+    out_key.y = static_cast<Coord>(out_key.y + dy);
+    return out_key;
+  }
+};
 
 struct RowCoarsenResult {
   IntervalSet2DDevice::RowKeyView row_keys;
@@ -1345,29 +1388,10 @@ refine_level_up_device(const IntervalSet2DDevice& in) {
     return in;
   }
 
-  struct RowRefineTransform {
-    KOKKOS_INLINE_FUNCTION
-    RowKey2D operator()(const RowKey2D& key) const {
-      RowKey2D out_key = key;
-      out_key.y = static_cast<Coord>(out_key.y * 2);
-      return out_key;
-    }
-  };
-
-  struct IntervalRefineTransform {
-    KOKKOS_INLINE_FUNCTION
-    Interval operator()(const Interval& iv) const {
-      Interval out_iv;
-      out_iv.begin = static_cast<Coord>(iv.begin * 2);
-      out_iv.end = static_cast<Coord>(iv.end * 2);
-      return out_iv;
-    }
-  };
-
   auto with_rows =
-      detail::apply_row_key_transform_device(in, RowRefineTransform{});
+      detail::apply_row_key_transform_device(in, detail::RowRefineTransform{});
   return detail::apply_interval_transform_device(
-      with_rows, IntervalRefineTransform{});
+      with_rows, detail::IntervalRefineTransform{});
 }
 
 /**
@@ -1537,20 +1561,7 @@ translate_x_device(const IntervalSet2DDevice& in,
   if (dx == 0) {
     return in;
   }
-
-  struct TranslateXTransform {
-    Coord dx;
-
-    KOKKOS_INLINE_FUNCTION
-    Interval operator()(const Interval& iv) const {
-      Interval out_iv = iv;
-      out_iv.begin = static_cast<Coord>(out_iv.begin + dx);
-      out_iv.end = static_cast<Coord>(out_iv.end + dx);
-      return out_iv;
-    }
-  };
-
-  TranslateXTransform transform{dx};
+  detail::TranslateXTransform transform{dx};
   return detail::apply_interval_transform_device(in, transform);
 }
 
@@ -1567,19 +1578,7 @@ translate_y_device(const IntervalSet2DDevice& in,
   if (dy == 0 || in.num_rows == 0) {
     return in;
   }
-
-  struct TranslateYTransform {
-    Coord dy;
-
-    KOKKOS_INLINE_FUNCTION
-    RowKey2D operator()(const RowKey2D& key) const {
-      RowKey2D out_key = key;
-      out_key.y = static_cast<Coord>(out_key.y + dy);
-      return out_key;
-    }
-  };
-
-  TranslateYTransform transform{dy};
+  detail::TranslateYTransform transform{dy};
   return detail::apply_row_key_transform_device(in, transform);
 }
 
