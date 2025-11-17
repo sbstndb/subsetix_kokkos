@@ -62,25 +62,33 @@ void bench_intersection_rectangles(benchmark::State& state,
 
 void BM_CSRIntersection_Tiny(benchmark::State& state) {
   RectConfig a{0, 128, 0, 128};          // 128x128
-  RectConfig b{64, 192, 64, 192};        // carré 128x128
+  const Coord N = 128;
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N}; // carré 128x128
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_Medium(benchmark::State& state) {
-  RectConfig a{0, 1024, 0, 1024};        // 1024x1024
-  RectConfig b{256, 1280, 256, 1280};    // carré 1024x1024
+  const Coord N = 1280;
+  RectConfig a{0, N, 0, N};              // 1280x1280
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N}; // carré 1280x1280
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_Large(benchmark::State& state) {
-  RectConfig a{0, 4096, 0, 4096};        // 4096x4096
-  RectConfig b{1024, 5120, 1024, 5120};  // carré 4096x4096
+  const Coord N = 12800;
+  RectConfig a{0, N, 0, N};              // 12800x12800
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N}; // carré 12800x12800
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_XLarge(benchmark::State& state) {
-  RectConfig a{0, 8192, 0, 8192};        // 8192x8192
-  RectConfig b{2048, 10240, 2048, 10240}; // carré 8192x8192
+  const Coord N = 128000;
+  RectConfig a{0, N, 0, N};              // 128000x128000
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N}; // carré 128000x128000
   bench_intersection_rectangles(state, a, b);
 }
 

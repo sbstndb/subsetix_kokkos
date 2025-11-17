@@ -100,21 +100,21 @@ void BM_CSRTranslateX_Tiny(benchmark::State& state) {
 }
 
 void BM_CSRTranslateX_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1024, 0, 1024};
+  RectConfig cfg{0, 1280, 0, 1280};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return translate_x_device(A, 5);
   });
 }
 
 void BM_CSRTranslateX_Large(benchmark::State& state) {
-  RectConfig cfg{0, 4096, 0, 4096};
+  RectConfig cfg{0, 12800, 0, 12800};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return translate_x_device(A, 5);
   });
 }
 
 void BM_CSRTranslateX_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 8192, 0, 8192};
+  RectConfig cfg{0, 128000, 0, 128000};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return translate_x_device(A, 5);
   });
@@ -130,21 +130,21 @@ void BM_CSRTranslateY_Tiny(benchmark::State& state) {
 }
 
 void BM_CSRTranslateY_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1024, 0, 1024};
+  RectConfig cfg{0, 1280, 0, 1280};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return translate_y_device(A, 5);
   });
 }
 
 void BM_CSRTranslateY_Large(benchmark::State& state) {
-  RectConfig cfg{0, 4096, 0, 4096};
+  RectConfig cfg{0, 12800, 0, 12800};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return translate_y_device(A, 5);
   });
 }
 
 void BM_CSRTranslateY_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 8192, 0, 8192};
+  RectConfig cfg{0, 128000, 0, 128000};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return translate_y_device(A, 5);
   });
@@ -160,21 +160,21 @@ void BM_CSRRefine_Tiny(benchmark::State& state) {
 }
 
 void BM_CSRRefine_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1024, 0, 1024};
+  RectConfig cfg{0, 1280, 0, 1280};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return refine_level_up_device(A);
   });
 }
 
 void BM_CSRRefine_Large(benchmark::State& state) {
-  RectConfig cfg{0, 4096, 0, 4096};
+  RectConfig cfg{0, 12800, 0, 12800};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return refine_level_up_device(A);
   });
 }
 
 void BM_CSRRefine_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 8192, 0, 8192};
+  RectConfig cfg{0, 128000, 0, 128000};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
     return refine_level_up_device(A);
   });
@@ -188,17 +188,17 @@ void BM_CSRProject_Tiny(benchmark::State& state) {
 }
 
 void BM_CSRProject_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1024, 0, 1024};
+  RectConfig cfg{0, 1280, 0, 1280};
   bench_projection(state, cfg);
 }
 
 void BM_CSRProject_Large(benchmark::State& state) {
-  RectConfig cfg{0, 4096, 0, 4096};
+  RectConfig cfg{0, 12800, 0, 12800};
   bench_projection(state, cfg);
 }
 
 void BM_CSRProject_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 8192, 0, 8192};
+  RectConfig cfg{0, 128000, 0, 128000};
   bench_projection(state, cfg);
 }
 
@@ -234,4 +234,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   return 0;
 }
-
