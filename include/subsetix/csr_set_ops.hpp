@@ -780,6 +780,28 @@ struct RowDifferenceResult {
   std::size_t num_rows = 0;
 };
 
+struct RowDifferenceWorkspace {
+  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts;
+  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals;
+  std::size_t capacity_rows = 0;
+
+  void ensure_capacity(std::size_t rows) {
+    if (rows <= capacity_rows) {
+      return;
+    }
+
+    row_counts = Kokkos::View<std::size_t*, DeviceMemorySpace>(
+        "subsetix_csr_difference_row_counts_ws", rows);
+
+    if (!total_intervals.data()) {
+      total_intervals = Kokkos::View<std::size_t, DeviceMemorySpace>(
+          "subsetix_csr_difference_total_intervals_ws");
+    }
+
+    capacity_rows = rows;
+  }
+};
+
 /**
  * @brief Build a mapping from rows of A to matching rows in B for
  *        computing A \ B.
@@ -1124,6 +1146,7 @@ build_row_coarsen_mapping(const IntervalSet2DDevice& fine) {
 struct CsrSetAlgebraContext {
   detail::RowIntersectionWorkspace intersection_workspace;
   detail::RowUnionWorkspace union_workspace;
+  detail::RowDifferenceWorkspace difference_workspace;
 };
 
 /**
@@ -1457,7 +1480,7 @@ set_intersection_device(const IntervalSet2DDevice& A,
 inline IntervalSet2DDevice
 set_difference_device(const IntervalSet2DDevice& A,
                       const IntervalSet2DDevice& B,
-                      CsrSetAlgebraContext&) {
+                      CsrSetAlgebraContext& ctx) {
   IntervalSet2DDevice out;
 
   const std::size_t num_rows_a = A.num_rows;
@@ -1476,8 +1499,8 @@ set_difference_device(const IntervalSet2DDevice& A,
   auto row_keys_out = diff_rows.row_keys;
   auto row_index_b = diff_rows.row_index_b;
 
-  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
-      "subsetix_csr_difference_row_counts", num_rows_out);
+  ctx.difference_workspace.ensure_capacity(num_rows_out);
+  auto row_counts = ctx.difference_workspace.row_counts;
 
   auto row_ptr_a = A.row_ptr;
   auto row_ptr_b = B.row_ptr;
@@ -1516,8 +1539,7 @@ set_difference_device(const IntervalSet2DDevice& A,
 
   IntervalSet2DDevice::IndexView row_ptr_out(
       "subsetix_csr_difference_row_ptr", num_rows_out + 1);
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_difference_total_intervals");
+  auto total_intervals = ctx.difference_workspace.total_intervals;
 
   Kokkos::parallel_scan(
       "subsetix_csr_difference_scan",
