@@ -420,16 +420,46 @@ struct RowUnionLess {
   }
 };
 
+struct RowUnionWorkspace {
+  Kokkos::View<RowUnionElement*, DeviceMemorySpace> elems;
+  Kokkos::View<int*, DeviceMemorySpace> is_head;
+  Kokkos::View<std::size_t*, DeviceMemorySpace> head_pos;
+  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows;
+  std::size_t capacity_total = 0;
+
+  void ensure_capacity(std::size_t total) {
+    if (total <= capacity_total) {
+      return;
+    }
+
+    elems = Kokkos::View<RowUnionElement*, DeviceMemorySpace>(
+        "subsetix_csr_union_elems", total);
+    is_head = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_union_is_head", total);
+    head_pos = Kokkos::View<std::size_t*, DeviceMemorySpace>(
+        "subsetix_csr_union_head_pos", total);
+
+    if (!d_num_rows.data()) {
+      d_num_rows = Kokkos::View<std::size_t, DeviceMemorySpace>(
+          "subsetix_csr_union_num_rows");
+    }
+
+    capacity_total = total;
+  }
+};
+
 /**
  * @brief Build the union of row keys between two IntervalSet2DDevice sets.
  *
  * The result contains sorted unique row keys, plus mapping arrays that
  * tell, for each output row, which row index it corresponds to in A and B
- * (or -1 if the row is absent in that input).
+ * (or -1 if the row is absent in that input). The workspace version
+ * reuses device buffers across calls.
  */
 inline RowMergeResult
 build_row_union_mapping(const IntervalSet2DDevice& A,
-                        const IntervalSet2DDevice& B) {
+                        const IntervalSet2DDevice& B,
+                        RowUnionWorkspace& workspace) {
   RowMergeResult result;
 
   const std::size_t num_rows_a = A.num_rows;
@@ -444,10 +474,11 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
 
   const std::size_t total = num_rows_a + num_rows_b;
 
+  workspace.ensure_capacity(total);
+
   // Pack all row keys from A and B into a single device array with
   // source tags, then sort by Y and compact uniques.
-  Kokkos::View<RowUnionElement*, DeviceMemorySpace> elems(
-      "subsetix_csr_union_elems", total);
+  auto elems = workspace.elems;
 
   // Fill from A.
   Kokkos::parallel_for(
@@ -481,8 +512,7 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
   }
 
   // Mark the first occurrence of each distinct row key.
-  Kokkos::View<int*, DeviceMemorySpace> is_head(
-      "subsetix_csr_union_is_head", total);
+  auto is_head = workspace.is_head;
 
   Kokkos::parallel_for(
       "subsetix_csr_union_mark_heads",
@@ -500,10 +530,8 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
   ExecSpace().fence();
 
   // Exclusive scan of heads to get output positions and count.
-  Kokkos::View<std::size_t*, DeviceMemorySpace> head_pos(
-      "subsetix_csr_union_head_pos", total);
-  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows(
-      "subsetix_csr_union_num_rows");
+  auto head_pos = workspace.head_pos;
+  auto d_num_rows = workspace.d_num_rows;
 
   Kokkos::parallel_scan(
       "subsetix_csr_union_head_scan",
@@ -582,6 +610,17 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
   ExecSpace().fence();
 
   return result;
+}
+
+/**
+ * @brief Convenience overload that uses a local workspace. Kept for
+ * tests and small utilities.
+ */
+inline RowMergeResult
+build_row_union_mapping(const IntervalSet2DDevice& A,
+                        const IntervalSet2DDevice& B) {
+  RowUnionWorkspace workspace;
+  return build_row_union_mapping(A, B, workspace);
 }
 
 /**
@@ -1084,6 +1123,7 @@ build_row_coarsen_mapping(const IntervalSet2DDevice& fine) {
  */
 struct CsrSetAlgebraContext {
   detail::RowIntersectionWorkspace intersection_workspace;
+  detail::RowUnionWorkspace union_workspace;
 };
 
 /**
@@ -1100,7 +1140,7 @@ struct CsrSetAlgebraContext {
 inline IntervalSet2DDevice
 set_union_device(const IntervalSet2DDevice& A,
                  const IntervalSet2DDevice& B,
-                 CsrSetAlgebraContext&) {
+                 CsrSetAlgebraContext& ctx) {
   IntervalSet2DDevice out;
 
   const std::size_t num_rows_a = A.num_rows;
@@ -1111,7 +1151,9 @@ set_union_device(const IntervalSet2DDevice& A,
   }
 
   // 1) Merge row keys and build mapping A/B -> output rows.
-  detail::RowMergeResult merge = detail::build_row_union_mapping(A, B);
+  detail::RowMergeResult merge =
+      detail::build_row_union_mapping(
+          A, B, ctx.union_workspace);
   const std::size_t num_rows_out = merge.num_rows;
   if (num_rows_out == 0) {
     return out;
