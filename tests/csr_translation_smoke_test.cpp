@@ -45,6 +45,27 @@ TEST(CSRTranslationSmokeTest, SimplePositiveTranslation) {
   expect_equal_csr(host_out, expected);
 }
 
+TEST(CSRTranslationSmokeTest, SimplePositiveTranslationY) {
+  IntervalSet2DHost host_in =
+      make_host_csr({
+          {0, {Interval{0, 2}, Interval{4, 5}}},
+          {3, {Interval{1, 3}}},
+      });
+
+  auto dev_in = build_device_from_host(host_in);
+  const Coord dy = 2;
+  auto dev_out = translate_y_device(dev_in, dy);
+  auto host_out = build_host_from_device(dev_out);
+
+  IntervalSet2DHost expected =
+      make_host_csr({
+          {0 + dy, {Interval{0, 2}, Interval{4, 5}}},
+          {3 + dy, {Interval{1, 3}}},
+      });
+
+  expect_equal_csr(host_out, expected);
+}
+
 TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslation) {
   Box2D domain;
   domain.x_min = 0;
@@ -70,6 +91,41 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslation) {
 
   auto U = set_union_device(A, B);
   auto T = translate_x_device(U, -5);
+
+  auto host_U = build_host_from_device(U);
+  auto host_T = build_host_from_device(T);
+
+  const std::size_t card_U = cardinality(host_U);
+  const std::size_t card_T = cardinality(host_T);
+
+  EXPECT_EQ(card_U, card_T);
+}
+
+TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslationY) {
+  Box2D domain;
+  domain.x_min = 0;
+  domain.x_max = 64;
+  domain.y_min = 0;
+  domain.y_max = 32;
+
+  Disk2D disk;
+  disk.cx = 20;
+  disk.cy = 16;
+  disk.radius = 8;
+
+  auto A = make_disk_device(disk);
+
+  Domain2D dom;
+  dom.x_min = domain.x_min;
+  dom.x_max = domain.x_max;
+  dom.y_min = domain.y_min;
+  dom.y_max = domain.y_max;
+
+  auto B = make_checkerboard_device(dom, 4);
+
+  auto U = set_union_device(A, B);
+  const Coord dy = -3;
+  auto T = translate_y_device(U, dy);
 
   auto host_U = build_host_from_device(U);
   auto host_T = build_host_from_device(T);
@@ -112,6 +168,43 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslation) {
   // A et B translatés puis union.
   auto A_shift = translate_x_device(A, dx);
   auto B_shift = translate_x_device(B, dx);
+  auto U_shift_alt = set_union_device(A_shift, B_shift);
+
+  auto host_U_shift = build_host_from_device(U_shift);
+  auto host_U_shift_alt = build_host_from_device(U_shift_alt);
+
+  expect_equal_csr(host_U_shift, host_U_shift_alt);
+}
+
+TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslationY) {
+  Box2D domain;
+  domain.x_min = 0;
+  domain.x_max = 64;
+  domain.y_min = 0;
+  domain.y_max = 32;
+
+  Disk2D disk;
+  disk.cx = 24;
+  disk.cy = 16;
+  disk.radius = 9;
+
+  auto A = make_disk_device(disk);
+
+  Domain2D dom;
+  dom.x_min = domain.x_min;
+  dom.x_max = domain.x_max;
+  dom.y_min = domain.y_min;
+  dom.y_max = domain.y_max;
+
+  auto B = make_checkerboard_device(dom, 4);
+
+  const Coord dy = 5;
+
+  auto U = set_union_device(A, B);
+  auto U_shift = translate_y_device(U, dy);
+
+  auto A_shift = translate_y_device(A, dy);
+  auto B_shift = translate_y_device(B, dy);
   auto U_shift_alt = set_union_device(A_shift, B_shift);
 
   auto host_U_shift = build_host_from_device(U_shift);

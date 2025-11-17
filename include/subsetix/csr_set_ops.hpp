@@ -649,6 +649,66 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
   return result;
 }
 
+template <class Transform>
+struct RowKeyTransformFunctor {
+  IntervalSet2DDevice::RowKeyView row_keys_out;
+  IntervalSet2DDevice::RowKeyView row_keys_in;
+  Transform transform;
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const std::size_t i) const {
+    row_keys_out(i) = transform(row_keys_in(i));
+  }
+};
+
+/**
+ * @brief Apply a row-key transform on device, preserving row_ptr and
+ *        intervals.
+ *
+ * The transform is a functor with signature:
+ *   KOKKOS_INLINE_FUNCTION RowKey2D operator()(RowKey2D) const;
+ *
+ * This building block is used to implement translations in Y and can
+ * be reused for other Y-only transforms.
+ */
+template <class Transform>
+inline IntervalSet2DDevice
+apply_row_key_transform_device(const IntervalSet2DDevice& in,
+                               Transform transform) {
+  IntervalSet2DDevice out;
+
+  out.num_rows = in.num_rows;
+  out.num_intervals = in.num_intervals;
+
+  if (in.num_rows == 0) {
+    out.row_keys = IntervalSet2DDevice::RowKeyView();
+    out.row_ptr = in.row_ptr;
+    out.intervals = in.intervals;
+    return out;
+  }
+
+  IntervalSet2DDevice::RowKeyView row_keys_out(
+      "subsetix_csr_row_key_transform", in.num_rows);
+
+  RowKeyTransformFunctor<Transform> functor;
+  functor.row_keys_out = row_keys_out;
+  functor.row_keys_in = in.row_keys;
+  functor.transform = transform;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_row_key_transform_kernel",
+      Kokkos::RangePolicy<ExecSpace>(0, in.num_rows),
+      functor);
+
+  ExecSpace().fence();
+
+  out.row_keys = row_keys_out;
+  out.row_ptr = in.row_ptr;
+  out.intervals = in.intervals;
+
+  return out;
+}
+
 } // namespace detail
 
 /**
@@ -1142,6 +1202,35 @@ translate_x_device(const IntervalSet2DDevice& in,
   out.intervals = intervals_out;
 
   return out;
+}
+
+/**
+ * @brief Translate all rows of a CSR interval set by a constant offset
+ *        along Y.
+ *
+ * Interval structure and row_ptr are preserved; only row_keys(i).y are
+ * shifted by dy.
+ */
+inline IntervalSet2DDevice
+translate_y_device(const IntervalSet2DDevice& in,
+                   Coord dy) {
+  if (dy == 0 || in.num_rows == 0) {
+    return in;
+  }
+
+  struct TranslateYTransform {
+    Coord dy;
+
+    KOKKOS_INLINE_FUNCTION
+    RowKey2D operator()(const RowKey2D& key) const {
+      RowKey2D out_key = key;
+      out_key.y = static_cast<Coord>(out_key.y + dy);
+      return out_key;
+    }
+  };
+
+  TranslateYTransform transform{dy};
+  return detail::apply_row_key_transform_device(in, transform);
 }
 
 } // namespace csr
