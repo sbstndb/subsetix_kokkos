@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <cstddef>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -59,6 +60,17 @@ inline void expect_equal_csr(const IntervalSet2DHost& a,
     EXPECT_EQ(a.intervals[i].end, b.intervals[i].end)
         << "interval end mismatch at index " << i;
   }
+}
+
+inline std::size_t cardinality(const IntervalSet2DHost& s) {
+  std::size_t total = 0;
+  for (const auto& iv : s.intervals) {
+    const Coord width = iv.end - iv.begin;
+    if (width > 0) {
+      total += static_cast<std::size_t>(width);
+    }
+  }
+  return total;
 }
 
 } // namespace csr_test
