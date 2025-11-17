@@ -333,8 +333,11 @@ void bench_map_rows(benchmark::State& state, Coord extent) {
   IntervalSet2DDevice B = make_box(b_cfg);
   const std::size_t rows = overlap_rows(a_cfg, b_cfg);
 
+  CsrSetAlgebraContext ctx;
+
   run_row_kernel(state, rows, [&]() {
-    auto mapping = detail::build_row_intersection_mapping(A, B);
+    auto mapping = detail::build_row_intersection_mapping(
+        A, B, ctx.intersection_workspace);
     benchmark::DoNotOptimize(mapping.row_keys.data());
     benchmark::DoNotOptimize(mapping.row_index_a.data());
     benchmark::DoNotOptimize(mapping.row_index_b.data());

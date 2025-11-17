@@ -15,6 +15,43 @@ using ExecSpace = Kokkos::DefaultExecutionSpace;
 namespace detail {
 
 /**
+ * @brief Workspace for row-intersection mapping kernels.
+ *
+ * Buffers are grown on demand and reused across calls to avoid paying
+ * device allocations on every MapRows operation.
+ */
+struct RowIntersectionWorkspace {
+  Kokkos::View<int*, DeviceMemorySpace> flags;
+  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_a;
+  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_b;
+  Kokkos::View<std::size_t*, DeviceMemorySpace> positions;
+  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows;
+  std::size_t capacity_small = 0;
+
+  void ensure_capacity(std::size_t n_small) {
+    if (n_small <= capacity_small) {
+      return;
+    }
+
+    flags = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_intersection_flags", n_small);
+    tmp_idx_a = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_intersection_tmp_idx_a", n_small);
+    tmp_idx_b = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_intersection_tmp_idx_b", n_small);
+    positions = Kokkos::View<std::size_t*, DeviceMemorySpace>(
+        "subsetix_csr_intersection_row_positions", n_small);
+
+    if (!d_num_rows.data()) {
+      d_num_rows = Kokkos::View<std::size_t, DeviceMemorySpace>(
+          "subsetix_csr_intersection_num_rows");
+    }
+
+    capacity_small = n_small;
+  }
+};
+
+/**
  * @brief Count the number of intervals in the union of two sorted,
  *        non-overlapping interval lists on a single row.
  */
@@ -552,11 +589,13 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
  *        IntervalSet2DDevice sets.
  *
  * The result contains sorted row keys which appear in both A and B,
- * plus mapping arrays giving the corresponding row indices.
+ * plus mapping arrays giving the corresponding row indices. The
+ * workspace version reuses device buffers across calls.
  */
 inline RowMergeResult
 build_row_intersection_mapping(const IntervalSet2DDevice& A,
-                               const IntervalSet2DDevice& B) {
+                               const IntervalSet2DDevice& B,
+                               RowIntersectionWorkspace& workspace) {
   RowMergeResult result;
   const std::size_t num_rows_a = A.num_rows;
   const std::size_t num_rows_b = B.num_rows;
@@ -577,14 +616,13 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
   auto rows_small = small_is_a ? rows_a : rows_b;
   auto rows_big = small_is_a ? rows_b : rows_a;
 
+  workspace.ensure_capacity(n_small);
+
   // 1) For each row of the smaller set, binary-search its Y in the
   //    larger set and record matches.
-  Kokkos::View<int*, DeviceMemorySpace> flags(
-      "subsetix_csr_intersection_flags", n_small);
-  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_a(
-      "subsetix_csr_intersection_tmp_idx_a", n_small);
-  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_b(
-      "subsetix_csr_intersection_tmp_idx_b", n_small);
+  auto flags = workspace.flags;
+  auto tmp_idx_a = workspace.tmp_idx_a;
+  auto tmp_idx_b = workspace.tmp_idx_b;
 
   Kokkos::parallel_for(
       "subsetix_csr_intersection_row_map_binary",
@@ -625,10 +663,8 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
 
   // 2) Exclusive scan on flags to compute positions and number of
   //    intersection rows.
-  Kokkos::View<std::size_t*, DeviceMemorySpace> positions(
-      "subsetix_csr_intersection_row_positions", n_small);
-  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows(
-      "subsetix_csr_intersection_num_rows");
+  auto positions = workspace.positions;
+  auto d_num_rows = workspace.d_num_rows;
 
   Kokkos::parallel_scan(
       "subsetix_csr_intersection_row_scan",
@@ -685,6 +721,18 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
   ExecSpace().fence();
 
   return result;
+}
+
+/**
+ * @brief Convenience overload that uses a static workspace. This keeps
+ * the existing API for tests/benchmarks while avoiding per-call
+ * allocations in typical usage.
+ */
+inline RowMergeResult
+build_row_intersection_mapping(const IntervalSet2DDevice& A,
+                               const IntervalSet2DDevice& B) {
+  RowIntersectionWorkspace workspace;
+  return build_row_intersection_mapping(A, B, workspace);
 }
 
 struct RowDifferenceResult {
@@ -1027,6 +1075,18 @@ build_row_coarsen_mapping(const IntervalSet2DDevice& fine) {
 } // namespace detail
 
 /**
+ * @brief Context object carrying reusable workspaces for CSR set
+ *        algebra operations.
+ *
+ * This allows applications to chain many set operations on device
+ * (union, intersection, difference, AMR ops) without paying device
+ * allocations for scratch buffers on every call.
+ */
+struct CsrSetAlgebraContext {
+  detail::RowIntersectionWorkspace intersection_workspace;
+};
+
+/**
  * @brief Compute the set union of two 2D CSR interval sets on device.
  *
  * Both inputs are assumed to satisfy the usual invariants:
@@ -1039,7 +1099,8 @@ build_row_coarsen_mapping(const IntervalSet2DDevice& fine) {
  */
 inline IntervalSet2DDevice
 set_union_device(const IntervalSet2DDevice& A,
-                 const IntervalSet2DDevice& B) {
+                 const IntervalSet2DDevice& B,
+                 CsrSetAlgebraContext&) {
   IntervalSet2DDevice out;
 
   const std::size_t num_rows_a = A.num_rows;
@@ -1187,13 +1248,21 @@ set_union_device(const IntervalSet2DDevice& A,
   return out;
 }
 
+inline IntervalSet2DDevice
+set_union_device(const IntervalSet2DDevice& A,
+                 const IntervalSet2DDevice& B) {
+  CsrSetAlgebraContext ctx;
+  return set_union_device(A, B, ctx);
+}
+
 /**
  * @brief Compute the set intersection of two 2D CSR interval sets on
  *        device.
  */
 inline IntervalSet2DDevice
 set_intersection_device(const IntervalSet2DDevice& A,
-                        const IntervalSet2DDevice& B) {
+                        const IntervalSet2DDevice& B,
+                        CsrSetAlgebraContext& ctx) {
   IntervalSet2DDevice out;
 
   const std::size_t num_rows_a = A.num_rows;
@@ -1204,7 +1273,8 @@ set_intersection_device(const IntervalSet2DDevice& A,
   }
 
   detail::RowMergeResult merge =
-      detail::build_row_intersection_mapping(A, B);
+      detail::build_row_intersection_mapping(
+          A, B, ctx.intersection_workspace);
   const std::size_t num_rows_out = merge.num_rows;
   if (num_rows_out == 0) {
     return out;
@@ -1331,13 +1401,21 @@ set_intersection_device(const IntervalSet2DDevice& A,
   return out;
 }
 
+inline IntervalSet2DDevice
+set_intersection_device(const IntervalSet2DDevice& A,
+                        const IntervalSet2DDevice& B) {
+  CsrSetAlgebraContext ctx;
+  return set_intersection_device(A, B, ctx);
+}
+
 /**
  * @brief Compute the set difference A \ B of two 2D CSR interval sets
  *        on device.
  */
 inline IntervalSet2DDevice
 set_difference_device(const IntervalSet2DDevice& A,
-                      const IntervalSet2DDevice& B) {
+                      const IntervalSet2DDevice& B,
+                      CsrSetAlgebraContext&) {
   IntervalSet2DDevice out;
 
   const std::size_t num_rows_a = A.num_rows;
@@ -1468,6 +1546,13 @@ set_difference_device(const IntervalSet2DDevice& A,
   out.intervals = intervals_out;
 
   return out;
+}
+
+inline IntervalSet2DDevice
+set_difference_device(const IntervalSet2DDevice& A,
+                      const IntervalSet2DDevice& B) {
+  CsrSetAlgebraContext ctx;
+  return set_difference_device(A, B, ctx);
 }
 
 /**
