@@ -150,14 +150,16 @@ int main(int argc, char* argv[]) {
       return result;
     }
 
-    // 4) Checkerboard builder: domain [0,8) x [0,2).
+    // 4) Checkerboard builder: domain [0,8) x [0,4), square size 2.
     Domain2D dom_cb;
     dom_cb.x_min = 0;
     dom_cb.x_max = 8;
     dom_cb.y_min = 0;
-    dom_cb.y_max = 2;
+    dom_cb.y_max = 4;
 
-    auto cb_dev = make_checkerboard_device(dom_cb);
+    const Coord square_size = 2;
+
+    auto cb_dev = make_checkerboard_device(dom_cb, square_size);
     auto cb_host = build_host_from_device(cb_dev);
 
     if (!check_csr(cb_host, dom_cb.x_min, dom_cb.x_max,
@@ -166,37 +168,75 @@ int main(int argc, char* argv[]) {
     } else {
       const std::size_t num_rows = cb_host.row_keys.size();
       const Coord width = dom_cb.x_max - dom_cb.x_min;
+      const Coord height = dom_cb.y_max - dom_cb.y_min;
 
       for (std::size_t i = 0; i < num_rows; ++i) {
         const Coord y = cb_host.row_keys[i].y;
-        const bool even_parity = (((dom_cb.x_min + y) & 1) == 0);
+        const Coord local_y = static_cast<Coord>(y - dom_cb.y_min);
+        const std::size_t block_y =
+            static_cast<std::size_t>(local_y / square_size);
         const std::size_t begin = cb_host.row_ptr[i];
         const std::size_t end = cb_host.row_ptr[i + 1];
         const std::size_t count = end - begin;
 
-        const std::size_t expected =
-            even_parity ? static_cast<std::size_t>((width + 1) / 2)
-                        : static_cast<std::size_t>(width / 2);
+        // Expected number of filled blocks along X on this row.
+        const std::size_t num_blocks_x =
+            static_cast<std::size_t>(
+                (static_cast<long long>(width) + square_size - 1) /
+                square_size);
+
+        std::size_t expected = 0;
+        for (std::size_t bx = 0; bx < num_blocks_x; ++bx) {
+          const bool filled = (((bx + block_y) & 1U) == 0U);
+          if (filled) {
+            ++expected;
+          }
+        }
 
         if (count != expected) {
           result = 1;
           break;
         }
 
-        Coord x_expected =
-            even_parity ? dom_cb.x_min : static_cast<Coord>(dom_cb.x_min + 1);
-        for (std::size_t k = begin; k < end; ++k) {
-          const auto& iv = cb_host.intervals[k];
-          if (iv.begin != x_expected || iv.end != x_expected + 1) {
+        Coord x_expected = dom_cb.x_min;
+        std::size_t written = 0;
+        for (std::size_t bx = 0; bx < num_blocks_x; ++bx) {
+          const bool filled = (((bx + block_y) & 1U) == 0U);
+          const Coord x0 = static_cast<Coord>(dom_cb.x_min + bx * square_size);
+          const Coord x1_candidate =
+              static_cast<Coord>(x0 + square_size);
+          const Coord x1 = (x1_candidate > dom_cb.x_max)
+                               ? dom_cb.x_max
+                               : x1_candidate;
+
+          if (!filled) {
+            continue;
+          }
+
+          if (begin + written >= end) {
             result = 1;
             break;
           }
-          x_expected = static_cast<Coord>(x_expected + 2);
+
+          const auto& iv = cb_host.intervals[begin + written];
+          if (iv.begin != x0 || iv.end != x1) {
+            result = 1;
+            break;
+          }
+
+          ++written;
         }
 
         if (result != 0) {
           break;
         }
+
+        if (written != count) {
+          result = 1;
+          break;
+        }
+
+        (void)height;
       }
     }
   }

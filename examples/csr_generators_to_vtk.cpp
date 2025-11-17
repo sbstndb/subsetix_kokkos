@@ -42,9 +42,9 @@ int main(int argc, char* argv[]) {
     auto rand_host = build_host_from_device(rand_dev);
     write_legacy_quads(rand_host, "random.vtk");
 
-    // Example 4: checkerboard on the same domain.
+    // Example 4: checkerboard on the same domain with square size 4.
     Domain2D cb_dom = dom;
-    auto cb_dev = make_checkerboard_device(cb_dom);
+    auto cb_dev = make_checkerboard_device(cb_dom, 4);
     auto cb_host = build_host_from_device(cb_dev);
     write_legacy_quads(cb_host, "checkerboard.vtk");
   }

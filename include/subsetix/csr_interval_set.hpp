@@ -503,14 +503,20 @@ make_random_device(const Domain2D& domain,
 /**
  * @brief Build a checkerboard pattern on a rectangular domain.
  *
- * Cells (x,y) with (x + y) even are filled, others are empty. Each filled cell
- * is represented as a single-cell interval [x, x+1) in the CSR structure.
+ * Cells are grouped into squares of size cell_size x cell_size. A square at
+ * block coordinates (bx, by) (with bx, by >= 0) is filled iff (bx + by) is even.
+ * Each filled square contributes contiguous intervals of length cell_size along X
+ * for each of its cell_size rows.
  */
 inline IntervalSet2DDevice
-make_checkerboard_device(const Domain2D& domain) {
+make_checkerboard_device(const Domain2D& domain, Coord cell_size) {
   IntervalSet2DDevice dev;
 
   if (domain.x_min >= domain.x_max || domain.y_min >= domain.y_max) {
+    return dev;
+  }
+
+  if (cell_size <= 0) {
     return dev;
   }
 
@@ -540,21 +546,24 @@ make_checkerboard_device(const Domain2D& domain) {
         const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
         row_keys(i) = RowKey2D{y};
 
-        const bool even_parity = (((x_min + y) & 1) == 0);
+        const Coord local_y = static_cast<Coord>(y - y_min);
+        const std::size_t block_y =
+            static_cast<std::size_t>(local_y / cell_size);
+
         std::size_t count = 0;
         if (width > 0) {
-          if (even_parity) {
-            // Cells at x_min, x_min+2, ... < x_max
-            count = static_cast<std::size_t>((width + 1) / 2);
-          } else {
-            // Cells at x_min+1, x_min+3, ... < x_max
-            if (width > 1) {
-              count = static_cast<std::size_t>(width / 2);
-            } else {
-              count = 0;
+          const std::size_t num_blocks_x =
+              static_cast<std::size_t>(
+                  (static_cast<long long>(width) + cell_size - 1) /
+                  cell_size);
+          for (std::size_t bx = 0; bx < num_blocks_x; ++bx) {
+            const bool filled = (((bx + block_y) & 1U) == 0U);
+            if (filled) {
+              ++count;
             }
           }
         }
+
         row_counts(i) = count;
       });
 
@@ -606,13 +615,33 @@ make_checkerboard_device(const Domain2D& domain) {
         }
 
         const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
-        const bool even_parity = (((x_min + y) & 1) == 0);
-        Coord x = even_parity ? x_min : static_cast<Coord>(x_min + 1);
-
         const std::size_t offset = row_ptr(i);
-        for (std::size_t j = 0; j < count; ++j) {
-          intervals(offset + j) = Interval{x, static_cast<Coord>(x + 1)};
-          x = static_cast<Coord>(x + 2);
+
+        const Coord local_y = static_cast<Coord>(y - y_min);
+        const std::size_t block_y =
+            static_cast<std::size_t>(local_y / cell_size);
+
+        std::size_t write_idx = 0;
+        if (width > 0) {
+          const std::size_t num_blocks_x =
+              static_cast<std::size_t>(
+                  (static_cast<long long>(width) + cell_size - 1) /
+                  cell_size);
+          for (std::size_t bx = 0; bx < num_blocks_x; ++bx) {
+            const bool filled = (((bx + block_y) & 1U) == 0U);
+            if (!filled) {
+              continue;
+            }
+            const Coord x0 = static_cast<Coord>(x_min + bx * cell_size);
+            if (x0 >= x_max) {
+              continue;
+            }
+            const Coord x1_candidate =
+                static_cast<Coord>(x0 + cell_size);
+            const Coord x1 = (x1_candidate > x_max) ? x_max : x1_candidate;
+            intervals(offset + write_idx) = Interval{x0, x1};
+            ++write_idx;
+          }
         }
       });
 
