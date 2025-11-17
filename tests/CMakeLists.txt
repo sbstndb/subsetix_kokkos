@@ -6,6 +6,11 @@ set(SUBSETIX_TEST_SOURCES
     csr_field_smoke_test.cpp
     csr_union_smoke_test.cpp
     csr_union_components_smoke_test.cpp
+    csr_intersection_smoke_test.cpp
+    csr_intersection_components_smoke_test.cpp
+    csr_difference_smoke_test.cpp
+    csr_difference_components_smoke_test.cpp
+    csr_row_ops_components_smoke_test.cpp
 )
 
 add_executable(subsetix_tests
