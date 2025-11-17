@@ -32,9 +32,9 @@
 
 ## Testing Guidelines
 
-- New tests live in `tests/` and are added as executables in `tests/CMakeLists.txt`.
-- Keep tests fast and deterministic; they must pass on serial and OpenMP.  
-- Use simple `main(int, char**)` returning non‑zero on failure (no heavy test framework).
+- Tests use GoogleTest and live in `tests/`, all compiled into the `subsetix_tests` executable.
+- Keep tests fast and deterministic; they must pass on serial, OpenMP, and CUDA (when enabled).  
+- Prefer focused `TEST()` cases over large monolithic tests; share common helpers in small headers or `.cpp` files.
 - When adding device code, exercise it at least in the serial preset.
 - For set‑algebra primitives (e.g. `set_union_device`), add both high‑level tests and focused tests for low‑level building blocks to simplify debugging.
 

@@ -1,33 +1,29 @@
-#include <Kokkos_Core.hpp>
-#include <cstdio>
+﻿#include <Kokkos_Core.hpp>
+#include <gtest/gtest.h>
 
-int main(int argc, char* argv[]) {
-    Kokkos::initialize(argc, argv);
-    {
-        constexpr int N = 10;
-        Kokkos::View<int*> data("data", N);
+namespace {
 
-        Kokkos::parallel_for(
-            "InitData",
-            N,
-            KOKKOS_LAMBDA(const int i) { data(i) = i; });
+int compute_parallel_sum_on_host_mirror() {
+  constexpr int N = 10;
+  Kokkos::View<int*> data("data", N);
 
-        // Simple host mirror to touch the data and ensure basic API usage.
-        auto mirror = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), data);
+  Kokkos::parallel_for(
+      "InitData",
+      N,
+      KOKKOS_LAMBDA(const int i) { data(i) = i; });
 
-        int sum = 0;
-        for (int i = 0; i < N; ++i) {
-            sum += mirror(i);
-        }
+  auto mirror = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), data);
 
-        if (sum == 45) {
-            std::printf("Kokkos smoke test passed (sum=%d)\n", sum);
-        } else {
-            std::printf("Kokkos smoke test failed (sum=%d)\n", sum);
-            return 1;
-        }
-    }
-    Kokkos::finalize();
-    return 0;
+  int sum = 0;
+  for (int i = 0; i < N; ++i) {
+    sum += mirror(i);
+  }
+
+  return sum;
 }
 
+} // namespace
+
+TEST(KokkosSmokeTest, ParallelSumOnHostMirror) {
+  EXPECT_EQ(compute_parallel_sum_on_host_mirror(), 45);
+}
