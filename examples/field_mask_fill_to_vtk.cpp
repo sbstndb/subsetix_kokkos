@@ -1,0 +1,70 @@
+#include <Kokkos_Core.hpp>
+
+#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/csr_field.hpp>
+#include <subsetix/csr_field_ops.hpp>
+#include <subsetix/csr_set_ops.hpp>
+#include <subsetix/vtk_export.hpp>
+
+int main(int argc, char* argv[]) {
+  Kokkos::initialize(argc, argv);
+
+  {
+    using namespace subsetix::csr;
+    using subsetix::vtk::write_legacy_quads;
+
+    Box2D domain;
+    domain.x_min = 0;
+    domain.x_max = 64;
+    domain.y_min = 0;
+    domain.y_max = 32;
+
+    auto geom_dev = make_box_device(domain);
+    auto geom_host = build_host_from_device(geom_dev);
+
+    auto field_host =
+        make_field_like_geometry<double>(geom_host, 0.0);
+    auto field_dev =
+        build_device_field_from_host(field_host);
+
+    Disk2D disk;
+    disk.cx = 32;
+    disk.cy = 16;
+    disk.radius = 10;
+    auto disk_mask = make_disk_device(disk);
+
+    Domain2D rnd_dom;
+    rnd_dom.x_min = domain.x_min;
+    rnd_dom.x_max = domain.x_max;
+    rnd_dom.y_min = domain.y_min;
+    rnd_dom.y_max = domain.y_max;
+    auto random_mask =
+        make_random_device(rnd_dom, 0.15, 123456);
+
+    fill_on_set_device(field_dev, disk_mask, 1.0);
+    scale_on_set_device(field_dev, random_mask, 2.0);
+
+    auto field_modified_host =
+        build_host_field_from_device(field_dev);
+    write_legacy_quads(field_modified_host,
+                       "field_mask_fill.vtk", "value");
+
+    auto field_copy_host =
+        make_field_like_geometry<double>(geom_host, 0.0);
+    auto field_copy_dev =
+        build_device_field_from_host(field_copy_host);
+
+    copy_on_set_device(field_copy_dev, field_dev,
+                       disk_mask);
+
+    auto field_copy_result_host =
+        build_host_field_from_device(field_copy_dev);
+    write_legacy_quads(field_copy_result_host,
+                       "field_mask_fill_copy.vtk",
+                       "value");
+  }
+
+  Kokkos::finalize();
+  return 0;
+}
+
