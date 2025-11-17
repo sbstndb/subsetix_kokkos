@@ -500,5 +500,130 @@ make_random_device(const Domain2D& domain,
   return dev;
 }
 
+/**
+ * @brief Build a checkerboard pattern on a rectangular domain.
+ *
+ * Cells (x,y) with (x + y) even are filled, others are empty. Each filled cell
+ * is represented as a single-cell interval [x, x+1) in the CSR structure.
+ */
+inline IntervalSet2DDevice
+make_checkerboard_device(const Domain2D& domain) {
+  IntervalSet2DDevice dev;
+
+  if (domain.x_min >= domain.x_max || domain.y_min >= domain.y_max) {
+    return dev;
+  }
+
+  const std::size_t num_rows =
+      static_cast<std::size_t>(domain.y_max - domain.y_min);
+
+  dev.num_rows = num_rows;
+
+  typename IntervalSet2DDevice::RowKeyView row_keys(
+      "subsetix_csr_chk_row_keys", num_rows);
+  typename IntervalSet2DDevice::IndexView row_ptr(
+      "subsetix_csr_chk_row_ptr", num_rows + 1);
+
+  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
+      "subsetix_csr_chk_row_counts", num_rows);
+
+  const Coord x_min = domain.x_min;
+  const Coord x_max = domain.x_max;
+  const Coord y_min = domain.y_min;
+  const Coord width = x_max - x_min;
+
+  // 1) Compute per-row counts and row keys.
+  Kokkos::parallel_for(
+      "subsetix_csr_chk_rows",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
+        row_keys(i) = RowKey2D{y};
+
+        const bool even_parity = (((x_min + y) & 1) == 0);
+        std::size_t count = 0;
+        if (width > 0) {
+          if (even_parity) {
+            // Cells at x_min, x_min+2, ... < x_max
+            count = static_cast<std::size_t>((width + 1) / 2);
+          } else {
+            // Cells at x_min+1, x_min+3, ... < x_max
+            if (width > 1) {
+              count = static_cast<std::size_t>(width / 2);
+            } else {
+              count = 0;
+            }
+          }
+        }
+        row_counts(i) = count;
+      });
+
+  // 2) Exclusive scan on row_counts to build row_ptr and total intervals.
+  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
+      "subsetix_csr_chk_total_intervals");
+
+  Kokkos::parallel_scan(
+      "subsetix_csr_chk_scan",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
+      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update,
+                    const bool final_pass) {
+        const std::size_t c = row_counts(i);
+        if (final_pass) {
+          row_ptr(i) = update;
+          if (i + 1 == num_rows) {
+            row_ptr(num_rows) = update + c;
+            total_intervals() = update + c;
+          }
+        }
+        update += c;
+      });
+
+  ExecSpace().fence();
+
+  std::size_t num_intervals_host = 0;
+  Kokkos::deep_copy(num_intervals_host, total_intervals);
+
+  dev.num_intervals = num_intervals_host;
+
+  if (num_intervals_host == 0) {
+    dev.row_keys = row_keys;
+    dev.row_ptr = row_ptr;
+    dev.intervals = typename IntervalSet2DDevice::IntervalView();
+    return dev;
+  }
+
+  typename IntervalSet2DDevice::IntervalView intervals(
+      "subsetix_csr_chk_intervals", num_intervals_host);
+
+  // 3) Fill intervals on each row using the offsets defined by row_ptr.
+  Kokkos::parallel_for(
+      "subsetix_csr_chk_fill",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const std::size_t count = row_counts(i);
+        if (count == 0) {
+          return;
+        }
+
+        const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
+        const bool even_parity = (((x_min + y) & 1) == 0);
+        Coord x = even_parity ? x_min : static_cast<Coord>(x_min + 1);
+
+        const std::size_t offset = row_ptr(i);
+        for (std::size_t j = 0; j < count; ++j) {
+          intervals(offset + j) = Interval{x, static_cast<Coord>(x + 1)};
+          x = static_cast<Coord>(x + 2);
+        }
+      });
+
+  ExecSpace().fence();
+
+  dev.row_keys = row_keys;
+  dev.row_ptr = row_ptr;
+  dev.intervals = intervals;
+
+  return dev;
+}
+
 } // namespace csr
 } // namespace subsetix

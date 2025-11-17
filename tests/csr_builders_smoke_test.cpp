@@ -144,6 +144,61 @@ int main(int argc, char* argv[]) {
     if (!check_csr(rand_host, dom.x_min, dom.x_max, dom.y_min, dom.y_max)) {
       result = 1;
     }
+
+    if (result != 0) {
+      Kokkos::finalize();
+      return result;
+    }
+
+    // 4) Checkerboard builder: domain [0,8) x [0,2).
+    Domain2D dom_cb;
+    dom_cb.x_min = 0;
+    dom_cb.x_max = 8;
+    dom_cb.y_min = 0;
+    dom_cb.y_max = 2;
+
+    auto cb_dev = make_checkerboard_device(dom_cb);
+    auto cb_host = build_host_from_device(cb_dev);
+
+    if (!check_csr(cb_host, dom_cb.x_min, dom_cb.x_max,
+                   dom_cb.y_min, dom_cb.y_max)) {
+      result = 1;
+    } else {
+      const std::size_t num_rows = cb_host.row_keys.size();
+      const Coord width = dom_cb.x_max - dom_cb.x_min;
+
+      for (std::size_t i = 0; i < num_rows; ++i) {
+        const Coord y = cb_host.row_keys[i].y;
+        const bool even_parity = (((dom_cb.x_min + y) & 1) == 0);
+        const std::size_t begin = cb_host.row_ptr[i];
+        const std::size_t end = cb_host.row_ptr[i + 1];
+        const std::size_t count = end - begin;
+
+        const std::size_t expected =
+            even_parity ? static_cast<std::size_t>((width + 1) / 2)
+                        : static_cast<std::size_t>(width / 2);
+
+        if (count != expected) {
+          result = 1;
+          break;
+        }
+
+        Coord x_expected =
+            even_parity ? dom_cb.x_min : static_cast<Coord>(dom_cb.x_min + 1);
+        for (std::size_t k = begin; k < end; ++k) {
+          const auto& iv = cb_host.intervals[k];
+          if (iv.begin != x_expected || iv.end != x_expected + 1) {
+            result = 1;
+            break;
+          }
+          x_expected = static_cast<Coord>(x_expected + 2);
+        }
+
+        if (result != 0) {
+          break;
+        }
+      }
+    }
   }
 
   Kokkos::finalize();

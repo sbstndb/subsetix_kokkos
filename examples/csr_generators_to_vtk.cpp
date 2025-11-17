@@ -41,6 +41,12 @@ int main(int argc, char* argv[]) {
     auto rand_dev = make_random_device(dom, 0.2, 123456);
     auto rand_host = build_host_from_device(rand_dev);
     write_legacy_quads(rand_host, "random.vtk");
+
+    // Example 4: checkerboard on the same domain.
+    Domain2D cb_dom = dom;
+    auto cb_dev = make_checkerboard_device(cb_dom);
+    auto cb_host = build_host_from_device(cb_dev);
+    write_legacy_quads(cb_host, "checkerboard.vtk");
   }
 
   Kokkos::finalize();
