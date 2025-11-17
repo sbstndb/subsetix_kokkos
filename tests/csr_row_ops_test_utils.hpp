@@ -140,6 +140,89 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     cases.push_back(c);
   }
 
+  // 9) A avec plusieurs intervalles, B recouvre partiellement le bloc central.
+  //    A = [0,2), [3,5), [6,7); B = [1,6)
+  {
+    RowOpCase c;
+    c.intervals_a.push_back(Interval{0, 2});
+    c.intervals_a.push_back(Interval{3, 5});
+    c.intervals_a.push_back(Interval{6, 7});
+    c.intervals_b.push_back(Interval{1, 6});
+
+    c.expected_union.push_back(Interval{0, 7});
+
+    c.expected_intersection.push_back(Interval{1, 2});
+    c.expected_intersection.push_back(Interval{3, 5});
+
+    c.expected_difference_a_minus_b.push_back(Interval{0, 1});
+    c.expected_difference_a_minus_b.push_back(Interval{6, 7});
+    cases.push_back(c);
+  }
+
+  // 10) A entièrement inclus dans B : A = [2,4), B = [0,6)
+  {
+    RowOpCase c;
+    c.intervals_a.push_back(Interval{2, 4});
+    c.intervals_b.push_back(Interval{0, 6});
+
+    c.expected_union.push_back(Interval{0, 6});
+    c.expected_intersection.push_back(Interval{2, 4});
+    // A \ B vide
+    cases.push_back(c);
+  }
+
+  // 11) B uniquement à gauche et à droite de A : A = [2,4), B = [0,1), [5,7)
+  {
+    RowOpCase c;
+    c.intervals_a.push_back(Interval{2, 4});
+    c.intervals_b.push_back(Interval{0, 1});
+    c.intervals_b.push_back(Interval{5, 7});
+
+    c.expected_union.push_back(Interval{0, 1});
+    c.expected_union.push_back(Interval{2, 4});
+    c.expected_union.push_back(Interval{5, 7});
+
+    // intersection vide
+    c.expected_difference_a_minus_b.push_back(Interval{2, 4});
+    cases.push_back(c);
+  }
+
+  // 12) B juste à gauche, touchant A : A = [2,4), B = [0,2)
+  {
+    RowOpCase c;
+    c.intervals_a.push_back(Interval{2, 4});
+    c.intervals_b.push_back(Interval{0, 2});
+
+    c.expected_union.push_back(Interval{0, 4});
+    // intersection vide (demi-ouverts)
+    c.expected_difference_a_minus_b.push_back(Interval{2, 4});
+    cases.push_back(c);
+  }
+
+  // 13) B juste à droite, touchant A : A = [2,4), B = [4,6)
+  {
+    RowOpCase c;
+    c.intervals_a.push_back(Interval{2, 4});
+    c.intervals_b.push_back(Interval{4, 6});
+
+    c.expected_union.push_back(Interval{2, 6});
+    // intersection vide
+    c.expected_difference_a_minus_b.push_back(Interval{2, 4});
+    cases.push_back(c);
+  }
+
+  // 14) Coordonnées négatives : A = [-5,-1), B = [-3,1)
+  {
+    RowOpCase c;
+    c.intervals_a.push_back(Interval{-5, -1});
+    c.intervals_b.push_back(Interval{-3, 1});
+
+    c.expected_union.push_back(Interval{-5, 1});
+    c.expected_intersection.push_back(Interval{-3, -1});
+    c.expected_difference_a_minus_b.push_back(Interval{-5, -3});
+    cases.push_back(c);
+  }
+
   return cases;
 }
 
