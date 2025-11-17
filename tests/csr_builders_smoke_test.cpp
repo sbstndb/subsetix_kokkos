@@ -8,6 +8,55 @@ int main(int argc, char* argv[]) {
   {
     using namespace subsetix::csr;
 
+    auto check_csr = [](const IntervalSet2DHost& host,
+                        Coord x_min,
+                        Coord x_max,
+                        Coord y_min,
+                        Coord y_max) {
+      const std::size_t num_rows_expected =
+          static_cast<std::size_t>(y_max - y_min);
+
+      if (host.row_keys.size() != num_rows_expected) {
+        return false;
+      }
+      if (host.row_ptr.size() != num_rows_expected + 1) {
+        return false;
+      }
+      if (host.row_ptr.empty()) {
+        return host.intervals.empty();
+      }
+      if (host.row_ptr.front() != 0) {
+        return false;
+      }
+
+      for (std::size_t i = 0; i < num_rows_expected; ++i) {
+        const Coord y = host.row_keys[i].y;
+        if (y < y_min || y >= y_max) {
+          return false;
+        }
+        const std::size_t begin = host.row_ptr[i];
+        const std::size_t end = host.row_ptr[i + 1];
+        if (end < begin || end > host.intervals.size()) {
+          return false;
+        }
+        for (std::size_t k = begin; k < end; ++k) {
+          const auto& iv = host.intervals[k];
+          if (!(iv.begin < iv.end)) {
+            return false;
+          }
+          if (iv.begin < x_min || iv.end > x_max) {
+            return false;
+          }
+        }
+      }
+
+      if (host.row_ptr.back() != host.intervals.size()) {
+        return false;
+      }
+
+      return true;
+    };
+
     // 1) Rectangle builder: box [0,10) x [0,3)
     Box2D box;
     box.x_min = 0;
@@ -18,9 +67,7 @@ int main(int argc, char* argv[]) {
     auto rect_dev = make_box_device(box);
     auto rect_host = build_host_from_device(rect_dev);
 
-    if (rect_host.row_keys.size() != 3 ||
-        rect_host.row_ptr.size() != 4 ||
-        rect_host.intervals.size() != 3) {
+    if (!check_csr(rect_host, box.x_min, box.x_max, box.y_min, box.y_max)) {
       result = 1;
     } else {
       for (std::size_t i = 0; i < 3; ++i) {
@@ -52,7 +99,11 @@ int main(int argc, char* argv[]) {
 
     if (disk_host.row_keys.size() == 0) {
       result = 1;
-    } else {
+    } else if (check_csr(disk_host,
+                         static_cast<Coord>(disk.cx - disk.radius),
+                         static_cast<Coord>(disk.cx + disk.radius + 1),
+                         static_cast<Coord>(disk.cy - disk.radius),
+                         static_cast<Coord>(disk.cy + disk.radius + 1))) {
       // At least the middle row y=0 should have an interval containing 0.
       bool ok_middle = false;
       for (std::size_t i = 0; i < disk_host.row_keys.size(); ++i) {
@@ -71,6 +122,8 @@ int main(int argc, char* argv[]) {
       if (!ok_middle) {
         result = 1;
       }
+    } else {
+      result = 1;
     }
 
     if (result != 0) {
@@ -88,42 +141,11 @@ int main(int argc, char* argv[]) {
     auto rand_dev = make_random_device(dom, 0.3, 12345);
     auto rand_host = build_host_from_device(rand_dev);
 
-    if (rand_host.row_keys.size() != 10 ||
-        rand_host.row_ptr.size() != 11) {
+    if (!check_csr(rand_host, dom.x_min, dom.x_max, dom.y_min, dom.y_max)) {
       result = 1;
-    } else {
-      // Check CSR invariants and bounds.
-      for (std::size_t i = 0; i < rand_host.row_keys.size(); ++i) {
-        const auto y = rand_host.row_keys[i].y;
-        if (y < dom.y_min || y >= dom.y_max) {
-          result = 1;
-          break;
-        }
-        const std::size_t begin = rand_host.row_ptr[i];
-        const std::size_t end = rand_host.row_ptr[i + 1];
-        if (end < begin || end > rand_host.intervals.size()) {
-          result = 1;
-          break;
-        }
-        for (std::size_t k = begin; k < end; ++k) {
-          const auto& iv = rand_host.intervals[k];
-          if (!(iv.begin < iv.end)) {
-            result = 1;
-            break;
-          }
-          if (iv.begin < dom.x_min || iv.end > dom.x_max) {
-            result = 1;
-            break;
-          }
-        }
-        if (result != 0) {
-          break;
-        }
-      }
     }
   }
 
   Kokkos::finalize();
   return result;
 }
-
