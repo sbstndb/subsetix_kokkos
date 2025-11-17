@@ -4,6 +4,9 @@ set(SUBSETIX_TEST_SOURCES
     csr_interval_set_smoke_test.cpp
     csr_builders_smoke_test.cpp
     csr_field_smoke_test.cpp
+    csr_field_ops_smoke_test.cpp
+    csr_field_stencil_smoke_test.cpp
+    csr_field_amr_ops_smoke_test.cpp
     csr_union_smoke_test.cpp
     csr_union_components_smoke_test.cpp
     csr_intersection_smoke_test.cpp

@@ -26,3 +26,13 @@ target_link_libraries(csr_transform_bench
         subsetix_core
         benchmark::benchmark
 )
+
+add_executable(csr_field_ops_bench
+    csr_field_ops_bench.cpp
+)
+
+target_link_libraries(csr_field_ops_bench
+    PRIVATE
+        subsetix_core
+        benchmark::benchmark
+)
