@@ -709,6 +709,184 @@ apply_row_key_transform_device(const IntervalSet2DDevice& in,
   return out;
 }
 
+KOKKOS_INLINE_FUNCTION
+Coord floor_div2(Coord x) {
+  // Floor division by 2 for both positive and negative coordinates.
+  return (x >= 0) ? (x / 2) : ((x - 1) / 2);
+}
+
+KOKKOS_INLINE_FUNCTION
+Coord ceil_div2(Coord x) {
+  // Ceil division by 2 for both positive and negative coordinates.
+  return (x >= 0) ? ((x + 1) / 2) : (x / 2);
+}
+
+template <class IntervalView>
+struct CoarsenIntervalView {
+  IntervalView base;
+
+  KOKKOS_INLINE_FUNCTION
+  Interval operator()(const std::size_t i) const {
+    const Interval iv = base(i);
+    const Coord b = floor_div2(iv.begin);
+    const Coord e = ceil_div2(iv.end);
+    return Interval{b, e};
+  }
+};
+
+template <class Transform>
+struct IntervalTransformFunctor {
+  IntervalSet2DDevice::IntervalView intervals_out;
+  IntervalSet2DDevice::IntervalView intervals_in;
+  Transform transform;
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const std::size_t i) const {
+    intervals_out(i) = transform(intervals_in(i));
+  }
+};
+
+/**
+ * @brief Apply an interval transform on device, preserving row structure.
+ *
+ * The transform is a functor with signature:
+ *   KOKKOS_INLINE_FUNCTION Interval operator()(Interval) const;
+ */
+template <class Transform>
+inline IntervalSet2DDevice
+apply_interval_transform_device(const IntervalSet2DDevice& in,
+                                Transform transform) {
+  IntervalSet2DDevice out;
+
+  out.num_rows = in.num_rows;
+  out.num_intervals = in.num_intervals;
+  out.row_keys = in.row_keys;
+  out.row_ptr = in.row_ptr;
+
+  if (in.num_intervals == 0) {
+    out.intervals = IntervalSet2DDevice::IntervalView();
+    return out;
+  }
+
+  IntervalSet2DDevice::IntervalView intervals_out(
+      "subsetix_csr_interval_transform", in.num_intervals);
+
+  IntervalTransformFunctor<Transform> functor;
+  functor.intervals_out = intervals_out;
+  functor.intervals_in = in.intervals;
+  functor.transform = transform;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_interval_transform_kernel",
+      Kokkos::RangePolicy<ExecSpace>(0, in.num_intervals),
+      functor);
+
+  ExecSpace().fence();
+
+  out.intervals = intervals_out;
+  return out;
+}
+
+struct RowCoarsenResult {
+  IntervalSet2DDevice::RowKeyView row_keys;
+  Kokkos::View<int*, DeviceMemorySpace> row_index_first;
+  Kokkos::View<int*, DeviceMemorySpace> row_index_second;
+  std::size_t num_rows = 0;
+};
+
+/**
+ * @brief Build coarse-row mapping for a level-down projection (fine -> coarse).
+ *
+ * Each coarse row corresponds to either one or two fine rows whose Y-coordinates
+ * map to the same coarse Y via floor_div2.
+ */
+inline RowCoarsenResult
+build_row_coarsen_mapping(const IntervalSet2DDevice& fine) {
+  RowCoarsenResult result;
+
+  const std::size_t num_rows_fine = fine.num_rows;
+  if (num_rows_fine == 0) {
+    return result;
+  }
+
+  IntervalSet2DDevice::RowKeyView tmp_rows(
+      "subsetix_csr_coarsen_tmp_rows", num_rows_fine);
+  Kokkos::View<int*, DeviceMemorySpace> tmp_first(
+      "subsetix_csr_coarsen_tmp_first", num_rows_fine);
+  Kokkos::View<int*, DeviceMemorySpace> tmp_second(
+      "subsetix_csr_coarsen_tmp_second", num_rows_fine);
+
+  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows(
+      "subsetix_csr_coarsen_num_rows");
+
+  auto rows_in = fine.row_keys;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_coarsen_row_merge",
+      Kokkos::RangePolicy<ExecSpace>(0, 1),
+      KOKKOS_LAMBDA(const int) {
+        std::size_t i = 0;
+        std::size_t out = 0;
+
+        while (i < num_rows_fine) {
+          const Coord y_f0 = rows_in(i).y;
+          const Coord y_c = floor_div2(y_f0);
+
+          tmp_rows(out) = RowKey2D{y_c};
+          tmp_first(out) = static_cast<int>(i);
+          tmp_second(out) = -1;
+          ++i;
+
+          if (i < num_rows_fine) {
+            const Coord y_f1 = rows_in(i).y;
+            const Coord y_c1 = floor_div2(y_f1);
+            if (y_c1 == y_c) {
+              tmp_second(out) = static_cast<int>(i);
+              ++i;
+            }
+          }
+
+          ++out;
+        }
+
+        d_num_rows() = out;
+      });
+
+  ExecSpace().fence();
+
+  std::size_t num_rows_out = 0;
+  Kokkos::deep_copy(num_rows_out, d_num_rows);
+
+  result.num_rows = num_rows_out;
+  if (num_rows_out == 0) {
+    return result;
+  }
+
+  result.row_keys = IntervalSet2DDevice::RowKeyView(
+      "subsetix_csr_coarsen_row_keys", num_rows_out);
+  result.row_index_first = Kokkos::View<int*, DeviceMemorySpace>(
+      "subsetix_csr_coarsen_row_index_first", num_rows_out);
+  result.row_index_second = Kokkos::View<int*, DeviceMemorySpace>(
+      "subsetix_csr_coarsen_row_index_second", num_rows_out);
+
+  auto out_rows = result.row_keys;
+  auto out_first = result.row_index_first;
+  auto out_second = result.row_index_second;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_coarsen_row_merge_copy",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        out_rows(i) = tmp_rows(i);
+        out_first(i) = tmp_first(i);
+        out_second(i) = tmp_second(i);
+      });
+
+  ExecSpace().fence();
+
+  return result;
+}
+
 } // namespace detail
 
 /**
@@ -1156,6 +1334,197 @@ set_difference_device(const IntervalSet2DDevice& A,
 }
 
 /**
+ * @brief Refine a CSR interval set to the next finer level (×2 in X and Y).
+ *
+ * Coordinates are scaled by 2 on both axes. This is a purely geometric
+ * operation; row structure is preserved.
+ */
+inline IntervalSet2DDevice
+refine_level_up_device(const IntervalSet2DDevice& in) {
+  if (in.num_rows == 0 || in.num_intervals == 0) {
+    return in;
+  }
+
+  struct RowRefineTransform {
+    KOKKOS_INLINE_FUNCTION
+    RowKey2D operator()(const RowKey2D& key) const {
+      RowKey2D out_key = key;
+      out_key.y = static_cast<Coord>(out_key.y * 2);
+      return out_key;
+    }
+  };
+
+  struct IntervalRefineTransform {
+    KOKKOS_INLINE_FUNCTION
+    Interval operator()(const Interval& iv) const {
+      Interval out_iv;
+      out_iv.begin = static_cast<Coord>(iv.begin * 2);
+      out_iv.end = static_cast<Coord>(iv.end * 2);
+      return out_iv;
+    }
+  };
+
+  auto with_rows =
+      detail::apply_row_key_transform_device(in, RowRefineTransform{});
+  return detail::apply_interval_transform_device(
+      with_rows, IntervalRefineTransform{});
+}
+
+/**
+ * @brief Project a CSR interval set to the next coarser level (÷2 in X and Y),
+ *        covering the fine geometry.
+ *
+ * Semantics (1D example):
+ *   level1 [0,1) -> level0 [0,1)
+ *   level1 [0,3) -> level0 [0,2)
+ */
+inline IntervalSet2DDevice
+project_level_down_device(const IntervalSet2DDevice& fine) {
+  IntervalSet2DDevice out;
+
+  const std::size_t num_rows_fine = fine.num_rows;
+  const std::size_t num_intervals_fine = fine.num_intervals;
+
+  if (num_rows_fine == 0 || num_intervals_fine == 0) {
+    return out;
+  }
+
+  detail::RowCoarsenResult rows =
+      detail::build_row_coarsen_mapping(fine);
+  const std::size_t num_rows_coarse = rows.num_rows;
+  if (num_rows_coarse == 0) {
+    return out;
+  }
+
+  auto row_keys_coarse = rows.row_keys;
+  auto row_index_first = rows.row_index_first;
+  auto row_index_second = rows.row_index_second;
+
+  auto row_ptr_fine = fine.row_ptr;
+  auto intervals_fine = fine.intervals;
+
+  using CoarsenView =
+      detail::CoarsenIntervalView<IntervalSet2DDevice::IntervalView>;
+  CoarsenView coarsen_view{intervals_fine};
+
+  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
+      "subsetix_csr_project_row_counts", num_rows_coarse);
+
+  Kokkos::parallel_for(
+      "subsetix_csr_project_count",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_coarse),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const int ia = row_index_first(i);
+        const int ib = row_index_second(i);
+
+        std::size_t begin_a = 0;
+        std::size_t end_a = 0;
+        std::size_t begin_b = 0;
+        std::size_t end_b = 0;
+
+        if (ia >= 0) {
+          const std::size_t row_a = static_cast<std::size_t>(ia);
+          begin_a = row_ptr_fine(row_a);
+          end_a = row_ptr_fine(row_a + 1);
+        }
+        if (ib >= 0) {
+          const std::size_t row_b = static_cast<std::size_t>(ib);
+          begin_b = row_ptr_fine(row_b);
+          end_b = row_ptr_fine(row_b + 1);
+        }
+
+        if (begin_a == end_a && begin_b == end_b) {
+          row_counts(i) = 0;
+          return;
+        }
+
+        row_counts(i) = detail::row_union_count(
+            coarsen_view, begin_a, end_a,
+            coarsen_view, begin_b, end_b);
+      });
+
+  ExecSpace().fence();
+
+  IntervalSet2DDevice::IndexView row_ptr_out(
+      "subsetix_csr_project_row_ptr", num_rows_coarse + 1);
+  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
+      "subsetix_csr_project_total_intervals");
+
+  Kokkos::parallel_scan(
+      "subsetix_csr_project_scan",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_coarse),
+      KOKKOS_LAMBDA(const std::size_t i,
+                    std::size_t& update,
+                    const bool final_pass) {
+        const std::size_t c = row_counts(i);
+        if (final_pass) {
+          row_ptr_out(i) = update;
+          if (i + 1 == num_rows_coarse) {
+            row_ptr_out(num_rows_coarse) = update + c;
+            total_intervals() = update + c;
+          }
+        }
+        update += c;
+      });
+
+  ExecSpace().fence();
+
+  std::size_t num_intervals_coarse = 0;
+  Kokkos::deep_copy(num_intervals_coarse, total_intervals);
+
+  out.num_rows = num_rows_coarse;
+  out.num_intervals = num_intervals_coarse;
+  out.row_keys = row_keys_coarse;
+  out.row_ptr = row_ptr_out;
+
+  if (num_intervals_coarse == 0) {
+    out.intervals = IntervalSet2DDevice::IntervalView();
+    return out;
+  }
+
+  IntervalSet2DDevice::IntervalView intervals_out(
+      "subsetix_csr_project_intervals", num_intervals_coarse);
+
+  Kokkos::parallel_for(
+      "subsetix_csr_project_fill",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_coarse),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const int ia = row_index_first(i);
+        const int ib = row_index_second(i);
+
+        std::size_t begin_a = 0;
+        std::size_t end_a = 0;
+        std::size_t begin_b = 0;
+        std::size_t end_b = 0;
+
+        if (ia >= 0) {
+          const std::size_t row_a = static_cast<std::size_t>(ia);
+          begin_a = row_ptr_fine(row_a);
+          end_a = row_ptr_fine(row_a + 1);
+        }
+        if (ib >= 0) {
+          const std::size_t row_b = static_cast<std::size_t>(ib);
+          begin_b = row_ptr_fine(row_b);
+          end_b = row_ptr_fine(row_b + 1);
+        }
+
+        if (begin_a == end_a && begin_b == end_b) {
+          return;
+        }
+
+        const std::size_t out_offset = row_ptr_out(i);
+        detail::row_union_fill(coarsen_view, begin_a, end_a,
+                               coarsen_view, begin_b, end_b,
+                               intervals_out, out_offset);
+      });
+
+  ExecSpace().fence();
+
+  out.intervals = intervals_out;
+  return out;
+}
+
+/**
  * @brief Translate all intervals of a CSR interval set by a constant
  *        offset along X.
  *
@@ -1165,43 +1534,24 @@ set_difference_device(const IntervalSet2DDevice& A,
 inline IntervalSet2DDevice
 translate_x_device(const IntervalSet2DDevice& in,
                    Coord dx) {
-  IntervalSet2DDevice out;
-
-  out.num_rows = in.num_rows;
-  out.num_intervals = in.num_intervals;
-  out.row_keys = in.row_keys;
-  out.row_ptr = in.row_ptr;
-
-  if (in.num_intervals == 0) {
-    out.intervals = IntervalSet2DDevice::IntervalView();
-    return out;
-  }
-
   if (dx == 0) {
-    out.intervals = in.intervals;
-    return out;
+    return in;
   }
 
-  IntervalSet2DDevice::IntervalView intervals_out(
-      "subsetix_csr_translate_x_intervals", in.num_intervals);
+  struct TranslateXTransform {
+    Coord dx;
 
-  auto intervals_in = in.intervals;
+    KOKKOS_INLINE_FUNCTION
+    Interval operator()(const Interval& iv) const {
+      Interval out_iv = iv;
+      out_iv.begin = static_cast<Coord>(out_iv.begin + dx);
+      out_iv.end = static_cast<Coord>(out_iv.end + dx);
+      return out_iv;
+    }
+  };
 
-  Kokkos::parallel_for(
-      "subsetix_csr_translate_x",
-      Kokkos::RangePolicy<ExecSpace>(0, in.num_intervals),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        Interval iv = intervals_in(i);
-        iv.begin = static_cast<Coord>(iv.begin + dx);
-        iv.end = static_cast<Coord>(iv.end + dx);
-        intervals_out(i) = iv;
-      });
-
-  ExecSpace().fence();
-
-  out.intervals = intervals_out;
-
-  return out;
+  TranslateXTransform transform{dx};
+  return detail::apply_interval_transform_device(in, transform);
 }
 
 /**

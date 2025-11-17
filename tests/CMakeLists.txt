@@ -13,6 +13,7 @@ set(SUBSETIX_TEST_SOURCES
     csr_row_ops_components_smoke_test.cpp
     csr_set_algebra_properties_test.cpp
     csr_translation_smoke_test.cpp
+    csr_amr_refine_project_smoke_test.cpp
 )
 
 add_executable(subsetix_tests
