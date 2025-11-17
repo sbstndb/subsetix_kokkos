@@ -62,25 +62,25 @@ void bench_intersection_rectangles(benchmark::State& state,
 
 void BM_CSRIntersection_Tiny(benchmark::State& state) {
   RectConfig a{0, 32, 0, 32};
-  RectConfig b{16, 48, 0, 32};
+  RectConfig b{16, 48, 16, 48}; // carré 32x32
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_Medium(benchmark::State& state) {
   RectConfig a{0, 256, 0, 256};
-  RectConfig b{64, 320, 0, 256};
+  RectConfig b{64, 320, 64, 320}; // carré 256x256
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_Large(benchmark::State& state) {
   RectConfig a{0, 1024, 0, 1024};
-  RectConfig b{256, 1280, 0, 1024};
+  RectConfig b{256, 1280, 256, 1280}; // carré 1024x1024
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_XLarge(benchmark::State& state) {
   RectConfig a{0, 2048, 0, 2048};
-  RectConfig b{512, 2560, 0, 2048};
+  RectConfig b{512, 2560, 512, 2560}; // carré 2048x2048
   bench_intersection_rectangles(state, a, b);
 }
 
