@@ -80,3 +80,42 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslation) {
   EXPECT_EQ(card_U, card_T);
 }
 
+TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslation) {
+  Box2D domain;
+  domain.x_min = 0;
+  domain.x_max = 64;
+  domain.y_min = 0;
+  domain.y_max = 32;
+
+  // A = disque, B = checkerboard sur le même domaine.
+  Disk2D disk;
+  disk.cx = 24;
+  disk.cy = 16;
+  disk.radius = 9;
+
+  auto A = make_disk_device(disk);
+
+  Domain2D dom;
+  dom.x_min = domain.x_min;
+  dom.x_max = domain.x_max;
+  dom.y_min = domain.y_min;
+  dom.y_max = domain.y_max;
+
+  auto B = make_checkerboard_device(dom, 4);
+
+  const Coord dx = 5;
+
+  // (A ∪ B) translaté.
+  auto U = set_union_device(A, B);
+  auto U_shift = translate_x_device(U, dx);
+
+  // A et B translatés puis union.
+  auto A_shift = translate_x_device(A, dx);
+  auto B_shift = translate_x_device(B, dx);
+  auto U_shift_alt = set_union_device(A_shift, B_shift);
+
+  auto host_U_shift = build_host_from_device(U_shift);
+  auto host_U_shift_alt = build_host_from_device(U_shift_alt);
+
+  expect_equal_csr(host_U_shift, host_U_shift_alt);
+}
