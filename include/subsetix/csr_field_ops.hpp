@@ -276,6 +276,11 @@ struct VerticalIntervalMapping {
   Kokkos::View<int*, DeviceMemorySpace> down_interval;
 };
 
+struct AmrIntervalMapping {
+  Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine;
+  Kokkos::View<int*, DeviceMemorySpace> fine_to_coarse;
+};
+
 template <typename T>
 inline VerticalIntervalMapping
 build_vertical_interval_mapping(
@@ -383,6 +388,140 @@ build_vertical_interval_mapping(
 
   mapping.up_interval = up;
   mapping.down_interval = down;
+  return mapping;
+}
+
+template <typename T>
+inline AmrIntervalMapping
+build_amr_interval_mapping(
+    const IntervalField2DDevice<T>& coarse_field,
+    const IntervalField2DDevice<T>& fine_field) {
+  AmrIntervalMapping mapping;
+
+  const std::size_t num_rows_coarse =
+      coarse_field.num_rows;
+  const std::size_t num_rows_fine = fine_field.num_rows;
+  const std::size_t num_intervals_coarse =
+      coarse_field.num_intervals;
+  const std::size_t num_intervals_fine =
+      fine_field.num_intervals;
+
+  Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine(
+      "subsetix_field_coarse_to_fine_interval",
+      num_intervals_coarse);
+  Kokkos::View<int*, DeviceMemorySpace> fine_to_coarse(
+      "subsetix_field_fine_to_coarse_interval",
+      num_intervals_fine);
+
+  if (num_rows_coarse == 0 || num_rows_fine == 0 ||
+      num_intervals_coarse == 0 ||
+      num_intervals_fine == 0) {
+    mapping.coarse_to_fine = coarse_to_fine;
+    mapping.fine_to_coarse = fine_to_coarse;
+    return mapping;
+  }
+
+  auto h_coarse_rows =
+      Kokkos::create_mirror_view_and_copy(
+          HostMemorySpace{}, coarse_field.row_keys);
+  auto h_coarse_row_ptr =
+      Kokkos::create_mirror_view_and_copy(
+          HostMemorySpace{}, coarse_field.row_ptr);
+  auto h_coarse_intervals =
+      Kokkos::create_mirror_view_and_copy(
+          HostMemorySpace{}, coarse_field.intervals);
+
+  auto h_fine_rows =
+      Kokkos::create_mirror_view_and_copy(
+          HostMemorySpace{}, fine_field.row_keys);
+  auto h_fine_row_ptr =
+      Kokkos::create_mirror_view_and_copy(
+          HostMemorySpace{}, fine_field.row_ptr);
+  auto h_fine_intervals =
+      Kokkos::create_mirror_view_and_copy(
+          HostMemorySpace{}, fine_field.intervals);
+
+  std::vector<int> coarse_to_fine_host(
+      num_intervals_coarse, -1);
+  std::vector<int> fine_to_coarse_host(
+      num_intervals_fine, -1);
+
+  std::size_t jf = 0;
+  for (std::size_t rc = 0; rc < num_rows_coarse; ++rc) {
+    const Coord y_c = h_coarse_rows(rc).y;
+    const Coord y_f_target =
+        static_cast<Coord>(y_c * 2);
+
+    while (jf < num_rows_fine &&
+           h_fine_rows(jf).y < y_f_target) {
+      ++jf;
+    }
+    if (!(jf < num_rows_fine &&
+          h_fine_rows(jf).y == y_f_target)) {
+      throw std::runtime_error(
+          "AMR interval mapping: fine row not found for "
+          "coarse row");
+    }
+
+    const std::size_t begin_c = h_coarse_row_ptr(rc);
+    const std::size_t end_c = h_coarse_row_ptr(rc + 1);
+    const std::size_t begin_f = h_fine_row_ptr(jf);
+    const std::size_t end_f = h_fine_row_ptr(jf + 1);
+    const std::size_t count_c = end_c - begin_c;
+    const std::size_t count_f = end_f - begin_f;
+
+    if (count_c != count_f) {
+      throw std::runtime_error(
+          "AMR interval mapping: coarse/fine interval "
+          "counts differ");
+    }
+
+    for (std::size_t k = 0; k < count_c; ++k) {
+      const std::size_t ic =
+          begin_c + k;
+      const std::size_t iff =
+          begin_f + k;
+
+      const FieldInterval ci =
+          h_coarse_intervals(ic);
+      const FieldInterval fi =
+          h_fine_intervals(iff);
+
+      const Coord expected_begin =
+          static_cast<Coord>(ci.begin * 2);
+      const Coord expected_end =
+          static_cast<Coord>(ci.end * 2);
+
+      if (!(fi.begin == expected_begin &&
+            fi.end == expected_end)) {
+        throw std::runtime_error(
+            "AMR interval mapping: fine interval does not "
+            "match refined coarse interval");
+      }
+
+      coarse_to_fine_host[ic] =
+          static_cast<int>(iff);
+      fine_to_coarse_host[iff] =
+          static_cast<int>(ic);
+    }
+  }
+
+  auto h_ctf =
+      Kokkos::create_mirror_view(coarse_to_fine);
+  auto h_ftc =
+      Kokkos::create_mirror_view(fine_to_coarse);
+  for (std::size_t i = 0; i < num_intervals_coarse; ++i) {
+    h_ctf(i) = coarse_to_fine_host[i];
+  }
+  for (std::size_t i = 0; i < num_intervals_fine; ++i) {
+    h_ftc(i) = fine_to_coarse_host[i];
+  }
+
+  Kokkos::deep_copy(coarse_to_fine, h_ctf);
+  Kokkos::deep_copy(fine_to_coarse, h_ftc);
+
+  mapping.coarse_to_fine = coarse_to_fine;
+  mapping.fine_to_coarse = fine_to_coarse;
   return mapping;
 }
 
@@ -664,12 +803,13 @@ inline void restrict_field_on_set_device(
   auto coarse_intervals = coarse_field.intervals;
   auto coarse_values = coarse_field.values;
 
-  detail::FieldReadAccessor<T> fine_accessor;
-  fine_accessor.row_keys = fine_field.row_keys;
-  fine_accessor.row_ptr = fine_field.row_ptr;
-  fine_accessor.intervals = fine_field.intervals;
-  fine_accessor.values = fine_field.values;
-  fine_accessor.num_rows = fine_field.num_rows;
+  const detail::AmrIntervalMapping amr_mapping =
+      detail::build_amr_interval_mapping(
+          coarse_field, fine_field);
+  auto coarse_to_fine =
+      amr_mapping.coarse_to_fine;
+  auto fine_intervals = fine_field.intervals;
+  auto fine_values = fine_field.values;
 
   Kokkos::parallel_for(
       "subsetix_restrict_field_on_set_device",
@@ -691,40 +831,42 @@ inline void restrict_field_on_set_device(
         const auto mask_iv = mask_intervals(interval_idx);
         const auto coarse_iv =
             coarse_intervals(coarse_interval_idx);
-        const Coord y_coarse = mask_row_keys(row_idx).y;
         const std::size_t base_offset = coarse_iv.value_offset;
         const Coord base_begin = coarse_iv.begin;
 
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
-          const std::size_t linear_index =
-              base_offset +
-              static_cast<std::size_t>(x - base_begin);
+        const int fine_interval_idx =
+            coarse_to_fine(coarse_interval_idx);
+        const auto fine_iv =
+            fine_intervals(fine_interval_idx);
+        const std::size_t fine_base_offset =
+            fine_iv.value_offset;
+        const Coord fine_base_begin =
+            fine_iv.begin;
 
-          const Coord fine_x0 = 2 * x;
-          const Coord fine_y0 = 2 * y_coarse;
-          Coord fine_coords[4][2] = {
-              {fine_x0, fine_y0},
-              {fine_x0 + 1, fine_y0},
-              {fine_x0, fine_y0 + 1},
-              {fine_x0 + 1, fine_y0 + 1}};
+          for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+            const std::size_t linear_index =
+                base_offset +
+                static_cast<std::size_t>(x - base_begin);
 
-          T sum = T();
-          int count = 0;
-          for (int k = 0; k < 4; ++k) {
-            T value;
-            if (fine_accessor.try_get(fine_coords[k][0],
-                                      fine_coords[k][1],
-                                      value)) {
-              sum += value;
-              ++count;
-            }
-          }
+            const Coord fine_x0 =
+                static_cast<Coord>(2 * x);
+            const Coord fine_x1 =
+                static_cast<Coord>(2 * x + 1);
 
-          if (count > 0) {
+            const std::size_t fine_idx0 =
+                fine_base_offset +
+                static_cast<std::size_t>(
+                    fine_x0 - fine_base_begin);
+            const std::size_t fine_idx1 =
+                fine_base_offset +
+                static_cast<std::size_t>(
+                    fine_x1 - fine_base_begin);
+
+            const T v0 = fine_values(fine_idx0);
+            const T v1 = fine_values(fine_idx1);
             const T avg =
-                sum / static_cast<T>(count);
+                static_cast<T>(0.5) * (v0 + v1);
             coarse_values(linear_index) = avg;
-          }
         }
       });
   ExecSpace().fence();
@@ -752,12 +894,13 @@ inline void prolong_field_on_set_device(
   auto fine_intervals = fine_field.intervals;
   auto fine_values = fine_field.values;
 
-  detail::FieldReadAccessor<T> coarse_accessor;
-  coarse_accessor.row_keys = coarse_field.row_keys;
-  coarse_accessor.row_ptr = coarse_field.row_ptr;
-  coarse_accessor.intervals = coarse_field.intervals;
-  coarse_accessor.values = coarse_field.values;
-  coarse_accessor.num_rows = coarse_field.num_rows;
+  const detail::AmrIntervalMapping amr_mapping =
+      detail::build_amr_interval_mapping(
+          coarse_field, fine_field);
+  auto fine_to_coarse =
+      amr_mapping.fine_to_coarse;
+  auto coarse_intervals = coarse_field.intervals;
+  auto coarse_values = coarse_field.values;
 
   Kokkos::parallel_for(
       "subsetix_prolong_field_on_set_device",
@@ -787,12 +930,19 @@ inline void prolong_field_on_set_device(
           const std::size_t linear_index =
               base_offset +
               static_cast<std::size_t>(x - base_begin);
+          const int coarse_interval_idx =
+              fine_to_coarse(fine_interval_idx);
+          const auto coarse_iv =
+              coarse_intervals(coarse_interval_idx);
+
           const Coord coarse_x =
               detail::floor_div2(x);
-          const Coord coarse_y =
-              detail::floor_div2(y_fine);
+          const std::size_t coarse_offset =
+              coarse_iv.value_offset +
+              static_cast<std::size_t>(
+                  coarse_x - coarse_iv.begin);
           const T value =
-              coarse_accessor.value_at(coarse_x, coarse_y);
+              coarse_values(coarse_offset);
           fine_values(linear_index) = value;
         }
       });
