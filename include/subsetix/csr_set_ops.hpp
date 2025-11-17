@@ -709,16 +709,6 @@ apply_row_key_transform_device(const IntervalSet2DDevice& in,
   return out;
 }
 
-struct RowRefineTransform {
-  KOKKOS_INLINE_FUNCTION
-  RowKey2D operator()(const RowKey2D& key) const {
-    RowKey2D out_key = key;
-    out_key.y = static_cast<Coord>(out_key.y * 2);
-    return out_key;
-  }
-};
-
-
 KOKKOS_INLINE_FUNCTION
 Coord floor_div2(Coord x) {
   // Floor division by 2 for both positive and negative coordinates.
@@ -796,16 +786,6 @@ apply_interval_transform_device(const IntervalSet2DDevice& in,
   out.intervals = intervals_out;
   return out;
 }
-
-struct IntervalRefineTransform {
-  KOKKOS_INLINE_FUNCTION
-  Interval operator()(const Interval& iv) const {
-    Interval out_iv;
-    out_iv.begin = static_cast<Coord>(iv.begin * 2);
-    out_iv.end = static_cast<Coord>(iv.end * 2);
-    return out_iv;
-  }
-};
 
 struct TranslateXTransform {
   Coord dx;
@@ -1384,14 +1364,86 @@ set_difference_device(const IntervalSet2DDevice& A,
  */
 inline IntervalSet2DDevice
 refine_level_up_device(const IntervalSet2DDevice& in) {
-  if (in.num_rows == 0 || in.num_intervals == 0) {
-    return in;
+  IntervalSet2DDevice out;
+  const std::size_t num_rows_in = in.num_rows;
+  const std::size_t num_intervals_in = in.num_intervals;
+
+  if (num_rows_in == 0) {
+    return out;
   }
 
-  auto with_rows =
-      detail::apply_row_key_transform_device(in, detail::RowRefineTransform{});
-  return detail::apply_interval_transform_device(
-      with_rows, detail::IntervalRefineTransform{});
+  const std::size_t num_rows_out = num_rows_in * 2;
+  const std::size_t num_intervals_out = num_intervals_in * 2;
+
+  IntervalSet2DDevice::RowKeyView row_keys_out(
+      "subsetix_csr_refine_row_keys", num_rows_out);
+  IntervalSet2DDevice::IndexView row_ptr_out(
+      "subsetix_csr_refine_row_ptr", num_rows_out + 1);
+
+  IntervalSet2DDevice::IntervalView intervals_out;
+  if (num_intervals_out > 0) {
+    intervals_out = IntervalSet2DDevice::IntervalView(
+        "subsetix_csr_refine_intervals", num_intervals_out);
+  }
+
+  auto row_keys_in = in.row_keys;
+  auto row_ptr_in = in.row_ptr;
+  auto intervals_in = in.intervals;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_refine_row_keys",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_in),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const Coord y = row_keys_in(i).y;
+        row_keys_out(2 * i) = RowKey2D{
+            static_cast<Coord>(2 * y)};
+        row_keys_out(2 * i + 1) = RowKey2D{
+            static_cast<Coord>(2 * y + 1)};
+      });
+
+  Kokkos::parallel_for(
+      "subsetix_csr_refine_row_ptr",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_in),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const std::size_t start = row_ptr_in(i);
+        const std::size_t end = row_ptr_in(i + 1);
+        const std::size_t count = end - start;
+        row_ptr_out(2 * i) = 2 * start;
+        row_ptr_out(2 * i + 1) = 2 * start + count;
+        if (i + 1 == num_rows_in) {
+          row_ptr_out(2 * num_rows_in) =
+              2 * row_ptr_in(num_rows_in);
+        }
+      });
+
+  if (num_intervals_out > 0) {
+    Kokkos::parallel_for(
+        "subsetix_csr_refine_intervals",
+        Kokkos::RangePolicy<ExecSpace>(0, num_rows_in),
+        KOKKOS_LAMBDA(const std::size_t i) {
+          const std::size_t start = row_ptr_in(i);
+          const std::size_t end = row_ptr_in(i + 1);
+          const std::size_t count = end - start;
+          const std::size_t out_even = 2 * start;
+          const std::size_t out_odd = out_even + count;
+          for (std::size_t k = 0; k < count; ++k) {
+            const Interval iv = intervals_in(start + k);
+            const Interval refined{
+                static_cast<Coord>(iv.begin * 2),
+                static_cast<Coord>(iv.end * 2)};
+            intervals_out(out_even + k) = refined;
+            intervals_out(out_odd + k) = refined;
+          }
+        });
+  }
+
+  out.num_rows = num_rows_out;
+  out.num_intervals = num_intervals_out;
+  out.row_keys = row_keys_out;
+  out.row_ptr = row_ptr_out;
+  out.intervals = intervals_out;
+
+  return out;
 }
 
 /**

@@ -277,7 +277,8 @@ struct VerticalIntervalMapping {
 };
 
 struct AmrIntervalMapping {
-  Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine;
+  Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine_first;
+  Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine_second;
   Kokkos::View<int*, DeviceMemorySpace> fine_to_coarse;
 };
 
@@ -406,8 +407,11 @@ build_amr_interval_mapping(
   const std::size_t num_intervals_fine =
       fine_field.num_intervals;
 
-  Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine(
-      "subsetix_field_coarse_to_fine_interval",
+  Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine_first(
+      "subsetix_field_coarse_to_fine_first",
+      num_intervals_coarse);
+  Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine_second(
+      "subsetix_field_coarse_to_fine_second",
       num_intervals_coarse);
   Kokkos::View<int*, DeviceMemorySpace> fine_to_coarse(
       "subsetix_field_fine_to_coarse_interval",
@@ -416,7 +420,8 @@ build_amr_interval_mapping(
   if (num_rows_coarse == 0 || num_rows_fine == 0 ||
       num_intervals_coarse == 0 ||
       num_intervals_fine == 0) {
-    mapping.coarse_to_fine = coarse_to_fine;
+    mapping.coarse_to_fine_first = coarse_to_fine_first;
+    mapping.coarse_to_fine_second = coarse_to_fine_second;
     mapping.fine_to_coarse = fine_to_coarse;
     return mapping;
   }
@@ -441,86 +446,122 @@ build_amr_interval_mapping(
       Kokkos::create_mirror_view_and_copy(
           HostMemorySpace{}, fine_field.intervals);
 
-  std::vector<int> coarse_to_fine_host(
+  std::vector<int> coarse_to_fine_first_host(
+      num_intervals_coarse, -1);
+  std::vector<int> coarse_to_fine_second_host(
       num_intervals_coarse, -1);
   std::vector<int> fine_to_coarse_host(
       num_intervals_fine, -1);
 
-  std::size_t jf = 0;
+  auto find_row = [&](std::size_t& cursor,
+                      Coord target) -> std::size_t {
+    while (cursor < num_rows_fine &&
+           h_fine_rows(cursor).y < target) {
+      ++cursor;
+    }
+    if (cursor >= num_rows_fine ||
+        h_fine_rows(cursor).y != target) {
+      throw std::runtime_error(
+          "AMR interval mapping: fine row not found "
+          "for coarse row");
+    }
+    return cursor;
+  };
+
+  std::size_t cursor = 0;
   for (std::size_t rc = 0; rc < num_rows_coarse; ++rc) {
     const Coord y_c = h_coarse_rows(rc).y;
-    const Coord y_f_target =
-        static_cast<Coord>(y_c * 2);
+    const Coord y_f0 =
+        static_cast<Coord>(2 * y_c);
+    const Coord y_f1 =
+        static_cast<Coord>(2 * y_c + 1);
 
-    while (jf < num_rows_fine &&
-           h_fine_rows(jf).y < y_f_target) {
-      ++jf;
-    }
-    if (!(jf < num_rows_fine &&
-          h_fine_rows(jf).y == y_f_target)) {
-      throw std::runtime_error(
-          "AMR interval mapping: fine row not found for "
-          "coarse row");
-    }
+    const std::size_t row_f0 =
+        find_row(cursor, y_f0);
+    const std::size_t row_f1 =
+        find_row(cursor, y_f1);
 
     const std::size_t begin_c = h_coarse_row_ptr(rc);
     const std::size_t end_c = h_coarse_row_ptr(rc + 1);
-    const std::size_t begin_f = h_fine_row_ptr(jf);
-    const std::size_t end_f = h_fine_row_ptr(jf + 1);
-    const std::size_t count_c = end_c - begin_c;
-    const std::size_t count_f = end_f - begin_f;
+    const std::size_t begin_f0 =
+        h_fine_row_ptr(row_f0);
+    const std::size_t end_f0 =
+        h_fine_row_ptr(row_f0 + 1);
+    const std::size_t begin_f1 =
+        h_fine_row_ptr(row_f1);
+    const std::size_t end_f1 =
+        h_fine_row_ptr(row_f1 + 1);
 
-    if (count_c != count_f) {
+    const std::size_t count_c = end_c - begin_c;
+    const std::size_t count_f0 = end_f0 - begin_f0;
+    const std::size_t count_f1 = end_f1 - begin_f1;
+
+    if (count_c != count_f0 ||
+        count_c != count_f1) {
       throw std::runtime_error(
           "AMR interval mapping: coarse/fine interval "
           "counts differ");
     }
 
     for (std::size_t k = 0; k < count_c; ++k) {
-      const std::size_t ic =
-          begin_c + k;
-      const std::size_t iff =
-          begin_f + k;
+      const std::size_t ic = begin_c + k;
+      const std::size_t iff0 = begin_f0 + k;
+      const std::size_t iff1 = begin_f1 + k;
 
       const FieldInterval ci =
           h_coarse_intervals(ic);
-      const FieldInterval fi =
-          h_fine_intervals(iff);
+      const FieldInterval fi0 =
+          h_fine_intervals(iff0);
+      const FieldInterval fi1 =
+          h_fine_intervals(iff1);
 
       const Coord expected_begin =
           static_cast<Coord>(ci.begin * 2);
       const Coord expected_end =
           static_cast<Coord>(ci.end * 2);
 
-      if (!(fi.begin == expected_begin &&
-            fi.end == expected_end)) {
+      if (!(fi0.begin == expected_begin &&
+            fi0.end == expected_end &&
+            fi1.begin == expected_begin &&
+            fi1.end == expected_end)) {
         throw std::runtime_error(
             "AMR interval mapping: fine interval does not "
             "match refined coarse interval");
       }
 
-      coarse_to_fine_host[ic] =
-          static_cast<int>(iff);
-      fine_to_coarse_host[iff] =
+      coarse_to_fine_first_host[ic] =
+          static_cast<int>(iff0);
+      coarse_to_fine_second_host[ic] =
+          static_cast<int>(iff1);
+      fine_to_coarse_host[iff0] =
+          static_cast<int>(ic);
+      fine_to_coarse_host[iff1] =
           static_cast<int>(ic);
     }
   }
 
-  auto h_ctf =
-      Kokkos::create_mirror_view(coarse_to_fine);
+  auto h_ctf0 =
+      Kokkos::create_mirror_view(coarse_to_fine_first);
+  auto h_ctf1 =
+      Kokkos::create_mirror_view(coarse_to_fine_second);
   auto h_ftc =
       Kokkos::create_mirror_view(fine_to_coarse);
-  for (std::size_t i = 0; i < num_intervals_coarse; ++i) {
-    h_ctf(i) = coarse_to_fine_host[i];
+  for (std::size_t i = 0; i < num_intervals_coarse;
+       ++i) {
+    h_ctf0(i) = coarse_to_fine_first_host[i];
+    h_ctf1(i) = coarse_to_fine_second_host[i];
   }
-  for (std::size_t i = 0; i < num_intervals_fine; ++i) {
+  for (std::size_t i = 0; i < num_intervals_fine;
+       ++i) {
     h_ftc(i) = fine_to_coarse_host[i];
   }
 
-  Kokkos::deep_copy(coarse_to_fine, h_ctf);
+  Kokkos::deep_copy(coarse_to_fine_first, h_ctf0);
+  Kokkos::deep_copy(coarse_to_fine_second, h_ctf1);
   Kokkos::deep_copy(fine_to_coarse, h_ftc);
 
-  mapping.coarse_to_fine = coarse_to_fine;
+  mapping.coarse_to_fine_first = coarse_to_fine_first;
+  mapping.coarse_to_fine_second = coarse_to_fine_second;
   mapping.fine_to_coarse = fine_to_coarse;
   return mapping;
 }
@@ -798,7 +839,6 @@ inline void restrict_field_on_set_device(
       mapping.interval_to_field_interval;
   auto row_map = mapping.row_map;
 
-  auto mask_row_keys = coarse_mask.row_keys;
   auto mask_intervals = coarse_mask.intervals;
   auto coarse_intervals = coarse_field.intervals;
   auto coarse_values = coarse_field.values;
@@ -806,8 +846,10 @@ inline void restrict_field_on_set_device(
   const detail::AmrIntervalMapping amr_mapping =
       detail::build_amr_interval_mapping(
           coarse_field, fine_field);
-  auto coarse_to_fine =
-      amr_mapping.coarse_to_fine;
+  auto coarse_to_fine_first =
+      amr_mapping.coarse_to_fine_first;
+  auto coarse_to_fine_second =
+      amr_mapping.coarse_to_fine_second;
   auto fine_intervals = fine_field.intervals;
   auto fine_values = fine_field.values;
 
@@ -834,39 +876,59 @@ inline void restrict_field_on_set_device(
         const std::size_t base_offset = coarse_iv.value_offset;
         const Coord base_begin = coarse_iv.begin;
 
-        const int fine_interval_idx =
-            coarse_to_fine(coarse_interval_idx);
-        const auto fine_iv =
-            fine_intervals(fine_interval_idx);
-        const std::size_t fine_base_offset =
-            fine_iv.value_offset;
-        const Coord fine_base_begin =
-            fine_iv.begin;
+        const int fine_interval_idx0 =
+            coarse_to_fine_first(coarse_interval_idx);
+        const int fine_interval_idx1 =
+            coarse_to_fine_second(coarse_interval_idx);
+        const auto fine_iv0 =
+            fine_intervals(fine_interval_idx0);
+        const auto fine_iv1 =
+            fine_intervals(fine_interval_idx1);
+        const std::size_t fine_base_offset0 =
+            fine_iv0.value_offset;
+        const std::size_t fine_base_offset1 =
+            fine_iv1.value_offset;
+        const Coord fine_base_begin0 =
+            fine_iv0.begin;
+        const Coord fine_base_begin1 =
+            fine_iv1.begin;
 
-          for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
-            const std::size_t linear_index =
-                base_offset +
-                static_cast<std::size_t>(x - base_begin);
+        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+          const std::size_t linear_index =
+              base_offset +
+              static_cast<std::size_t>(x - base_begin);
 
-            const Coord fine_x0 =
-                static_cast<Coord>(2 * x);
-            const Coord fine_x1 =
-                static_cast<Coord>(2 * x + 1);
+          const Coord fine_x0 =
+              static_cast<Coord>(2 * x);
+          const Coord fine_x1 =
+              static_cast<Coord>(2 * x + 1);
 
-            const std::size_t fine_idx0 =
-                fine_base_offset +
-                static_cast<std::size_t>(
-                    fine_x0 - fine_base_begin);
-            const std::size_t fine_idx1 =
-                fine_base_offset +
-                static_cast<std::size_t>(
-                    fine_x1 - fine_base_begin);
+          const std::size_t fine_idx00 =
+              fine_base_offset0 +
+              static_cast<std::size_t>(
+                  fine_x0 - fine_base_begin0);
+          const std::size_t fine_idx01 =
+              fine_base_offset0 +
+              static_cast<std::size_t>(
+                  fine_x1 - fine_base_begin0);
+          const std::size_t fine_idx10 =
+              fine_base_offset1 +
+              static_cast<std::size_t>(
+                  fine_x0 - fine_base_begin1);
+          const std::size_t fine_idx11 =
+              fine_base_offset1 +
+              static_cast<std::size_t>(
+                  fine_x1 - fine_base_begin1);
 
-            const T v0 = fine_values(fine_idx0);
-            const T v1 = fine_values(fine_idx1);
-            const T avg =
-                static_cast<T>(0.5) * (v0 + v1);
-            coarse_values(linear_index) = avg;
+          const T v00 = fine_values(fine_idx00);
+          const T v01 = fine_values(fine_idx01);
+          const T v10 = fine_values(fine_idx10);
+          const T v11 = fine_values(fine_idx11);
+
+          const T avg =
+              static_cast<T>(0.25) *
+              (v00 + v01 + v10 + v11);
+          coarse_values(linear_index) = avg;
         }
       });
   ExecSpace().fence();
@@ -889,7 +951,6 @@ inline void prolong_field_on_set_device(
       mapping.interval_to_field_interval;
   auto row_map = mapping.row_map;
 
-  auto mask_row_keys = fine_mask.row_keys;
   auto mask_intervals = fine_mask.intervals;
   auto fine_intervals = fine_field.intervals;
   auto fine_values = fine_field.values;
@@ -922,25 +983,28 @@ inline void prolong_field_on_set_device(
         const auto mask_iv = mask_intervals(interval_idx);
         const auto fine_iv =
             fine_intervals(fine_interval_idx);
-        const Coord y_fine = mask_row_keys(row_idx).y;
         const std::size_t base_offset = fine_iv.value_offset;
         const Coord base_begin = fine_iv.begin;
+        const int coarse_interval_idx =
+            fine_to_coarse(fine_interval_idx);
+        const auto coarse_iv =
+            coarse_intervals(coarse_interval_idx);
+        const std::size_t coarse_base_offset =
+            coarse_iv.value_offset;
+        const Coord coarse_base_begin =
+            coarse_iv.begin;
 
         for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
           const std::size_t linear_index =
               base_offset +
               static_cast<std::size_t>(x - base_begin);
-          const int coarse_interval_idx =
-              fine_to_coarse(fine_interval_idx);
-          const auto coarse_iv =
-              coarse_intervals(coarse_interval_idx);
 
           const Coord coarse_x =
               detail::floor_div2(x);
           const std::size_t coarse_offset =
-              coarse_iv.value_offset +
+              coarse_base_offset +
               static_cast<std::size_t>(
-                  coarse_x - coarse_iv.begin);
+                  coarse_x - coarse_base_begin);
           const T value =
               coarse_values(coarse_offset);
           fine_values(linear_index) = value;
