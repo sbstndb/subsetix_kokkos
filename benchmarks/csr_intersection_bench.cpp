@@ -117,11 +117,13 @@ void bench_binary_op(benchmark::State& state,
   const std::size_t intervals_in =
       A.num_intervals + B.num_intervals;
 
+  CsrSetAlgebraContext ctx;
+
   double total_seconds = 0.0;
 
   for (auto _ : state) {
     const auto t0 = std::chrono::steady_clock::now();
-    auto out = op(A, B);
+    auto out = op(A, B, ctx);
     const auto t1 = std::chrono::steady_clock::now();
 
     const std::chrono::duration<double> dt = t1 - t0;
@@ -149,8 +151,9 @@ void BM_CSRIntersection_Tiny(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N}; // carré 128x128
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_intersection_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_intersection_device(A, B, ctx);
   });
 }
 
@@ -160,8 +163,9 @@ void BM_CSRIntersection_Medium(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N}; // carré 1280x1280
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_intersection_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_intersection_device(A, B, ctx);
   });
 }
 
@@ -171,8 +175,9 @@ void BM_CSRIntersection_Large(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N}; // carré 12800x12800
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_intersection_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_intersection_device(A, B, ctx);
   });
 }
 
@@ -182,8 +187,9 @@ void BM_CSRIntersection_XLarge(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N}; // carré 128000x128000
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_intersection_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_intersection_device(A, B, ctx);
   });
 }
 
@@ -193,8 +199,9 @@ void BM_CSRUnion_Tiny(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_union_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_union_device(A, B, ctx);
   });
 }
 
@@ -204,8 +211,9 @@ void BM_CSRUnion_Medium(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_union_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_union_device(A, B, ctx);
   });
 }
 
@@ -215,8 +223,9 @@ void BM_CSRUnion_Large(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_union_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_union_device(A, B, ctx);
   });
 }
 
@@ -226,8 +235,9 @@ void BM_CSRUnion_XLarge(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_union_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_union_device(A, B, ctx);
   });
 }
 
@@ -237,8 +247,9 @@ void BM_CSRDifference_Tiny(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_difference_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_difference_device(A, B, ctx);
   });
 }
 
@@ -248,8 +259,9 @@ void BM_CSRDifference_Medium(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_difference_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_difference_device(A, B, ctx);
   });
 }
 
@@ -259,8 +271,9 @@ void BM_CSRDifference_Large(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_difference_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_difference_device(A, B, ctx);
   });
 }
 
@@ -270,8 +283,9 @@ void BM_CSRDifference_XLarge(benchmark::State& state) {
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
-                                  const IntervalSet2DDevice& B) {
-    return set_difference_device(A, B);
+                                  const IntervalSet2DDevice& B,
+                                  CsrSetAlgebraContext& ctx) {
+    return set_difference_device(A, B, ctx);
   });
 }
 
