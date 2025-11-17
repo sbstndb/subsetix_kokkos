@@ -295,6 +295,37 @@ void BM_CSRMakeBox_XLarge(benchmark::State& state) {
   bench_box_construction(state, cfg);
 }
 
+void bench_map_rows_alloc(benchmark::State& state, Coord extent) {
+  RectConfig a_cfg, b_cfg;
+  make_intersection_configs(extent, a_cfg, b_cfg);
+  IntervalSet2DDevice A = make_box(a_cfg);
+  IntervalSet2DDevice B = make_box(b_cfg);
+
+  const std::size_t num_rows_a = A.num_rows;
+  const std::size_t num_rows_b = B.num_rows;
+  const std::size_t n_small =
+      (num_rows_a <= num_rows_b) ? num_rows_a : num_rows_b;
+
+  run_row_kernel(state, n_small, [&]() {
+    Kokkos::View<int*, DeviceMemorySpace> flags(
+        "subsetix_csr_intersection_bench_flags", n_small);
+    Kokkos::View<int*, DeviceMemorySpace> tmp_idx_a(
+        "subsetix_csr_intersection_bench_tmp_idx_a", n_small);
+    Kokkos::View<int*, DeviceMemorySpace> tmp_idx_b(
+        "subsetix_csr_intersection_bench_tmp_idx_b", n_small);
+    Kokkos::View<std::size_t*, DeviceMemorySpace> positions(
+        "subsetix_csr_intersection_bench_positions", n_small);
+    Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows(
+        "subsetix_csr_intersection_bench_num_rows");
+
+    benchmark::DoNotOptimize(flags.data());
+    benchmark::DoNotOptimize(tmp_idx_a.data());
+    benchmark::DoNotOptimize(tmp_idx_b.data());
+    benchmark::DoNotOptimize(positions.data());
+    benchmark::DoNotOptimize(d_num_rows.data());
+  }, "ns_per_row");
+}
+
 void bench_map_rows(benchmark::State& state, Coord extent) {
   RectConfig a_cfg, b_cfg;
   make_intersection_configs(extent, a_cfg, b_cfg);
@@ -555,6 +586,22 @@ void bench_fill(benchmark::State& state, Coord extent) {
       1e9;
 }
 
+void BM_CSRIntersection_MapRowsAlloc_Tiny(benchmark::State& state) {
+  bench_map_rows_alloc(state, kSizeTiny);
+}
+
+void BM_CSRIntersection_MapRowsAlloc_Medium(benchmark::State& state) {
+  bench_map_rows_alloc(state, kSizeMedium);
+}
+
+void BM_CSRIntersection_MapRowsAlloc_Large(benchmark::State& state) {
+  bench_map_rows_alloc(state, kSizeLarge);
+}
+
+void BM_CSRIntersection_MapRowsAlloc_XLarge(benchmark::State& state) {
+  bench_map_rows_alloc(state, kSizeXLarge);
+}
+
 void BM_CSRIntersection_MapRows_Tiny(benchmark::State& state) {
   bench_map_rows(state, kSizeTiny);
 }
@@ -637,6 +684,10 @@ BENCHMARK(BM_CSRMakeBox_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_MapRowsAlloc_XLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_Large)->Unit(benchmark::kNanosecond);
