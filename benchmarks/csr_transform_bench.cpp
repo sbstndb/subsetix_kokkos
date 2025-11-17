@@ -90,6 +90,46 @@ void bench_projection(benchmark::State& state,
   }
 }
 
+void bench_allocation(benchmark::State& state,
+                      const RectConfig& cfg) {
+  IntervalSet2DDevice source = make_box(cfg);
+  const std::size_t intervals =
+      source.num_intervals > 0 ? source.num_intervals : 1;
+
+  double total_seconds = 0.0;
+
+  for (auto _ : state) {
+    const auto t0 = std::chrono::steady_clock::now();
+
+    IntervalSet2DDevice out;
+    out.num_rows = source.num_rows;
+    out.num_intervals = source.num_intervals;
+    if (out.num_rows > 0) {
+      out.row_keys = IntervalSet2DDevice::RowKeyView(
+          "subsetix_alloc_row_keys", out.num_rows);
+      out.row_ptr = IntervalSet2DDevice::IndexView(
+          "subsetix_alloc_row_ptr", out.num_rows + 1);
+      out.intervals = IntervalSet2DDevice::IntervalView(
+          "subsetix_alloc_intervals", out.num_intervals);
+    }
+
+    const auto t1 = std::chrono::steady_clock::now();
+    total_seconds += std::chrono::duration<double>(t1 - t0).count();
+
+    benchmark::DoNotOptimize(out.row_keys.data());
+    benchmark::DoNotOptimize(out.row_ptr.data());
+    benchmark::DoNotOptimize(out.intervals.data());
+  }
+
+  const double total_intervals =
+      static_cast<double>(intervals) *
+      static_cast<double>(state.iterations());
+  const double seconds_per_interval =
+      total_seconds / total_intervals;
+  state.counters["ns_per_interval"] =
+      seconds_per_interval * 1e9;
+}
+
 // --- Translation X ---
 
 void BM_CSRTranslateX_Tiny(benchmark::State& state) {
@@ -202,6 +242,28 @@ void BM_CSRProject_XLarge(benchmark::State& state) {
   bench_projection(state, cfg);
 }
 
+// --- Allocations ---
+
+void BM_CSRAllocate_Tiny(benchmark::State& state) {
+  RectConfig cfg{0, 128, 0, 128};
+  bench_allocation(state, cfg);
+}
+
+void BM_CSRAllocate_Medium(benchmark::State& state) {
+  RectConfig cfg{0, 1280, 0, 1280};
+  bench_allocation(state, cfg);
+}
+
+void BM_CSRAllocate_Large(benchmark::State& state) {
+  RectConfig cfg{0, 12800, 0, 12800};
+  bench_allocation(state, cfg);
+}
+
+void BM_CSRAllocate_XLarge(benchmark::State& state) {
+  RectConfig cfg{0, 128000, 0, 128000};
+  bench_allocation(state, cfg);
+}
+
 } // namespace
 
 BENCHMARK(BM_CSRTranslateX_Tiny)->Unit(benchmark::kNanosecond);
@@ -223,6 +285,11 @@ BENCHMARK(BM_CSRProject_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRProject_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRProject_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRProject_XLarge)->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_CSRAllocate_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRAllocate_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRAllocate_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRAllocate_XLarge)->Unit(benchmark::kNanosecond);
 
 int main(int argc, char** argv) {
   Kokkos::initialize(argc, argv);

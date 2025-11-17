@@ -486,7 +486,6 @@ inline RowMergeResult
 build_row_intersection_mapping(const IntervalSet2DDevice& A,
                                const IntervalSet2DDevice& B) {
   RowMergeResult result;
-
   const std::size_t num_rows_a = A.num_rows;
   const std::size_t num_rows_b = B.num_rows;
 
@@ -494,49 +493,86 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
     return result;
   }
 
-  const std::size_t max_rows_out =
-      (num_rows_a < num_rows_b) ? num_rows_a : num_rows_b;
-
-  IntervalSet2DDevice::RowKeyView tmp_rows(
-      "subsetix_csr_intersection_tmp_rows", max_rows_out);
-  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_a(
-      "subsetix_csr_intersection_tmp_idx_a", max_rows_out);
-  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_b(
-      "subsetix_csr_intersection_tmp_idx_b", max_rows_out);
-
-  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows(
-      "subsetix_csr_intersection_num_rows");
-
   auto rows_a = A.row_keys;
   auto rows_b = B.row_keys;
 
+  const bool small_is_a = (num_rows_a <= num_rows_b);
+  const std::size_t n_small =
+      small_is_a ? num_rows_a : num_rows_b;
+  const std::size_t n_big =
+      small_is_a ? num_rows_b : num_rows_a;
+
+  auto rows_small = small_is_a ? rows_a : rows_b;
+  auto rows_big = small_is_a ? rows_b : rows_a;
+
+  // 1) For each row of the smaller set, binary-search its Y in the
+  //    larger set and record matches.
+  Kokkos::View<int*, DeviceMemorySpace> flags(
+      "subsetix_csr_intersection_flags", n_small);
+  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_a(
+      "subsetix_csr_intersection_tmp_idx_a", n_small);
+  Kokkos::View<int*, DeviceMemorySpace> tmp_idx_b(
+      "subsetix_csr_intersection_tmp_idx_b", n_small);
+
   Kokkos::parallel_for(
-      "subsetix_csr_intersection_row_merge",
-      Kokkos::RangePolicy<ExecSpace>(0, 1),
-      KOKKOS_LAMBDA(const int) {
-        std::size_t ia = 0;
-        std::size_t ib = 0;
-        std::size_t out = 0;
+      "subsetix_csr_intersection_row_map_binary",
+      Kokkos::RangePolicy<ExecSpace>(0, n_small),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const Coord y = rows_small(i).y;
 
-        while (ia < num_rows_a && ib < num_rows_b) {
-          const Coord ya = rows_a(ia).y;
-          const Coord yb = rows_b(ib).y;
-
-          if (ya < yb) {
-            ++ia;
-          } else if (yb < ya) {
-            ++ib;
+        std::size_t lo = 0;
+        std::size_t hi = n_big;
+        while (lo < hi) {
+          const std::size_t mid = (lo + hi) / 2;
+          const Coord ymid = rows_big(mid).y;
+          if (ymid < y) {
+            lo = mid + 1;
           } else {
-            tmp_rows(out) = rows_a(ia);
-            tmp_idx_a(out) = static_cast<int>(ia);
-            tmp_idx_b(out) = static_cast<int>(ib);
-            ++ia;
-            ++ib;
-            ++out;
+            hi = mid;
           }
         }
 
-        d_num_rows() = out;
+        if (lo < n_big && rows_big(lo).y == y) {
+          flags(i) = 1;
+          const int ia =
+              small_is_a ? static_cast<int>(i)
+                         : static_cast<int>(lo);
+          const int ib =
+              small_is_a ? static_cast<int>(lo)
+                         : static_cast<int>(i);
+          tmp_idx_a(i) = ia;
+          tmp_idx_b(i) = ib;
+        } else {
+          flags(i) = 0;
+          tmp_idx_a(i) = -1;
+          tmp_idx_b(i) = -1;
+        }
+      });
+
+  ExecSpace().fence();
+
+  // 2) Exclusive scan on flags to compute positions and number of
+  //    intersection rows.
+  Kokkos::View<std::size_t*, DeviceMemorySpace> positions(
+      "subsetix_csr_intersection_row_positions", n_small);
+  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows(
+      "subsetix_csr_intersection_num_rows");
+
+  Kokkos::parallel_scan(
+      "subsetix_csr_intersection_row_scan",
+      Kokkos::RangePolicy<ExecSpace>(0, n_small),
+      KOKKOS_LAMBDA(const std::size_t i,
+                    std::size_t& update,
+                    const bool final_pass) {
+        const std::size_t flag =
+            static_cast<std::size_t>(flags(i));
+        if (final_pass) {
+          positions(i) = update;
+          if (i + 1 == n_small) {
+            d_num_rows() = update + flag;
+          }
+        }
+        update += flag;
       });
 
   ExecSpace().fence();
@@ -560,13 +596,18 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
   auto out_idx_a = result.row_index_a;
   auto out_idx_b = result.row_index_b;
 
+  // 3) Compact matching rows into the output views.
   Kokkos::parallel_for(
-      "subsetix_csr_intersection_row_merge_copy",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      "subsetix_csr_intersection_row_compact",
+      Kokkos::RangePolicy<ExecSpace>(0, n_small),
       KOKKOS_LAMBDA(const std::size_t i) {
-        out_rows(i) = tmp_rows(i);
-        out_idx_a(i) = tmp_idx_a(i);
-        out_idx_b(i) = tmp_idx_b(i);
+        if (!flags(i)) {
+          return;
+        }
+        const std::size_t pos = positions(i);
+        out_rows(pos) = rows_small(i);
+        out_idx_a(pos) = tmp_idx_a(i);
+        out_idx_b(pos) = tmp_idx_b(i);
       });
 
   ExecSpace().fence();
@@ -619,28 +660,29 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  // Build mapping A.rows -> B.rows.
+  // Build mapping A.rows -> B.rows using binary search on B.
   Kokkos::parallel_for(
       "subsetix_csr_difference_row_mapping",
-      Kokkos::RangePolicy<ExecSpace>(0, 1),
-      KOKKOS_LAMBDA(const int) {
-        std::size_t ia = 0;
-        std::size_t ib = 0;
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+      KOKKOS_LAMBDA(const std::size_t ia) {
+        const Coord ya = rows_a(ia).y;
 
-        while (ia < num_rows_a) {
-          const Coord ya = rows_a(ia).y;
-
-          while (ib < num_rows_b && rows_b(ib).y < ya) {
-            ++ib;
-          }
-
-          if (ib < num_rows_b && rows_b(ib).y == ya) {
-            out_idx_b(ia) = static_cast<int>(ib);
+        std::size_t lo = 0;
+        std::size_t hi = num_rows_b;
+        while (lo < hi) {
+          const std::size_t mid = (lo + hi) / 2;
+          const Coord yb = rows_b(mid).y;
+          if (yb < ya) {
+            lo = mid + 1;
           } else {
-            out_idx_b(ia) = -1;
+            hi = mid;
           }
+        }
 
-          ++ia;
+        if (lo < num_rows_b && rows_b(lo).y == ya) {
+          out_idx_b(ia) = static_cast<int>(lo);
+        } else {
+          out_idx_b(ia) = -1;
         }
       });
 
