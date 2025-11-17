@@ -61,26 +61,26 @@ void bench_intersection_rectangles(benchmark::State& state,
 }
 
 void BM_CSRIntersection_Tiny(benchmark::State& state) {
-  RectConfig a{0, 32, 0, 32};
-  RectConfig b{16, 48, 16, 48}; // carré 32x32
+  RectConfig a{0, 128, 0, 128};          // 128x128
+  RectConfig b{64, 192, 64, 192};        // carré 128x128
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_Medium(benchmark::State& state) {
-  RectConfig a{0, 256, 0, 256};
-  RectConfig b{64, 320, 64, 320}; // carré 256x256
+  RectConfig a{0, 1024, 0, 1024};        // 1024x1024
+  RectConfig b{256, 1280, 256, 1280};    // carré 1024x1024
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_Large(benchmark::State& state) {
-  RectConfig a{0, 1024, 0, 1024};
-  RectConfig b{256, 1280, 256, 1280}; // carré 1024x1024
+  RectConfig a{0, 4096, 0, 4096};        // 4096x4096
+  RectConfig b{1024, 5120, 1024, 5120};  // carré 4096x4096
   bench_intersection_rectangles(state, a, b);
 }
 
 void BM_CSRIntersection_XLarge(benchmark::State& state) {
-  RectConfig a{0, 2048, 0, 2048};
-  RectConfig b{512, 2560, 512, 2560}; // carré 2048x2048
+  RectConfig a{0, 8192, 0, 8192};        // 8192x8192
+  RectConfig b{2048, 10240, 2048, 10240}; // carré 8192x8192
   bench_intersection_rectangles(state, a, b);
 }
 
