@@ -5,3 +5,7 @@ target_link_libraries(subsetix_core
         Kokkos::kokkos
 )
 
+target_include_directories(subsetix_core
+    INTERFACE
+        ${PROJECT_SOURCE_DIR}/include
+)
