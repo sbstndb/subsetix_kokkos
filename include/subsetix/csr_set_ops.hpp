@@ -1095,5 +1095,54 @@ set_difference_device(const IntervalSet2DDevice& A,
   return out;
 }
 
+/**
+ * @brief Translate all intervals of a CSR interval set by a constant
+ *        offset along X.
+ *
+ * Row structure (row_keys, row_ptr) is preserved; only the begin/end
+ * coordinates of intervals are shifted by dx.
+ */
+inline IntervalSet2DDevice
+translate_x_device(const IntervalSet2DDevice& in,
+                   Coord dx) {
+  IntervalSet2DDevice out;
+
+  out.num_rows = in.num_rows;
+  out.num_intervals = in.num_intervals;
+  out.row_keys = in.row_keys;
+  out.row_ptr = in.row_ptr;
+
+  if (in.num_intervals == 0) {
+    out.intervals = IntervalSet2DDevice::IntervalView();
+    return out;
+  }
+
+  if (dx == 0) {
+    out.intervals = in.intervals;
+    return out;
+  }
+
+  IntervalSet2DDevice::IntervalView intervals_out(
+      "subsetix_csr_translate_x_intervals", in.num_intervals);
+
+  auto intervals_in = in.intervals;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_translate_x",
+      Kokkos::RangePolicy<ExecSpace>(0, in.num_intervals),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        Interval iv = intervals_in(i);
+        iv.begin = static_cast<Coord>(iv.begin + dx);
+        iv.end = static_cast<Coord>(iv.end + dx);
+        intervals_out(i) = iv;
+      });
+
+  ExecSpace().fence();
+
+  out.intervals = intervals_out;
+
+  return out;
+}
+
 } // namespace csr
 } // namespace subsetix

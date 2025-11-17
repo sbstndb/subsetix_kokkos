@@ -1,0 +1,82 @@
+﻿#include <Kokkos_Core.hpp>
+#include <gtest/gtest.h>
+
+#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/csr_set_ops.hpp>
+
+#include "csr_csr_test_utils.hpp"
+
+using namespace subsetix::csr;
+using namespace subsetix::csr_test;
+
+TEST(CSRTranslationSmokeTest, TranslationByZeroIsIdentity) {
+  Box2D box;
+  box.x_min = 0;
+  box.x_max = 16;
+  box.y_min = 0;
+  box.y_max = 8;
+
+  auto A = make_box_device(box);
+  auto T = translate_x_device(A, 0);
+
+  auto host_A = build_host_from_device(A);
+  auto host_T = build_host_from_device(T);
+
+  expect_equal_csr(host_A, host_T);
+}
+
+TEST(CSRTranslationSmokeTest, SimplePositiveTranslation) {
+  IntervalSet2DHost host_in =
+      make_host_csr({
+          {0, {Interval{0, 2}, Interval{4, 5}}},
+          {2, {Interval{1, 3}}},
+      });
+
+  auto dev_in = build_device_from_host(host_in);
+  auto dev_out = translate_x_device(dev_in, 3);
+  auto host_out = build_host_from_device(dev_out);
+
+  IntervalSet2DHost expected =
+      make_host_csr({
+          {0, {Interval{3, 5}, Interval{7, 8}}},
+          {2, {Interval{4, 6}}},
+      });
+
+  expect_equal_csr(host_out, expected);
+}
+
+TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslation) {
+  Box2D domain;
+  domain.x_min = 0;
+  domain.x_max = 64;
+  domain.y_min = 0;
+  domain.y_max = 32;
+
+  // Construire un set un peu riche : union d'un disque et d'un checkerboard.
+  Disk2D disk;
+  disk.cx = 20;
+  disk.cy = 16;
+  disk.radius = 8;
+
+  auto A = make_disk_device(disk);
+
+  Domain2D dom;
+  dom.x_min = domain.x_min;
+  dom.x_max = domain.x_max;
+  dom.y_min = domain.y_min;
+  dom.y_max = domain.y_max;
+
+  auto B = make_checkerboard_device(dom, 4);
+
+  auto U = set_union_device(A, B);
+  auto T = translate_x_device(U, -5);
+
+  auto host_U = build_host_from_device(U);
+  auto host_T = build_host_from_device(T);
+
+  const std::size_t card_U = cardinality(host_U);
+  const std::size_t card_T = cardinality(host_T);
+
+  EXPECT_EQ(card_U, card_T);
+}
+
