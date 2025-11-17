@@ -35,6 +35,17 @@
         "SUBSETIX_KOKKOS_CUDA": "ON",
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++"
       }
+    },
+    {
+      "name": "serial-asan",
+      "displayName": "Kokkos SERIAL backend with sanitizers (Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-serial-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-g -O1 -fsanitize=address,undefined",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
     }
   ],
   "buildPresets": [
@@ -49,6 +60,10 @@
     {
       "name": "cuda-clang",
       "configurePreset": "cuda-clang"
+    },
+    {
+      "name": "serial-asan",
+      "configurePreset": "serial-asan"
     }
   ],
   "testPresets": [
@@ -63,7 +78,10 @@
     {
       "name": "cuda-clang",
       "configurePreset": "cuda-clang"
+    },
+    {
+      "name": "serial-asan",
+      "configurePreset": "serial-asan"
     }
   ]
 }
-

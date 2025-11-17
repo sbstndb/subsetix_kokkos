@@ -11,10 +11,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(SUBSETIX_KOKKOS_OPENMP "Enable Kokkos OpenMP backend" OFF)
 option(SUBSETIX_KOKKOS_CUDA "Enable Kokkos CUDA backend" OFF)
 
-if(SUBSETIX_KOKKOS_CUDA)
-    enable_language(CUDA)
-endif()
-
 include(FetchContent)
 
 FetchContent_Declare(
