@@ -1,6 +1,7 @@
 ﻿#include <Kokkos_Core.hpp>
 
 #include <subsetix/csr_interval_set.hpp>
+#include <subsetix/csr_field.hpp>
 #include <subsetix/vtk_export.hpp>
 
 int main(int argc, char* argv[]) {
@@ -21,6 +22,11 @@ int main(int argc, char* argv[]) {
     auto box_host = build_host_from_device(box_dev);
     write_legacy_quads(box_host, "box.vtk");
 
+    // Also build a constant field on top of the box geometry.
+    auto box_field_host =
+        make_field_like_geometry<float>(box_host, 1.0f);
+    write_legacy_quads(box_field_host, "box_field.vtk", "value");
+
     // Example 2: disk centered in the box (upscaled by 4x).
     Disk2D disk;
     disk.cx = 32;
@@ -30,6 +36,10 @@ int main(int argc, char* argv[]) {
     auto disk_dev = make_disk_device(disk);
     auto disk_host = build_host_from_device(disk_dev);
     write_legacy_quads(disk_host, "disk.vtk");
+
+    auto disk_field_host =
+        make_field_like_geometry<float>(disk_host, 2.0f);
+    write_legacy_quads(disk_field_host, "disk_field.vtk", "value");
 
     // Example 3: random geometry on a larger domain (upscaled by 4x).
     Domain2D dom;
@@ -42,11 +52,19 @@ int main(int argc, char* argv[]) {
     auto rand_host = build_host_from_device(rand_dev);
     write_legacy_quads(rand_host, "random.vtk");
 
+    auto rand_field_host =
+        make_field_like_geometry<float>(rand_host, 3.0f);
+    write_legacy_quads(rand_field_host, "random_field.vtk", "value");
+
     // Example 4: checkerboard on the same domain with square size 4.
     Domain2D cb_dom = dom;
     auto cb_dev = make_checkerboard_device(cb_dom, 4);
     auto cb_host = build_host_from_device(cb_dev);
     write_legacy_quads(cb_host, "checkerboard.vtk");
+
+    auto cb_field_host =
+        make_field_like_geometry<float>(cb_host, 4.0f);
+    write_legacy_quads(cb_field_host, "checkerboard_field.vtk", "value");
   }
 
   Kokkos::finalize();
