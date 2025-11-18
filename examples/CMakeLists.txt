@@ -51,3 +51,12 @@ target_link_libraries(set_algebra_masks_to_vtk
     PRIVATE
         subsetix_core
 )
+
+add_executable(csr_morphology_to_vtk
+    csr_morphology_to_vtk.cpp
+)
+
+target_link_libraries(csr_morphology_to_vtk
+    PRIVATE
+        subsetix_core
+)
