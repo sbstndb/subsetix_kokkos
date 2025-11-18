@@ -1738,8 +1738,14 @@ struct MorphologyWorkspace {
   
   Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows;
   
+  // Temporary buffers for build_*_row_mapping to avoid allocation
+  Kokkos::View<std::size_t*, DeviceMemorySpace> row_block_counts;
+  Kokkos::View<std::size_t*, DeviceMemorySpace> scan_offsets;
+  Kokkos::View<std::size_t, DeviceMemorySpace> d_total_rows;
+  
   std::size_t capacity_rows = 0;
   std::size_t capacity_input_map = 0;
+  std::size_t capacity_temps = 0;
 
   void ensure_capacity_rows(std::size_t n_rows) {
     if (n_rows <= capacity_rows) return;
@@ -1759,6 +1765,17 @@ struct MorphologyWorkspace {
       input_row_exists = Kokkos::View<int*, DeviceMemorySpace>("subsetix_morph_in_exists", n_in);
       input_row_to_output_start = Kokkos::View<int*, DeviceMemorySpace>("subsetix_morph_in_to_out", n_in);
       capacity_input_map = n_in;
+  }
+  
+  void ensure_capacity_temps(std::size_t n_in) {
+      if (n_in <= capacity_temps) return;
+      row_block_counts = Kokkos::View<std::size_t*, DeviceMemorySpace>("subsetix_morph_temp_counts", n_in);
+      scan_offsets = Kokkos::View<std::size_t*, DeviceMemorySpace>("subsetix_morph_temp_offsets", n_in);
+      
+      if (!d_total_rows.data()) {
+          d_total_rows = Kokkos::View<std::size_t, DeviceMemorySpace>("subsetix_morph_temp_total");
+      }
+      capacity_temps = n_in;
   }
 };
 
@@ -2070,11 +2087,13 @@ build_expand_row_mapping(const IntervalSet2DDevice& in,
     if (num_rows_in == 0) return result;
 
     workspace.ensure_capacity_input_map(num_rows_in);
+    workspace.ensure_capacity_temps(num_rows_in);
+    
     auto in_exists = workspace.input_row_exists;
     auto row_keys_in = in.row_keys;
     
     // 1. Identify where overlaps break
-    Kokkos::View<std::size_t*, DeviceMemorySpace> row_block_counts("morph_block_counts", num_rows_in);
+    auto row_block_counts = workspace.row_block_counts;
 
     Kokkos::parallel_for("morph_expand_counts", Kokkos::RangePolicy<ExecSpace>(0, num_rows_in),
         KOKKOS_LAMBDA(const std::size_t i) {
@@ -2109,8 +2128,8 @@ build_expand_row_mapping(const IntervalSet2DDevice& in,
     
     ExecSpace().fence();
     
-    Kokkos::View<std::size_t, DeviceMemorySpace> d_total("morph_total");
-    Kokkos::View<std::size_t*, DeviceMemorySpace> scan_offsets("morph_scan", num_rows_in);
+    auto d_total = workspace.d_total_rows;
+    auto scan_offsets = workspace.scan_offsets;
     
     Kokkos::parallel_scan("morph_expand_scan", Kokkos::RangePolicy<ExecSpace>(0, num_rows_in),
         KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
@@ -2211,8 +2230,27 @@ build_shrink_row_mapping(const IntervalSet2DDevice& in,
     if (num_rows_in == 0) return result;
     
     workspace.ensure_capacity_rows(num_rows_in);
+    workspace.ensure_capacity_temps(num_rows_in);
+    
     auto valid_flags = workspace.row_map_end;
-    auto scan_offsets = workspace.row_map_start;
+    // Actually, we can use `row_map_start` as scan_offsets later if we are careful, 
+    // but here we need valid_flags AND offsets. 
+    // In original code: valid_flags was row_map_end, scan_offsets was row_map_start. 
+    // But wait, build_shrink_row_mapping used row_map_start for offsets in the original implementation? 
+    // Let's check: 
+    // "auto scan_offsets = workspace.row_map_start;"
+    // And then later: "result.map_start = out_map_start;"
+    
+    // We need temporary scan offsets during scan, then we fill `out_map_start` in the final loop.
+    // In the original code, `offsets` variable was allocated locally:
+    // Kokkos::View<std::size_t*, DeviceMemorySpace> offsets("morph_shrink_offsets", num_rows_in);
+    // Let's use workspace.scan_offsets for this.
+    
+    auto offsets = workspace.scan_offsets;
+    // row_map_end is used as valid_flags temporary buffer?
+    // In original code: "auto valid_flags = workspace.row_map_end;"
+    // This is fine as row_map_end is not part of the output for Shrink (only map_start is used).
+    
     auto row_keys_in = in.row_keys;
     
     // Check validity of each row
@@ -2250,8 +2288,7 @@ build_shrink_row_mapping(const IntervalSet2DDevice& in,
     
     ExecSpace().fence();
     
-    Kokkos::View<std::size_t, DeviceMemorySpace> d_total("morph_shrink_total");
-    Kokkos::View<std::size_t*, DeviceMemorySpace> offsets("morph_shrink_offsets", num_rows_in);
+    auto d_total = workspace.d_total_rows;
     
     Kokkos::parallel_scan("morph_shrink_scan", Kokkos::RangePolicy<ExecSpace>(0, num_rows_in),
         KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
