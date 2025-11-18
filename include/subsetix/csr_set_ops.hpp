@@ -1072,8 +1072,94 @@ struct RowKeyTransformFunctor {
 };
 
 /**
- * @brief Apply a row-key transform on device, preserving row_ptr and
- *        intervals.
+ * @brief Workspace for translation operations.
+ *
+ * Reuses buffers across calls to avoid per-call allocations.
+ */
+struct TranslationWorkspace {
+  IntervalSet2DDevice::RowKeyView row_keys_out;
+  IntervalSet2DDevice::IntervalView intervals_out;
+  std::size_t capacity_rows = 0;
+  std::size_t capacity_intervals = 0;
+
+  void ensure_capacity_rows(std::size_t rows) {
+    if (rows <= capacity_rows) {
+      return;
+    }
+    row_keys_out = IntervalSet2DDevice::RowKeyView(
+        "subsetix_csr_translation_row_keys_ws", rows);
+    capacity_rows = rows;
+  }
+
+  void ensure_capacity_intervals(std::size_t intervals) {
+    if (intervals <= capacity_intervals) {
+      return;
+    }
+    intervals_out = IntervalSet2DDevice::IntervalView(
+        "subsetix_csr_translation_intervals_ws", intervals);
+    capacity_intervals = intervals;
+  }
+};
+
+/**
+ * @brief Workspace for project (coarsening) operations to avoid per-call allocations.
+ */
+struct ProjectWorkspace {
+  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts;
+  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals;
+  std::size_t capacity_rows = 0;
+
+  void ensure_capacity_coarse(std::size_t num_rows_coarse) {
+    if (num_rows_coarse <= capacity_rows) {
+      return;
+    }
+    row_counts = Kokkos::View<std::size_t*, DeviceMemorySpace>(
+        "subsetix_csr_project_row_counts_ws", num_rows_coarse);
+    capacity_rows = num_rows_coarse;
+  }
+  
+  void ensure_total_intervals() {
+    if (!total_intervals.data()) {
+      total_intervals = Kokkos::View<std::size_t, DeviceMemorySpace>(
+          "subsetix_csr_project_total_intervals_ws");
+    }
+  }
+};
+
+/**
+ * @brief Workspace for row coarsening operations to avoid per-call allocations.
+ */
+struct CoarsenWorkspace {
+  IntervalSet2DDevice::RowKeyView tmp_rows;
+  Kokkos::View<int*, DeviceMemorySpace> tmp_first;
+  Kokkos::View<int*, DeviceMemorySpace> tmp_second;
+  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows;
+  std::size_t capacity_rows = 0;
+
+  void ensure_capacity(std::size_t num_rows_fine) {
+    if (num_rows_fine <= capacity_rows) {
+      return;
+    }
+    tmp_rows = IntervalSet2DDevice::RowKeyView(
+        "subsetix_csr_coarsen_tmp_rows_ws", num_rows_fine);
+    tmp_first = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_coarsen_tmp_first_ws", num_rows_fine);
+    tmp_second = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_coarsen_tmp_second_ws", num_rows_fine);
+    capacity_rows = num_rows_fine;
+  }
+  
+  void ensure_d_num_rows() {
+    if (!d_num_rows.data()) {
+      d_num_rows = Kokkos::View<std::size_t, DeviceMemorySpace>(
+          "subsetix_csr_coarsen_num_rows_ws");
+    }
+  }
+};
+
+/**
+ * @brief Apply a row-key transform on device with workspace,
+ *        preserving row_ptr and intervals.
  *
  * The transform is a functor with signature:
  *   KOKKOS_INLINE_FUNCTION RowKey2D operator()(RowKey2D) const;
@@ -1082,26 +1168,29 @@ struct RowKeyTransformFunctor {
  * be reused for other Y-only transforms.
  */
 template <class Transform>
-inline IntervalSet2DDevice
+inline void
 apply_row_key_transform_device(const IntervalSet2DDevice& in,
-                               Transform transform) {
-  IntervalSet2DDevice out;
-
+                               Transform transform,
+                               IntervalSet2DDevice& out,
+                               TranslationWorkspace& workspace) {
   out.num_rows = in.num_rows;
   out.num_intervals = in.num_intervals;
+  out.row_ptr = in.row_ptr;
+  out.intervals = in.intervals;
 
   if (in.num_rows == 0) {
     out.row_keys = IntervalSet2DDevice::RowKeyView();
-    out.row_ptr = in.row_ptr;
-    out.intervals = in.intervals;
-    return out;
+    return;
   }
 
-  IntervalSet2DDevice::RowKeyView row_keys_out(
-      "subsetix_csr_row_key_transform", in.num_rows);
+  // Allocate independent output buffer for row_keys
+  if (out.row_keys.extent(0) < in.num_rows) {
+    out.row_keys = IntervalSet2DDevice::RowKeyView(
+        "subsetix_csr_row_key_transform_out", in.num_rows);
+  }
 
   RowKeyTransformFunctor<Transform> functor;
-  functor.row_keys_out = row_keys_out;
+  functor.row_keys_out = out.row_keys;
   functor.row_keys_in = in.row_keys;
   functor.transform = transform;
 
@@ -1111,12 +1200,6 @@ apply_row_key_transform_device(const IntervalSet2DDevice& in,
       functor);
 
   ExecSpace().fence();
-
-  out.row_keys = row_keys_out;
-  out.row_ptr = in.row_ptr;
-  out.intervals = in.intervals;
-
-  return out;
 }
 
 KOKKOS_INLINE_FUNCTION
@@ -1157,17 +1240,19 @@ struct IntervalTransformFunctor {
 };
 
 /**
- * @brief Apply an interval transform on device, preserving row structure.
+ * @brief Apply an interval transform on device with workspace,
+ *        preserving row structure.
  *
- * The transform is a functor with signature:
- *   KOKKOS_INLINE_FUNCTION Interval operator()(Interval) const;
+ * This version reuses buffers from the workspace to avoid per-call
+ * allocations. The transformed intervals are written into the provided
+ * output buffer, avoiding the semantic regression of returning subviews.
  */
 template <class Transform>
-inline IntervalSet2DDevice
+inline void
 apply_interval_transform_device(const IntervalSet2DDevice& in,
-                                Transform transform) {
-  IntervalSet2DDevice out;
-
+                                Transform transform,
+                                IntervalSet2DDevice& out,
+                                TranslationWorkspace& workspace) {
   out.num_rows = in.num_rows;
   out.num_intervals = in.num_intervals;
   out.row_keys = in.row_keys;
@@ -1175,14 +1260,17 @@ apply_interval_transform_device(const IntervalSet2DDevice& in,
 
   if (in.num_intervals == 0) {
     out.intervals = IntervalSet2DDevice::IntervalView();
-    return out;
+    return;
   }
 
-  IntervalSet2DDevice::IntervalView intervals_out(
-      "subsetix_csr_interval_transform", in.num_intervals);
+  // Allocate independent output buffer for intervals
+  if (out.intervals.extent(0) < in.num_intervals) {
+    out.intervals = IntervalSet2DDevice::IntervalView(
+        "subsetix_csr_interval_transform_out", in.num_intervals);
+  }
 
   IntervalTransformFunctor<Transform> functor;
-  functor.intervals_out = intervals_out;
+  functor.intervals_out = out.intervals;
   functor.intervals_in = in.intervals;
   functor.transform = transform;
 
@@ -1192,9 +1280,6 @@ apply_interval_transform_device(const IntervalSet2DDevice& in,
       functor);
 
   ExecSpace().fence();
-
-  out.intervals = intervals_out;
-  return out;
 }
 
 struct TranslateXTransform {
@@ -1320,6 +1405,140 @@ build_row_coarsen_mapping(const IntervalSet2DDevice& fine) {
   return result;
 }
 
+/**
+ * @brief Build coarse-row mapping with workspace for buffer reuse.
+ *
+ * This variant reuses buffers from the workspace to avoid repeated
+ * allocations on GPU, which are very expensive.
+ */
+inline RowCoarsenResult
+build_row_coarsen_mapping(const IntervalSet2DDevice& fine,
+                          CoarsenWorkspace& workspace) {
+  RowCoarsenResult result;
+
+  const std::size_t num_rows_fine = fine.num_rows;
+  if (num_rows_fine == 0) {
+    return result;
+  }
+
+  // Use workspace buffers instead of allocating
+  workspace.ensure_capacity(num_rows_fine);
+  workspace.ensure_d_num_rows();
+
+  auto tmp_rows = workspace.tmp_rows;
+  auto tmp_first = workspace.tmp_first;
+  auto tmp_second = workspace.tmp_second;
+  auto d_num_rows = workspace.d_num_rows;
+
+  auto rows_in = fine.row_keys;
+
+  // Parallel: compute coarse Y for each fine row and mark boundaries
+  Kokkos::View<int*, DeviceMemorySpace> is_boundary(
+      "subsetix_coarsen_is_boundary", num_rows_fine);
+  Kokkos::View<Coord*, DeviceMemorySpace> coarse_y(
+      "subsetix_coarsen_y_vals", num_rows_fine);
+
+  Kokkos::parallel_for(
+      "subsetix_csr_coarsen_compute_boundaries",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_fine),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const Coord y_f = rows_in(i).y;
+        const Coord y_c = floor_div2(y_f);
+        coarse_y(i) = y_c;
+        
+        // Mark boundary if first row or coarse Y changes
+        if (i == 0) {
+          is_boundary(i) = 1;
+        } else {
+          const Coord y_c_prev = floor_div2(rows_in(i - 1).y);
+          is_boundary(i) = (y_c != y_c_prev) ? 1 : 0;
+        }
+      });
+
+  ExecSpace().fence();
+
+  // Scan to get output indices for boundaries
+  Kokkos::View<int*, DeviceMemorySpace> boundary_scan(
+      "subsetix_coarsen_boundary_scan", num_rows_fine);
+  Kokkos::View<int, DeviceMemorySpace> d_total_boundaries(
+      "subsetix_coarsen_total_boundaries");
+
+  Kokkos::parallel_scan(
+      "subsetix_csr_coarsen_scan_boundaries",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_fine),
+      KOKKOS_LAMBDA(const std::size_t i, int& update, const bool final_pass) {
+        const int val = is_boundary(i);
+        if (final_pass) {
+          boundary_scan(i) = update;
+          if (i + 1 == num_rows_fine) {
+            d_total_boundaries() = update + val;
+          }
+        }
+        update += val;
+      });
+
+  ExecSpace().fence();
+
+  int num_rows_out = 0;
+  Kokkos::deep_copy(num_rows_out, d_total_boundaries);
+
+  result.num_rows = static_cast<std::size_t>(num_rows_out);
+  if (num_rows_out == 0) {
+    return result;
+  }
+
+  // Fill output arrays in parallel
+  Kokkos::parallel_for(
+      "subsetix_csr_coarsen_fill_output",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_fine),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        if (is_boundary(i)) {
+          const int out_idx = boundary_scan(i);
+          const Coord y_c = coarse_y(i);
+          
+          tmp_rows(out_idx) = RowKey2D{y_c};
+          tmp_first(out_idx) = static_cast<int>(i);
+          
+          // Check if next row has same coarse Y
+          if (i + 1 < num_rows_fine && coarse_y(i + 1) == y_c) {
+            tmp_second(out_idx) = static_cast<int>(i + 1);
+          } else {
+            tmp_second(out_idx) = -1;
+          }
+        }
+      });
+
+  result.num_rows = num_rows_out;
+  if (num_rows_out == 0) {
+    return result;
+  }
+
+  result.row_keys = IntervalSet2DDevice::RowKeyView(
+      "subsetix_csr_coarsen_row_keys", num_rows_out);
+  result.row_index_first = Kokkos::View<int*, DeviceMemorySpace>(
+      "subsetix_csr_coarsen_row_index_first", num_rows_out);
+  result.row_index_second = Kokkos::View<int*, DeviceMemorySpace>(
+      "subsetix_csr_coarsen_row_index_second", num_rows_out);
+
+  auto out_rows = result.row_keys;
+  auto out_first = result.row_index_first;
+  auto out_second = result.row_index_second;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_coarsen_row_merge_copy",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        out_rows(i) = tmp_rows(i);
+        out_first(i) = tmp_first(i);
+        out_second(i) = tmp_second(i);
+      });
+
+  ExecSpace().fence();
+
+  return result;
+}
+
+
 } // namespace detail
 
 /**
@@ -1362,15 +1581,56 @@ struct CsrSetAlgebraContext {
   detail::RowUnionWorkspace union_workspace;
   detail::RowDifferenceWorkspace difference_workspace;
   detail::RowScanWorkspace scan_workspace;
+  detail::TranslationWorkspace translation_workspace;
+  detail::ProjectWorkspace project_workspace;
+  detail::CoarsenWorkspace coarsen_workspace;
 };
 
 /**
- * @brief Compute the set union into a preallocated CSR buffer on device.
+ * @brief Translate all intervals of a CSR interval set by a constant
+ *        offset along X.
  *
- * The views in @p out must already be allocated with sufficient capacity:
+ * Row structure (row_keys, row_ptr) is preserved; only the begin/end
+ * coordinates of intervals are shifted by dx. Requires a context for
+ * workspace buffer reuse.
+ */
+inline void
+translate_x_device(const IntervalSet2DDevice& in,
+                   Coord dx,
+                   IntervalSet2DDevice& out,
+                   CsrSetAlgebraContext& ctx) {
+  if (dx == 0) {
+    out = in;
+    return;
+  }
+  detail::TranslateXTransform transform{dx};
+  detail::apply_interval_transform_device(in, transform, out,
+                                          ctx.translation_workspace);
+}
+
 /**
- * @brief Compute the set difference A \ B into a preallocated CSR buffer
- *        on device.
+ * @brief Translate all rows of a CSR interval set by a constant offset
+ *        along Y.
+ *
+ * Interval structure and row_ptr are preserved; only row_keys(i).y are
+ * shifted by dy. Requires a context for workspace buffer reuse.
+ */
+inline void
+translate_y_device(const IntervalSet2DDevice& in,
+                   Coord dy,
+                   IntervalSet2DDevice& out,
+                   CsrSetAlgebraContext& ctx) {
+  if (dy == 0 || in.num_rows == 0) {
+    out = in;
+    return;
+  }
+  detail::TranslateYTransform transform{dy};
+  detail::apply_row_key_transform_device(in, transform, out,
+                                         ctx.translation_workspace);
+}
+
+/**
+ * @brief Compute the set union into a preallocated CSR buffer on device.
  *
  * The views in @p out must already be allocated with sufficient capacity:
  *  - out.row_keys.extent(0)   >= num_rows_out,
@@ -1878,35 +2138,45 @@ set_difference_device(const IntervalSet2DDevice& A,
  * @brief Refine a CSR interval set to the next finer level (×2 in X and Y).
  *
  * Coordinates are scaled by 2 on both axes. This is a purely geometric
- * operation; row structure is preserved.
+ * operation; row structure is preserved. Requires a context for workspace
+ * buffer reuse.
  */
-inline IntervalSet2DDevice
-refine_level_up_device(const IntervalSet2DDevice& in) {
-  IntervalSet2DDevice out;
+inline void
+refine_level_up_device(const IntervalSet2DDevice& in,
+                       IntervalSet2DDevice& out,
+                       CsrSetAlgebraContext& ctx) {
   const std::size_t num_rows_in = in.num_rows;
   const std::size_t num_intervals_in = in.num_intervals;
 
   if (num_rows_in == 0) {
-    return out;
+    out.num_rows = 0;
+    out.num_intervals = 0;
+    return;
   }
 
   const std::size_t num_rows_out = num_rows_in * 2;
   const std::size_t num_intervals_out = num_intervals_in * 2;
 
-  IntervalSet2DDevice::RowKeyView row_keys_out(
-      "subsetix_csr_refine_row_keys", num_rows_out);
-  IntervalSet2DDevice::IndexView row_ptr_out(
-      "subsetix_csr_refine_row_ptr", num_rows_out + 1);
-
-  IntervalSet2DDevice::IntervalView intervals_out;
-  if (num_intervals_out > 0) {
-    intervals_out = IntervalSet2DDevice::IntervalView(
-        "subsetix_csr_refine_intervals", num_intervals_out);
+  // Allocate output buffers if needed
+  if (out.row_keys.extent(0) < num_rows_out) {
+    out.row_keys = IntervalSet2DDevice::RowKeyView(
+        "subsetix_csr_refine_row_keys_out", num_rows_out);
+  }
+  if (out.row_ptr.extent(0) < num_rows_out + 1) {
+    out.row_ptr = IntervalSet2DDevice::IndexView(
+        "subsetix_csr_refine_row_ptr_out", num_rows_out + 1);
+  }
+  if (num_intervals_out > 0 && out.intervals.extent(0) < num_intervals_out) {
+    out.intervals = IntervalSet2DDevice::IntervalView(
+        "subsetix_csr_refine_intervals_out", num_intervals_out);
   }
 
   auto row_keys_in = in.row_keys;
   auto row_ptr_in = in.row_ptr;
   auto intervals_in = in.intervals;
+  auto row_keys_out = out.row_keys;
+  auto row_ptr_out = out.row_ptr;
+  auto intervals_out = out.intervals;
 
   Kokkos::parallel_for(
       "subsetix_csr_refine_row_keys",
@@ -1955,13 +2225,10 @@ refine_level_up_device(const IntervalSet2DDevice& in) {
         });
   }
 
+  ExecSpace().fence();
+
   out.num_rows = num_rows_out;
   out.num_intervals = num_intervals_out;
-  out.row_keys = row_keys_out;
-  out.row_ptr = row_ptr_out;
-  out.intervals = intervals_out;
-
-  return out;
 }
 
 /**
@@ -1971,23 +2238,29 @@ refine_level_up_device(const IntervalSet2DDevice& in) {
  * Semantics (1D example):
  *   level1 [0,1) -> level0 [0,1)
  *   level1 [0,3) -> level0 [0,2)
+ *
+ * Requires a context for workspace buffer reuse.
  */
-inline IntervalSet2DDevice
-project_level_down_device(const IntervalSet2DDevice& fine) {
-  IntervalSet2DDevice out;
-
+inline void
+project_level_down_device(const IntervalSet2DDevice& fine,
+                           IntervalSet2DDevice& out,
+                           CsrSetAlgebraContext& ctx) {
   const std::size_t num_rows_fine = fine.num_rows;
   const std::size_t num_intervals_fine = fine.num_intervals;
 
   if (num_rows_fine == 0 || num_intervals_fine == 0) {
-    return out;
+    out.num_rows = 0;
+    out.num_intervals = 0;
+    return;
   }
 
   detail::RowCoarsenResult rows =
-      detail::build_row_coarsen_mapping(fine);
+      detail::build_row_coarsen_mapping(fine, ctx.coarsen_workspace);
   const std::size_t num_rows_coarse = rows.num_rows;
   if (num_rows_coarse == 0) {
-    return out;
+    out.num_rows = 0;
+    out.num_intervals = 0;
+    return;
   }
 
   auto row_keys_coarse = rows.row_keys;
@@ -2001,9 +2274,14 @@ project_level_down_device(const IntervalSet2DDevice& fine) {
       detail::CoarsenIntervalView<IntervalSet2DDevice::IntervalView>;
   CoarsenView coarsen_view{intervals_fine};
 
-  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
-      "subsetix_csr_project_row_counts", num_rows_coarse);
+  // Use workspace buffers to avoid allocation
+  ctx.project_workspace.ensure_capacity_coarse(num_rows_coarse);
+  ctx.project_workspace.ensure_total_intervals();
+  
+  auto row_counts = ctx.project_workspace.row_counts;
+  auto total_intervals = ctx.project_workspace.total_intervals;
 
+  // Count intervals needed for each coarse row
   Kokkos::parallel_for(
       "subsetix_csr_project_count",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_coarse),
@@ -2039,10 +2317,12 @@ project_level_down_device(const IntervalSet2DDevice& fine) {
 
   ExecSpace().fence();
 
-  IntervalSet2DDevice::IndexView row_ptr_out(
-      "subsetix_csr_project_row_ptr", num_rows_coarse + 1);
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_project_total_intervals");
+  // Allocate output row_ptr buffer if needed
+  if (out.row_ptr.extent(0) < num_rows_coarse + 1) {
+    out.row_ptr = IntervalSet2DDevice::IndexView(
+        "subsetix_csr_project_row_ptr_out", num_rows_coarse + 1);
+  }
+  auto row_ptr_out = out.row_ptr;
 
   Kokkos::parallel_scan(
       "subsetix_csr_project_scan",
@@ -2069,15 +2349,18 @@ project_level_down_device(const IntervalSet2DDevice& fine) {
   out.num_rows = num_rows_coarse;
   out.num_intervals = num_intervals_coarse;
   out.row_keys = row_keys_coarse;
-  out.row_ptr = row_ptr_out;
 
   if (num_intervals_coarse == 0) {
     out.intervals = IntervalSet2DDevice::IntervalView();
-    return out;
+    return;
   }
 
-  IntervalSet2DDevice::IntervalView intervals_out(
-      "subsetix_csr_project_intervals", num_intervals_coarse);
+  if (out.intervals.extent(0) < num_intervals_coarse) {
+    out.intervals = IntervalSet2DDevice::IntervalView(
+        "subsetix_csr_project_intervals_out", num_intervals_coarse);
+  }
+
+  auto intervals_out = out.intervals;
 
   Kokkos::parallel_for(
       "subsetix_csr_project_fill",
@@ -2113,44 +2396,9 @@ project_level_down_device(const IntervalSet2DDevice& fine) {
       });
 
   ExecSpace().fence();
-
-  out.intervals = intervals_out;
-  return out;
 }
 
-/**
- * @brief Translate all intervals of a CSR interval set by a constant
- *        offset along X.
- *
- * Row structure (row_keys, row_ptr) is preserved; only the begin/end
- * coordinates of intervals are shifted by dx.
- */
-inline IntervalSet2DDevice
-translate_x_device(const IntervalSet2DDevice& in,
-                   Coord dx) {
-  if (dx == 0) {
-    return in;
-  }
-  detail::TranslateXTransform transform{dx};
-  return detail::apply_interval_transform_device(in, transform);
-}
 
-/**
- * @brief Translate all rows of a CSR interval set by a constant offset
- *        along Y.
- *
- * Interval structure and row_ptr are preserved; only row_keys(i).y are
- * shifted by dy.
- */
-inline IntervalSet2DDevice
-translate_y_device(const IntervalSet2DDevice& in,
-                   Coord dy) {
-  if (dy == 0 || in.num_rows == 0) {
-    return in;
-  }
-  detail::TranslateYTransform transform{dy};
-  return detail::apply_row_key_transform_device(in, transform);
-}
 
 } // namespace csr
 } // namespace subsetix

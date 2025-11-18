@@ -32,11 +32,15 @@ void bench_unary_op(benchmark::State& state,
   IntervalSet2DDevice A = make_box(cfg);
   const std::size_t intervals_in = A.num_intervals;
 
+  // Create context outside the loop to measure steady-state performance
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice out;
+
   double total_seconds = 0.0;
 
   for (auto _ : state) {
     const auto t0 = std::chrono::steady_clock::now();
-    auto out = op(A);
+    op(A, out, ctx);
     const auto t1 = std::chrono::steady_clock::now();
 
     const std::chrono::duration<double> dt = t1 - t0;
@@ -61,14 +65,21 @@ void bench_unary_op(benchmark::State& state,
 void bench_projection(benchmark::State& state,
                       const RectConfig& cfg) {
   IntervalSet2DDevice coarse = make_box(cfg);
-  IntervalSet2DDevice fine = refine_level_up_device(coarse);
+  
+  // Create context outside the loop
+  CsrSetAlgebraContext ctx;
+  
+  // Use context for refine as well
+  IntervalSet2DDevice fine;
+  refine_level_up_device(coarse, fine, ctx);
   const std::size_t intervals_in = fine.num_intervals;
 
+  IntervalSet2DDevice out;
   double total_seconds = 0.0;
 
   for (auto _ : state) {
     const auto t0 = std::chrono::steady_clock::now();
-    auto out = project_level_down_device(fine);
+    project_level_down_device(fine, out, ctx);
     const auto t1 = std::chrono::steady_clock::now();
 
     const std::chrono::duration<double> dt = t1 - t0;
@@ -134,29 +145,29 @@ void bench_allocation(benchmark::State& state,
 
 void BM_CSRTranslateX_Tiny(benchmark::State& state) {
   RectConfig cfg{0, 128, 0, 128};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return translate_x_device(A, 5);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    translate_x_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateX_Medium(benchmark::State& state) {
   RectConfig cfg{0, 1280, 0, 1280};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return translate_x_device(A, 5);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    translate_x_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateX_Large(benchmark::State& state) {
   RectConfig cfg{0, 12800, 0, 12800};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return translate_x_device(A, 5);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    translate_x_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateX_XLarge(benchmark::State& state) {
   RectConfig cfg{0, 128000, 0, 128000};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return translate_x_device(A, 5);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    translate_x_device(A, 5, out, ctx);
   });
 }
 
@@ -164,29 +175,29 @@ void BM_CSRTranslateX_XLarge(benchmark::State& state) {
 
 void BM_CSRTranslateY_Tiny(benchmark::State& state) {
   RectConfig cfg{0, 128, 0, 128};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return translate_y_device(A, 5);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    translate_y_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateY_Medium(benchmark::State& state) {
   RectConfig cfg{0, 1280, 0, 1280};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return translate_y_device(A, 5);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    translate_y_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateY_Large(benchmark::State& state) {
   RectConfig cfg{0, 12800, 0, 12800};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return translate_y_device(A, 5);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    translate_y_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateY_XLarge(benchmark::State& state) {
   RectConfig cfg{0, 128000, 0, 128000};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return translate_y_device(A, 5);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    translate_y_device(A, 5, out, ctx);
   });
 }
 
@@ -194,29 +205,29 @@ void BM_CSRTranslateY_XLarge(benchmark::State& state) {
 
 void BM_CSRRefine_Tiny(benchmark::State& state) {
   RectConfig cfg{0, 128, 0, 128};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return refine_level_up_device(A);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    refine_level_up_device(A, out, ctx);
   });
 }
 
 void BM_CSRRefine_Medium(benchmark::State& state) {
   RectConfig cfg{0, 1280, 0, 1280};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return refine_level_up_device(A);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    refine_level_up_device(A, out, ctx);
   });
 }
 
 void BM_CSRRefine_Large(benchmark::State& state) {
   RectConfig cfg{0, 12800, 0, 12800};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return refine_level_up_device(A);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    refine_level_up_device(A, out, ctx);
   });
 }
 
 void BM_CSRRefine_XLarge(benchmark::State& state) {
   RectConfig cfg{0, 128000, 0, 128000};
-  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A) {
-    return refine_level_up_device(A);
+  bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
+    refine_level_up_device(A, out, ctx);
   });
 }
 

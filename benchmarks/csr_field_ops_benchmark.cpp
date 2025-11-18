@@ -170,8 +170,9 @@ void bench_restriction(benchmark::State& state,
       make_field(coarse_cfg, 0.0);
   IntervalSet2DDevice coarse_mask = make_mask(coarse_cfg);
 
-  IntervalSet2DDevice fine_geom =
-      refine_level_up_device(coarse_mask);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine_geom;
+  refine_level_up_device(coarse_mask, fine_geom, ctx);
   auto fine_geom_host = build_host_from_device(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
@@ -236,8 +237,9 @@ void bench_prolongation(benchmark::State& state,
   }
   coarse = build_device_field_from_host(coarse_host);
 
-  IntervalSet2DDevice fine_geom =
-      refine_level_up_device(make_mask(coarse_cfg));
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine_geom;
+  refine_level_up_device(make_mask(coarse_cfg), fine_geom, ctx);
   auto fine_geom_host = build_host_from_device(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);

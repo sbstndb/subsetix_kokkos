@@ -31,8 +31,9 @@ int main(int argc, char* argv[]) {
     coarse_box.y_max = 8;
 
     auto coarse_geom_dev = make_box_device(coarse_box);
-    auto fine_geom_dev =
-        refine_level_up_device(coarse_geom_dev);
+    CsrSetAlgebraContext ctx;
+    IntervalSet2DDevice fine_geom_dev;
+    refine_level_up_device(coarse_geom_dev, fine_geom_dev, ctx);
 
     auto coarse_geom_host =
         build_host_from_device(coarse_geom_dev);

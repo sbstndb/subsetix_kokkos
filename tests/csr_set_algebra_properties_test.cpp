@@ -3,7 +3,7 @@
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_set_ops.hpp>
 
-#include "csr_csr_test_utils.hpp"
+#include "csr_test_utils.hpp"
 
 using namespace subsetix::csr;
 using namespace subsetix::csr_test;

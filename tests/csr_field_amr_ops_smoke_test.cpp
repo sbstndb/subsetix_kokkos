@@ -67,7 +67,9 @@ bool host_try_get(const IntervalField2DHost<T>& field,
 
 TEST(CSRFieldAmrOpsSmokeTest, RestrictAveragesFineValues) {
   auto coarse_geom = make_box_mask(0, 2, 0, 2);
-  auto fine_geom = refine_level_up_device(coarse_geom);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine_geom;
+  refine_level_up_device(coarse_geom, fine_geom, ctx);
 
   auto coarse_geom_host = build_host_from_device(coarse_geom);
   auto fine_geom_host = build_host_from_device(fine_geom);
@@ -141,7 +143,9 @@ TEST(CSRFieldAmrOpsSmokeTest, RestrictAveragesFineValues) {
 
 TEST(CSRFieldAmrOpsSmokeTest, ProlongCopiesCoarseValues) {
   auto coarse_geom = make_box_mask(0, 3, 0, 2);
-  auto fine_geom = refine_level_up_device(coarse_geom);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine_geom;
+  refine_level_up_device(coarse_geom, fine_geom, ctx);
 
   auto coarse_geom_host = build_host_from_device(coarse_geom);
   auto fine_geom_host = build_host_from_device(fine_geom);

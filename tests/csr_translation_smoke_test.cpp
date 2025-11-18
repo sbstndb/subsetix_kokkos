@@ -4,7 +4,7 @@
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_set_ops.hpp>
 
-#include "csr_csr_test_utils.hpp"
+#include "csr_test_utils.hpp"
 
 using namespace subsetix::csr;
 using namespace subsetix::csr_test;
@@ -29,7 +29,9 @@ TEST(CSRTranslationSmokeTest, TranslationByZeroIsIdentity) {
   box.y_max = 8;
 
   auto A = make_box_device(box);
-  auto T = translate_x_device(A, 0);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice T;
+  translate_x_device(A, 0, T, ctx);
 
   auto host_A = build_host_from_device(A);
   auto host_T = build_host_from_device(T);
@@ -45,7 +47,9 @@ TEST(CSRTranslationSmokeTest, SimplePositiveTranslation) {
       });
 
   auto dev_in = build_device_from_host(host_in);
-  auto dev_out = translate_x_device(dev_in, 3);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice dev_out;
+  translate_x_device(dev_in, 3, dev_out, ctx);
   auto host_out = build_host_from_device(dev_out);
 
   IntervalSet2DHost expected =
@@ -66,7 +70,9 @@ TEST(CSRTranslationSmokeTest, SimplePositiveTranslationY) {
 
   auto dev_in = build_device_from_host(host_in);
   const Coord dy = 2;
-  auto dev_out = translate_y_device(dev_in, dy);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice dev_out;
+  translate_y_device(dev_in, dy, dev_out, ctx);
   auto host_out = build_host_from_device(dev_out);
 
   IntervalSet2DHost expected =
@@ -102,7 +108,9 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslation) {
   auto B = make_checkerboard_device(dom, 4);
 
   auto U = run_union(A, B);
-  auto T = translate_x_device(U, -5);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice T;
+  translate_x_device(U, -5, T, ctx);
 
   auto host_U = build_host_from_device(U);
   auto host_T = build_host_from_device(T);
@@ -137,7 +145,9 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslationY) {
 
   auto U = run_union(A, B);
   const Coord dy = -3;
-  auto T = translate_y_device(U, dy);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice T;
+  translate_y_device(U, dy, T, ctx);
 
   auto host_U = build_host_from_device(U);
   auto host_T = build_host_from_device(T);
@@ -175,11 +185,13 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslation) {
 
   // (A ∪ B) translaté.
   auto U = run_union(A, B);
-  auto U_shift = translate_x_device(U, dx);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice U_shift, A_shift, B_shift;
+  translate_x_device(U, dx, U_shift, ctx);
 
   // A et B translatés puis union.
-  auto A_shift = translate_x_device(A, dx);
-  auto B_shift = translate_x_device(B, dx);
+  translate_x_device(A, dx, A_shift, ctx);
+  translate_x_device(B, dx, B_shift, ctx);
   auto U_shift_alt = run_union(A_shift, B_shift);
 
   auto host_U_shift = build_host_from_device(U_shift);
@@ -213,10 +225,12 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslationY) {
   const Coord dy = 5;
 
   auto U = run_union(A, B);
-  auto U_shift = translate_y_device(U, dy);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice U_shift, A_shift, B_shift;
+  translate_y_device(U, dy, U_shift, ctx);
 
-  auto A_shift = translate_y_device(A, dy);
-  auto B_shift = translate_y_device(B, dy);
+  translate_y_device(A, dy, A_shift, ctx);
+  translate_y_device(B, dy, B_shift, ctx);
   auto U_shift_alt = run_union(A_shift, B_shift);
 
   auto host_U_shift = build_host_from_device(U_shift);

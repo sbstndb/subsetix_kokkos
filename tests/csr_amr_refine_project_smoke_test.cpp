@@ -4,7 +4,7 @@
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_set_ops.hpp>
 
-#include "csr_csr_test_utils.hpp"
+#include "csr_test_utils.hpp"
 
 using namespace subsetix::csr;
 using namespace subsetix::csr_test;
@@ -17,8 +17,10 @@ TEST(CSRAmrRefineProjectTest, RefineThenProjectBoxIsIdentity) {
   box.y_max = 4;
 
   auto coarse = make_box_device(box);
-  auto fine = refine_level_up_device(coarse);
-  auto coarse_back = project_level_down_device(fine);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine, coarse_back;
+  refine_level_up_device(coarse, fine, ctx);
+  project_level_down_device(fine, coarse_back, ctx);
 
   auto host_coarse = build_host_from_device(coarse);
   auto host_back = build_host_from_device(coarse_back);
@@ -34,7 +36,9 @@ TEST(CSRAmrRefineProjectTest, RefineDuplicatesRowsAndIntervals) {
       });
 
   auto coarse = build_device_from_host(coarse_host);
-  auto fine = refine_level_up_device(coarse);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine;
+  refine_level_up_device(coarse, fine, ctx);
   auto fine_host = build_host_from_device(fine);
 
   ASSERT_EQ(fine_host.row_keys.size(),
@@ -70,7 +74,9 @@ TEST(CSRAmrRefineProjectTest, RefineBoxCardinalityFactorFour) {
   box.y_max = 5;
 
   auto coarse = make_box_device(box);
-  auto fine = refine_level_up_device(coarse);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine;
+  refine_level_up_device(coarse, fine, ctx);
 
   auto host_coarse = build_host_from_device(coarse);
   auto host_fine = build_host_from_device(fine);
@@ -92,7 +98,9 @@ TEST(CSRAmrRefineProjectTest, Project1DExamplesOnSingleRow) {
         });
 
     auto fine = build_device_from_host(fine_host);
-    auto coarse = project_level_down_device(fine);
+    CsrSetAlgebraContext ctx;
+    IntervalSet2DDevice coarse;
+    project_level_down_device(fine, coarse, ctx);
     auto coarse_host = build_host_from_device(coarse);
 
     IntervalSet2DHost expected =
@@ -111,7 +119,9 @@ TEST(CSRAmrRefineProjectTest, Project1DExamplesOnSingleRow) {
         });
 
     auto fine = build_device_from_host(fine_host);
-    auto coarse = project_level_down_device(fine);
+    CsrSetAlgebraContext ctx;
+    IntervalSet2DDevice coarse;
+    project_level_down_device(fine, coarse, ctx);
     auto coarse_host = build_host_from_device(coarse);
 
     IntervalSet2DHost expected =
@@ -132,7 +142,9 @@ TEST(CSRAmrRefineProjectTest, ProjectMergesNeighbourRows) {
       });
 
   auto fine = build_device_from_host(fine_host);
-  auto coarse = project_level_down_device(fine);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice coarse;
+  project_level_down_device(fine, coarse, ctx);
   auto coarse_host = build_host_from_device(coarse);
 
   IntervalSet2DHost expected =
@@ -141,4 +153,36 @@ TEST(CSRAmrRefineProjectTest, ProjectMergesNeighbourRows) {
       });
 
   expect_equal_csr(coarse_host, expected);
+}
+
+TEST(CSRAmrRefineProjectTest, ProjectIdempotent) {
+  // Multiple fine level rows that project to the same coarse rows:
+  // (0,1) -> 0, (2,3) -> 1, (4,5) -> 2.
+  IntervalSet2DHost fine_host =
+      make_host_csr({
+          {0, {Interval{0, 1}}},
+          {1, {Interval{0, 1}}},
+          {2, {Interval{2, 3}}},
+          {3, {Interval{2, 3}}},
+          {4, {Interval{4, 5}}},
+          {5, {Interval{4, 5}}},
+      });
+
+  auto fine = build_device_from_host(fine_host);
+
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice coarse;
+  project_level_down_device(fine, coarse, ctx);
+
+  auto host_coarse = build_host_from_device(coarse);
+
+  // Verify the expected projection result
+  IntervalSet2DHost expected_result =
+      make_host_csr({
+          {0, {Interval{0, 1}}},
+          {1, {Interval{1, 2}}},
+          {2, {Interval{2, 3}}},
+      });
+
+  expect_equal_csr(host_coarse, expected_result);
 }
