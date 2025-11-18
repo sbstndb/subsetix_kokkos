@@ -781,7 +781,14 @@ struct RowDifferenceResult {
   std::size_t num_rows = 0;
 };
 
-struct RowDifferenceWorkspace {
+/**
+ * @brief Shared workspace for row-wise counts and scans.
+ *
+ * This is reused across set operations (union/intersection/difference)
+ * to avoid allocating separate row_counts/total_intervals buffers in
+ * each algorithm.
+ */
+struct RowScanWorkspace {
   Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts;
   Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals;
   std::size_t capacity_rows = 0;
@@ -792,11 +799,11 @@ struct RowDifferenceWorkspace {
     }
 
     row_counts = Kokkos::View<std::size_t*, DeviceMemorySpace>(
-        "subsetix_csr_difference_row_counts_ws", rows);
+        "subsetix_csr_row_counts_ws", rows);
 
     if (!total_intervals.data()) {
       total_intervals = Kokkos::View<std::size_t, DeviceMemorySpace>(
-          "subsetix_csr_difference_total_intervals_ws");
+          "subsetix_csr_total_intervals_ws");
     }
 
     capacity_rows = rows;
@@ -1174,7 +1181,7 @@ inline void reset_preallocated_interval_set(IntervalSet2DDevice& out) {
 struct CsrSetAlgebraContext {
   detail::RowIntersectionWorkspace intersection_workspace;
   detail::RowUnionWorkspace union_workspace;
-  detail::RowDifferenceWorkspace difference_workspace;
+  detail::RowScanWorkspace scan_workspace;
 };
 
 /**
@@ -1239,8 +1246,8 @@ set_union_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
-      "subsetix_csr_union_row_counts_prealloc", num_rows_out);
+  ctx.scan_workspace.ensure_capacity(num_rows_out);
+  auto row_counts = ctx.scan_workspace.row_counts;
 
   auto row_ptr_a = A.row_ptr;
   auto row_ptr_b = B.row_ptr;
@@ -1282,8 +1289,7 @@ set_union_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_union_total_intervals_prealloc");
+  auto total_intervals = ctx.scan_workspace.total_intervals;
 
   auto row_ptr_out = out.row_ptr;
 
@@ -1404,8 +1410,8 @@ set_intersection_device(const IntervalSet2DDevice& A,
         "insufficient row capacity in output IntervalSet2DDevice");
   }
 
-  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
-      "subsetix_csr_intersection_row_counts_prealloc", num_rows_out);
+  ctx.scan_workspace.ensure_capacity(num_rows_out);
+  auto row_counts = ctx.scan_workspace.row_counts;
 
   auto row_keys_out_tmp = merge.row_keys;
   auto row_index_a = merge.row_index_a;
@@ -1451,8 +1457,7 @@ set_intersection_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_intersection_total_intervals_prealloc");
+  auto total_intervals = ctx.scan_workspace.total_intervals;
 
   auto row_ptr_out = out.row_ptr;
 
@@ -1577,8 +1582,8 @@ set_difference_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  ctx.difference_workspace.ensure_capacity(num_rows_out);
-  auto row_counts = ctx.difference_workspace.row_counts;
+  ctx.scan_workspace.ensure_capacity(num_rows_out);
+  auto row_counts = ctx.scan_workspace.row_counts;
 
   auto row_ptr_a = A.row_ptr;
   auto row_ptr_b = B.row_ptr;
@@ -1615,7 +1620,7 @@ set_difference_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  auto total_intervals = ctx.difference_workspace.total_intervals;
+  auto total_intervals = ctx.scan_workspace.total_intervals;
   auto row_ptr_out = out.row_ptr;
 
   Kokkos::parallel_scan(
