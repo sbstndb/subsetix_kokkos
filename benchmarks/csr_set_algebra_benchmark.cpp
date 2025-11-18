@@ -361,6 +361,71 @@ void BM_CSRDifference_XXLarge(benchmark::State& state) {
   });
 }
 
+void BM_CSRSymmetricDifference_Tiny(benchmark::State& state) {
+  RectConfig a{0, 128, 0, 128};
+  const Coord N = 128;
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N};
+  bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
+                                  const IntervalSet2DDevice& B,
+                                  IntervalSet2DDevice& out,
+                                  CsrSetAlgebraContext& ctx) {
+    set_symmetric_difference_device(A, B, out, ctx);
+  });
+}
+
+void BM_CSRSymmetricDifference_Medium(benchmark::State& state) {
+  const Coord N = 1280;
+  RectConfig a{0, N, 0, N};
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N};
+  bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
+                                  const IntervalSet2DDevice& B,
+                                  IntervalSet2DDevice& out,
+                                  CsrSetAlgebraContext& ctx) {
+    set_symmetric_difference_device(A, B, out, ctx);
+  });
+}
+
+void BM_CSRSymmetricDifference_Large(benchmark::State& state) {
+  const Coord N = 12800;
+  RectConfig a{0, N, 0, N};
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N};
+  bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
+                                  const IntervalSet2DDevice& B,
+                                  IntervalSet2DDevice& out,
+                                  CsrSetAlgebraContext& ctx) {
+    set_symmetric_difference_device(A, B, out, ctx);
+  });
+}
+
+void BM_CSRSymmetricDifference_XLarge(benchmark::State& state) {
+  const Coord N = 128000;
+  RectConfig a{0, N, 0, N};
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N};
+  bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
+                                  const IntervalSet2DDevice& B,
+                                  IntervalSet2DDevice& out,
+                                  CsrSetAlgebraContext& ctx) {
+    set_symmetric_difference_device(A, B, out, ctx);
+  });
+}
+
+void BM_CSRSymmetricDifference_XXLarge(benchmark::State& state) {
+  const Coord N = kSizeXXLarge;
+  RectConfig a{0, N, 0, N};
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N};
+  bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
+                                  const IntervalSet2DDevice& B,
+                                  IntervalSet2DDevice& out,
+                                  CsrSetAlgebraContext& ctx) {
+    set_symmetric_difference_device(A, B, out, ctx);
+  });
+}
+
 void BM_CSRMakeBox_Tiny(benchmark::State& state) {
   RectConfig cfg{0, 128, 0, 128};
   bench_box_construction(state, cfg);
@@ -1603,6 +1668,11 @@ BENCHMARK(BM_CSRDifference_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_XLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_XXLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRSymmetricDifference_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRSymmetricDifference_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRSymmetricDifference_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRSymmetricDifference_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRSymmetricDifference_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Large)->Unit(benchmark::kNanosecond);

@@ -410,6 +410,187 @@ void row_difference_fill(const IntervalViewIn& intervals_a,
   }
 }
 
+/**
+ * @brief Count the number of intervals in the symmetric difference
+ *        (A XOR B) = (A \ B) U (B \ A) on a single row.
+ */
+template <class IntervalView>
+KOKKOS_INLINE_FUNCTION
+std::size_t row_symmetric_difference_count(const IntervalView& intervals_a,
+                                           std::size_t begin_a,
+                                           std::size_t end_a,
+                                           const IntervalView& intervals_b,
+                                           std::size_t begin_b,
+                                           std::size_t end_b) {
+  std::size_t ia = begin_a;
+  std::size_t ib = begin_b;
+  std::size_t count = 0;
+
+  bool in_a = false;
+  bool in_b = false;
+  bool xor_active = false;
+
+  // Loop until both interval lists are fully exhausted
+  while (ia < end_a || ib < end_b || in_a || in_b) {
+    // Determine next event coordinate.
+    // Use a large value for exhausted streams.
+    // Be careful with potential overflow if using MAX, but coordinates are int32.
+    // We can use conditions.
+
+    Coord next_a_pos = 0;
+    bool has_next_a = false;
+    if (in_a) {
+      next_a_pos = intervals_a(ia).end; // current A end
+      has_next_a = true;
+    } else if (ia < end_a) {
+      next_a_pos = intervals_a(ia).begin; // next A start
+      has_next_a = true;
+    }
+
+    Coord next_b_pos = 0;
+    bool has_next_b = false;
+    if (in_b) {
+      next_b_pos = intervals_b(ib).end; // current B end
+      has_next_b = true;
+    } else if (ib < end_b) {
+      next_b_pos = intervals_b(ib).begin; // next B start
+      has_next_b = true;
+    }
+
+    if (!has_next_a && !has_next_b) {
+      break;
+    }
+
+    Coord p = 0;
+    if (has_next_a && has_next_b) {
+      p = (next_a_pos < next_b_pos) ? next_a_pos : next_b_pos;
+    } else if (has_next_a) {
+      p = next_a_pos;
+    } else {
+      p = next_b_pos;
+    }
+
+    // Process events at p
+    if (has_next_a && next_a_pos == p) {
+      if (in_a) {
+        in_a = false;
+        ++ia; // Consumed this interval
+      } else {
+        in_a = true;
+      }
+    }
+
+    if (has_next_b && next_b_pos == p) {
+      if (in_b) {
+        in_b = false;
+        ++ib; // Consumed this interval
+      } else {
+        in_b = true;
+      }
+    }
+
+    // Check new state
+    const bool new_xor = (in_a != in_b);
+    if (xor_active != new_xor) {
+      if (!new_xor) {
+        // XOR region ended
+        ++count;
+      }
+      xor_active = new_xor;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * @brief Fill the symmetric difference intervals for a single row.
+ *        Must be kept in sync with row_symmetric_difference_count.
+ */
+template <class IntervalViewIn, class IntervalViewOut>
+KOKKOS_INLINE_FUNCTION
+void row_symmetric_difference_fill(const IntervalViewIn& intervals_a,
+                                   std::size_t begin_a,
+                                   std::size_t end_a,
+                                   const IntervalViewIn& intervals_b,
+                                   std::size_t begin_b,
+                                   std::size_t end_b,
+                                   const IntervalViewOut& intervals_out,
+                                   std::size_t out_offset) {
+  std::size_t ia = begin_a;
+  std::size_t ib = begin_b;
+  std::size_t write_idx = 0;
+
+  bool in_a = false;
+  bool in_b = false;
+  bool xor_active = false;
+  Coord start_pos = 0;
+
+  while (ia < end_a || ib < end_b || in_a || in_b) {
+    Coord next_a_pos = 0;
+    bool has_next_a = false;
+    if (in_a) {
+      next_a_pos = intervals_a(ia).end;
+      has_next_a = true;
+    } else if (ia < end_a) {
+      next_a_pos = intervals_a(ia).begin;
+      has_next_a = true;
+    }
+
+    Coord next_b_pos = 0;
+    bool has_next_b = false;
+    if (in_b) {
+      next_b_pos = intervals_b(ib).end;
+      has_next_b = true;
+    } else if (ib < end_b) {
+      next_b_pos = intervals_b(ib).begin;
+      has_next_b = true;
+    }
+
+    if (!has_next_a && !has_next_b) {
+      break;
+    }
+
+    Coord p = 0;
+    if (has_next_a && has_next_b) {
+      p = (next_a_pos < next_b_pos) ? next_a_pos : next_b_pos;
+    } else if (has_next_a) {
+      p = next_a_pos;
+    } else {
+      p = next_b_pos;
+    }
+
+    if (has_next_a && next_a_pos == p) {
+      if (in_a) {
+        in_a = false;
+        ++ia;
+      } else {
+        in_a = true;
+      }
+    }
+
+    if (has_next_b && next_b_pos == p) {
+      if (in_b) {
+        in_b = false;
+        ++ib;
+      } else {
+        in_b = true;
+      }
+    }
+
+    const bool new_xor = (in_a != in_b);
+    if (xor_active != new_xor) {
+      if (new_xor) {
+        start_pos = p;
+      } else {
+        intervals_out(out_offset + write_idx) = Interval{start_pos, p};
+        ++write_idx;
+      }
+      xor_active = new_xor;
+    }
+  }
+}
+
 struct RowMergeResult {
   IntervalSet2DDevice::RowKeyView row_keys;
   Kokkos::View<int*, DeviceMemorySpace> row_index_a;
@@ -2126,6 +2307,185 @@ set_difference_device(const IntervalSet2DDevice& A,
 
         const std::size_t out_offset = row_ptr_out(i);
         detail::row_difference_fill(
+            intervals_a, begin_a, end_a,
+            intervals_b, begin_b, end_b,
+            intervals_out, out_offset);
+      });
+
+  ExecSpace().fence();
+}
+
+/**
+ * @brief Compute the symmetric difference A XOR B = (A \ B) U (B \ A)
+ *        into a preallocated CSR buffer on device.
+ *
+ * The views in @p out must already be allocated with sufficient capacity:
+ *  - out.row_keys.extent(0)   >= num_rows_out,
+ *  - out.row_ptr.extent(0)    >= num_rows_out + 1,
+ *  - out.intervals.extent(0)  >= num_intervals_out.
+ *
+ * If the capacity is insufficient, this function throws std::runtime_error.
+ * The buffer is reset to zeros before writing into it.
+ */
+inline void
+set_symmetric_difference_device(const IntervalSet2DDevice& A,
+                                const IntervalSet2DDevice& B,
+                                IntervalSet2DDevice& out,
+                                CsrSetAlgebraContext& ctx) {
+  reset_preallocated_interval_set(out);
+
+  const std::size_t num_rows_a = A.num_rows;
+  const std::size_t num_rows_b = B.num_rows;
+
+  if (num_rows_a == 0 && num_rows_b == 0) {
+    return;
+  }
+
+  detail::RowMergeResult merge =
+      detail::build_row_union_mapping(A, B, ctx.union_workspace);
+
+  const std::size_t num_rows_out = merge.num_rows;
+  if (num_rows_out == 0) {
+    return;
+  }
+
+  const std::size_t rows_cap = out.row_keys.extent(0);
+  const std::size_t row_ptr_cap = out.row_ptr.extent(0);
+
+  if (num_rows_out > rows_cap || num_rows_out + 1 > row_ptr_cap) {
+    throw std::runtime_error(
+        "subsetix::csr::set_symmetric_difference_device (preallocated): "
+        "insufficient row capacity in output IntervalSet2DDevice");
+  }
+
+  auto row_keys_out_tmp = merge.row_keys;
+  auto row_index_a = merge.row_index_a;
+  auto row_index_b = merge.row_index_b;
+
+  auto row_keys_out = out.row_keys;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_xor_copy_row_keys",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        row_keys_out(i) = row_keys_out_tmp(i);
+      });
+
+  ExecSpace().fence();
+
+  ctx.scan_workspace.ensure_capacity(num_rows_out);
+  auto row_counts = ctx.scan_workspace.row_counts;
+
+  auto row_ptr_a = A.row_ptr;
+  auto row_ptr_b = B.row_ptr;
+  auto intervals_a = A.intervals;
+  auto intervals_b = B.intervals;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_xor_count_prealloc",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const int ia = row_index_a(i);
+        const int ib = row_index_b(i);
+
+        std::size_t begin_a = 0;
+        std::size_t end_a = 0;
+        std::size_t begin_b = 0;
+        std::size_t end_b = 0;
+
+        if (ia >= 0) {
+          const std::size_t row_a = static_cast<std::size_t>(ia);
+          begin_a = row_ptr_a(row_a);
+          end_a = row_ptr_a(row_a + 1);
+        }
+        if (ib >= 0) {
+          const std::size_t row_b = static_cast<std::size_t>(ib);
+          begin_b = row_ptr_b(row_b);
+          end_b = row_ptr_b(row_b + 1);
+        }
+
+        if (begin_a == end_a && begin_b == end_b) {
+          row_counts(i) = 0;
+          return;
+        }
+
+        row_counts(i) = detail::row_symmetric_difference_count(
+            intervals_a, begin_a, end_a,
+            intervals_b, begin_b, end_b);
+      });
+
+  ExecSpace().fence();
+
+  auto total_intervals = ctx.scan_workspace.total_intervals;
+  auto row_ptr_out = out.row_ptr;
+
+  Kokkos::parallel_scan(
+      "subsetix_csr_xor_scan_prealloc",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i,
+                    std::size_t& update,
+                    const bool final_pass) {
+        const std::size_t c = row_counts(i);
+        if (final_pass) {
+          row_ptr_out(i) = update;
+          if (i + 1 == num_rows_out) {
+            row_ptr_out(num_rows_out) = update + c;
+            total_intervals() = update + c;
+          }
+        }
+        update += c;
+      });
+
+  ExecSpace().fence();
+
+  std::size_t num_intervals_out = 0;
+  Kokkos::deep_copy(num_intervals_out, total_intervals);
+
+  const std::size_t intervals_cap = out.intervals.extent(0);
+  if (num_intervals_out > intervals_cap) {
+    throw std::runtime_error(
+        "subsetix::csr::set_symmetric_difference_device (preallocated): "
+        "insufficient interval capacity in output IntervalSet2DDevice");
+  }
+
+  out.num_rows = num_rows_out;
+  out.num_intervals = num_intervals_out;
+
+  if (num_intervals_out == 0) {
+    return;
+  }
+
+  auto intervals_out = out.intervals;
+
+  Kokkos::parallel_for(
+      "subsetix_csr_xor_fill_prealloc",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const int ia = row_index_a(i);
+        const int ib = row_index_b(i);
+
+        std::size_t begin_a = 0;
+        std::size_t end_a = 0;
+        std::size_t begin_b = 0;
+        std::size_t end_b = 0;
+
+        if (ia >= 0) {
+          const std::size_t row_a = static_cast<std::size_t>(ia);
+          begin_a = row_ptr_a(row_a);
+          end_a = row_ptr_a(row_a + 1);
+        }
+        if (ib >= 0) {
+          const std::size_t row_b = static_cast<std::size_t>(ib);
+          begin_b = row_ptr_b(row_b);
+          end_b = row_ptr_b(row_b + 1);
+        }
+
+        if (begin_a == end_a && begin_b == end_b) {
+          return;
+        }
+
+        const std::size_t out_offset = row_ptr_out(i);
+        detail::row_symmetric_difference_fill(
             intervals_a, begin_a, end_a,
             intervals_b, begin_b, end_b,
             intervals_out, out_offset);

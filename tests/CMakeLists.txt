@@ -12,6 +12,7 @@ set(SUBSETIX_TEST_SOURCES
     csr_intersection_smoke_test.cpp
     csr_intersection_components_smoke_test.cpp
     csr_difference_smoke_test.cpp
+    csr_symmetric_difference_smoke_test.cpp
     csr_difference_components_smoke_test.cpp
     csr_row_ops_components_smoke_test.cpp
     csr_set_algebra_properties_test.cpp

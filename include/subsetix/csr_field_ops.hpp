@@ -43,46 +43,51 @@ build_mask_row_to_field_row_mapping(const IntervalSet2DDevice& mask,
         "field has no rows but the mask is non-empty");
   }
 
-  auto mask_rows_host =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{},
-                                          mask.row_keys);
-  auto field_rows_host =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{},
-                                          field.row_keys);
+  auto mask_rows = mask.row_keys;
+  auto field_rows = field.row_keys;
+  const std::size_t num_field_rows = field.num_rows;
 
-  auto mapping_host = Kokkos::create_mirror_view(mapping);
-  std::size_t im = 0;
-  std::size_t ifield = 0;
+  Kokkos::parallel_for(
+      "subsetix_mask_row_map_kernel",
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const Coord ym = mask_rows(i).y;
 
-  while (im < mask.num_rows && ifield < field.num_rows) {
-    const Coord ym = mask_rows_host(im).y;
-    const Coord yf = field_rows_host(ifield).y;
-    if (ym == yf) {
-      mapping_host(im) = static_cast<int>(ifield);
-      ++im;
-      ++ifield;
-    } else if (ym > yf) {
-      ++ifield;
-    } else {
-      mapping_host(im) = -1;
-      ++im;
-    }
+        std::size_t lo = 0;
+        std::size_t hi = num_field_rows;
+        while (lo < hi) {
+          const std::size_t mid = lo + (hi - lo) / 2;
+          if (field_rows(mid).y < ym) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
+          }
+        }
+
+        if (lo < num_field_rows && field_rows(lo).y == ym) {
+          mapping(i) = static_cast<int>(lo);
+        } else {
+          mapping(i) = -1;
+        }
+      });
+
+  ExecSpace().fence();
+
+  int min_val = 0;
+  Kokkos::parallel_reduce(
+      "subsetix_check_mask_mapping_validity",
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
+      KOKKOS_LAMBDA(const std::size_t i, int& lmin) {
+        if (mapping(i) < lmin) lmin = mapping(i);
+      },
+      Kokkos::Min<int>(min_val));
+
+  if (min_val < 0) {
+    throw std::runtime_error(
+        "mask row not found in field geometry; "
+        "mask must be a subset of the field geometry");
   }
 
-  while (im < mask.num_rows) {
-    mapping_host(im) = -1;
-    ++im;
-  }
-
-  for (std::size_t i = 0; i < mask.num_rows; ++i) {
-    if (mapping_host(i) < 0) {
-      throw std::runtime_error(
-          "mask row not found in field geometry; "
-          "mask must be a subset of the field geometry");
-    }
-  }
-
-  Kokkos::deep_copy(mapping, mapping_host);
   return mapping;
 }
 
@@ -296,99 +301,94 @@ build_vertical_interval_mapping(
   Kokkos::View<int*, DeviceMemorySpace> down(
       "subsetix_field_interval_down", num_intervals);
 
+  mapping.up_interval = up;
+  mapping.down_interval = down;
+
   if (num_rows == 0 || num_intervals == 0) {
-    mapping.up_interval = up;
-    mapping.down_interval = down;
     return mapping;
   }
 
-  auto h_row_keys =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{},
-                                          field.row_keys);
-  auto h_row_ptr =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{},
-                                          field.row_ptr);
+  Kokkos::deep_copy(up, -1);
+  Kokkos::deep_copy(down, -1);
 
-  std::vector<int> up_host(num_intervals, -1);
-  std::vector<int> down_host(num_intervals, -1);
+  auto row_keys = field.row_keys;
+  auto row_ptr = field.row_ptr;
 
-  std::size_t j_up = 0;
-  std::size_t j_down = 0;
+  Kokkos::parallel_for(
+      "subsetix_vertical_interval_mapping",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
+      KOKKOS_LAMBDA(const std::size_t r) {
+        const Coord y = row_keys(r).y;
+        const std::size_t begin = row_ptr(r);
+        const std::size_t end = row_ptr(r + 1);
+        const std::size_t count = end - begin;
 
-  for (std::size_t r = 0; r < num_rows; ++r) {
-    const Coord y = h_row_keys(r).y;
+        if (count == 0) return;
 
-    const Coord target_up =
-        static_cast<Coord>(y + 1);
-    while (j_up < num_rows &&
-           h_row_keys(j_up).y < target_up) {
-      ++j_up;
-    }
-    const int row_up =
-        (j_up < num_rows &&
-         h_row_keys(j_up).y == target_up)
-            ? static_cast<int>(j_up)
-            : -1;
-
-    const Coord target_down =
-        static_cast<Coord>(y - 1);
-    while (j_down < num_rows &&
-           h_row_keys(j_down).y < target_down) {
-      ++j_down;
-    }
-    const int row_down =
-        (j_down < num_rows &&
-         h_row_keys(j_down).y == target_down)
-            ? static_cast<int>(j_down)
-            : -1;
-
-    const std::size_t begin = h_row_ptr(r);
-    const std::size_t end = h_row_ptr(r + 1);
-    const std::size_t count = end - begin;
-
-    if (row_up >= 0) {
-      const std::size_t up_begin =
-          h_row_ptr(row_up);
-      const std::size_t up_end =
-          h_row_ptr(row_up + 1);
-      const std::size_t up_count =
-          up_end - up_begin;
-      if (count == up_count) {
-        for (std::size_t k = 0; k < count; ++k) {
-          up_host[begin + k] =
-              static_cast<int>(up_begin + k);
+        // Find up row (y + 1)
+        int row_up = -1;
+        // Optimization: check next row first
+        if (r + 1 < num_rows && row_keys(r + 1).y == y + 1) {
+          row_up = static_cast<int>(r + 1);
+        } else {
+          std::size_t lo = 0;
+          std::size_t hi = num_rows;
+          while (lo < hi) {
+            const std::size_t mid = lo + (hi - lo) / 2;
+            if (row_keys(mid).y < y + 1) {
+              lo = mid + 1;
+            } else {
+              hi = mid;
+            }
+          }
+          if (lo < num_rows && row_keys(lo).y == y + 1) {
+            row_up = static_cast<int>(lo);
+          }
         }
-      }
-    }
 
-    if (row_down >= 0) {
-      const std::size_t down_begin =
-          h_row_ptr(row_down);
-      const std::size_t down_end =
-          h_row_ptr(row_down + 1);
-      const std::size_t down_count =
-          down_end - down_begin;
-      if (count == down_count) {
-        for (std::size_t k = 0; k < count; ++k) {
-          down_host[begin + k] =
-              static_cast<int>(down_begin + k);
+        if (row_up >= 0) {
+          const std::size_t up_begin = row_ptr(row_up);
+          const std::size_t up_end = row_ptr(row_up + 1);
+          if ((up_end - up_begin) == count) {
+            for (std::size_t k = 0; k < count; ++k) {
+              up(begin + k) = static_cast<int>(up_begin + k);
+            }
+          }
         }
-      }
-    }
-  }
 
-  auto h_up = Kokkos::create_mirror_view(up);
-  auto h_down = Kokkos::create_mirror_view(down);
-  for (std::size_t i = 0; i < num_intervals; ++i) {
-    h_up(i) = up_host[i];
-    h_down(i) = down_host[i];
-  }
+        // Find down row (y - 1)
+        int row_down = -1;
+        // Optimization: check prev row first
+        if (r > 0 && row_keys(r - 1).y == y - 1) {
+          row_down = static_cast<int>(r - 1);
+        } else {
+          std::size_t lo = 0;
+          std::size_t hi = num_rows;
+          while (lo < hi) {
+            const std::size_t mid = lo + (hi - lo) / 2;
+            if (row_keys(mid).y < y - 1) {
+              lo = mid + 1;
+            } else {
+              hi = mid;
+            }
+          }
+          if (lo < num_rows && row_keys(lo).y == y - 1) {
+            row_down = static_cast<int>(lo);
+          }
+        }
 
-  Kokkos::deep_copy(up, h_up);
-  Kokkos::deep_copy(down, h_down);
+        if (row_down >= 0) {
+          const std::size_t down_begin = row_ptr(row_down);
+          const std::size_t down_end = row_ptr(row_down + 1);
+          if ((down_end - down_begin) == count) {
+            for (std::size_t k = 0; k < count; ++k) {
+              down(begin + k) = static_cast<int>(down_begin + k);
+            }
+          }
+        }
+      });
 
-  mapping.up_interval = up;
-  mapping.down_interval = down;
+  ExecSpace().fence();
   return mapping;
 }
 
@@ -399,170 +399,144 @@ build_amr_interval_mapping(
     const IntervalField2DDevice<T>& fine_field) {
   AmrIntervalMapping mapping;
 
-  const std::size_t num_rows_coarse =
-      coarse_field.num_rows;
+  const std::size_t num_rows_coarse = coarse_field.num_rows;
   const std::size_t num_rows_fine = fine_field.num_rows;
-  const std::size_t num_intervals_coarse =
-      coarse_field.num_intervals;
-  const std::size_t num_intervals_fine =
-      fine_field.num_intervals;
+  const std::size_t num_intervals_coarse = coarse_field.num_intervals;
+  const std::size_t num_intervals_fine = fine_field.num_intervals;
 
   Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine_first(
-      "subsetix_field_coarse_to_fine_first",
-      num_intervals_coarse);
+      "subsetix_field_coarse_to_fine_first", num_intervals_coarse);
   Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine_second(
-      "subsetix_field_coarse_to_fine_second",
-      num_intervals_coarse);
+      "subsetix_field_coarse_to_fine_second", num_intervals_coarse);
   Kokkos::View<int*, DeviceMemorySpace> fine_to_coarse(
-      "subsetix_field_fine_to_coarse_interval",
-      num_intervals_fine);
-
-  if (num_rows_coarse == 0 || num_rows_fine == 0 ||
-      num_intervals_coarse == 0 ||
-      num_intervals_fine == 0) {
-    mapping.coarse_to_fine_first = coarse_to_fine_first;
-    mapping.coarse_to_fine_second = coarse_to_fine_second;
-    mapping.fine_to_coarse = fine_to_coarse;
-    return mapping;
-  }
-
-  auto h_coarse_rows =
-      Kokkos::create_mirror_view_and_copy(
-          HostMemorySpace{}, coarse_field.row_keys);
-  auto h_coarse_row_ptr =
-      Kokkos::create_mirror_view_and_copy(
-          HostMemorySpace{}, coarse_field.row_ptr);
-  auto h_coarse_intervals =
-      Kokkos::create_mirror_view_and_copy(
-          HostMemorySpace{}, coarse_field.intervals);
-
-  auto h_fine_rows =
-      Kokkos::create_mirror_view_and_copy(
-          HostMemorySpace{}, fine_field.row_keys);
-  auto h_fine_row_ptr =
-      Kokkos::create_mirror_view_and_copy(
-          HostMemorySpace{}, fine_field.row_ptr);
-  auto h_fine_intervals =
-      Kokkos::create_mirror_view_and_copy(
-          HostMemorySpace{}, fine_field.intervals);
-
-  std::vector<int> coarse_to_fine_first_host(
-      num_intervals_coarse, -1);
-  std::vector<int> coarse_to_fine_second_host(
-      num_intervals_coarse, -1);
-  std::vector<int> fine_to_coarse_host(
-      num_intervals_fine, -1);
-
-  auto find_row = [&](std::size_t& cursor,
-                      Coord target) -> std::size_t {
-    while (cursor < num_rows_fine &&
-           h_fine_rows(cursor).y < target) {
-      ++cursor;
-    }
-    if (cursor >= num_rows_fine ||
-        h_fine_rows(cursor).y != target) {
-      throw std::runtime_error(
-          "AMR interval mapping: fine row not found "
-          "for coarse row");
-    }
-    return cursor;
-  };
-
-  std::size_t cursor = 0;
-  for (std::size_t rc = 0; rc < num_rows_coarse; ++rc) {
-    const Coord y_c = h_coarse_rows(rc).y;
-    const Coord y_f0 =
-        static_cast<Coord>(2 * y_c);
-    const Coord y_f1 =
-        static_cast<Coord>(2 * y_c + 1);
-
-    const std::size_t row_f0 =
-        find_row(cursor, y_f0);
-    const std::size_t row_f1 =
-        find_row(cursor, y_f1);
-
-    const std::size_t begin_c = h_coarse_row_ptr(rc);
-    const std::size_t end_c = h_coarse_row_ptr(rc + 1);
-    const std::size_t begin_f0 =
-        h_fine_row_ptr(row_f0);
-    const std::size_t end_f0 =
-        h_fine_row_ptr(row_f0 + 1);
-    const std::size_t begin_f1 =
-        h_fine_row_ptr(row_f1);
-    const std::size_t end_f1 =
-        h_fine_row_ptr(row_f1 + 1);
-
-    const std::size_t count_c = end_c - begin_c;
-    const std::size_t count_f0 = end_f0 - begin_f0;
-    const std::size_t count_f1 = end_f1 - begin_f1;
-
-    if (count_c != count_f0 ||
-        count_c != count_f1) {
-      throw std::runtime_error(
-          "AMR interval mapping: coarse/fine interval "
-          "counts differ");
-    }
-
-    for (std::size_t k = 0; k < count_c; ++k) {
-      const std::size_t ic = begin_c + k;
-      const std::size_t iff0 = begin_f0 + k;
-      const std::size_t iff1 = begin_f1 + k;
-
-      const FieldInterval ci =
-          h_coarse_intervals(ic);
-      const FieldInterval fi0 =
-          h_fine_intervals(iff0);
-      const FieldInterval fi1 =
-          h_fine_intervals(iff1);
-
-      const Coord expected_begin =
-          static_cast<Coord>(ci.begin * 2);
-      const Coord expected_end =
-          static_cast<Coord>(ci.end * 2);
-
-      if (!(fi0.begin == expected_begin &&
-            fi0.end == expected_end &&
-            fi1.begin == expected_begin &&
-            fi1.end == expected_end)) {
-        throw std::runtime_error(
-            "AMR interval mapping: fine interval does not "
-            "match refined coarse interval");
-      }
-
-      coarse_to_fine_first_host[ic] =
-          static_cast<int>(iff0);
-      coarse_to_fine_second_host[ic] =
-          static_cast<int>(iff1);
-      fine_to_coarse_host[iff0] =
-          static_cast<int>(ic);
-      fine_to_coarse_host[iff1] =
-          static_cast<int>(ic);
-    }
-  }
-
-  auto h_ctf0 =
-      Kokkos::create_mirror_view(coarse_to_fine_first);
-  auto h_ctf1 =
-      Kokkos::create_mirror_view(coarse_to_fine_second);
-  auto h_ftc =
-      Kokkos::create_mirror_view(fine_to_coarse);
-  for (std::size_t i = 0; i < num_intervals_coarse;
-       ++i) {
-    h_ctf0(i) = coarse_to_fine_first_host[i];
-    h_ctf1(i) = coarse_to_fine_second_host[i];
-  }
-  for (std::size_t i = 0; i < num_intervals_fine;
-       ++i) {
-    h_ftc(i) = fine_to_coarse_host[i];
-  }
-
-  Kokkos::deep_copy(coarse_to_fine_first, h_ctf0);
-  Kokkos::deep_copy(coarse_to_fine_second, h_ctf1);
-  Kokkos::deep_copy(fine_to_coarse, h_ftc);
+      "subsetix_field_fine_to_coarse_interval", num_intervals_fine);
 
   mapping.coarse_to_fine_first = coarse_to_fine_first;
   mapping.coarse_to_fine_second = coarse_to_fine_second;
   mapping.fine_to_coarse = fine_to_coarse;
+
+  if (num_rows_coarse == 0 || num_rows_fine == 0 ||
+      num_intervals_coarse == 0 || num_intervals_fine == 0) {
+    return mapping;
+  }
+
+  auto coarse_rows = coarse_field.row_keys;
+  auto coarse_row_ptr = coarse_field.row_ptr;
+  auto coarse_intervals = coarse_field.intervals;
+
+  auto fine_rows = fine_field.row_keys;
+  auto fine_row_ptr = fine_field.row_ptr;
+  auto fine_intervals = fine_field.intervals;
+
+  // Error flags
+  Kokkos::View<int, DeviceMemorySpace> error_flag("subsetix_amr_error_flag");
+
+  Kokkos::parallel_for(
+      "subsetix_amr_interval_mapping",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_coarse),
+      KOKKOS_LAMBDA(const std::size_t rc) {
+        const Coord y_c = coarse_rows(rc).y;
+        const Coord y_f0 = static_cast<Coord>(2 * y_c);
+        const Coord y_f1 = static_cast<Coord>(2 * y_c + 1);
+
+        // Find fine rows
+        int row_f0 = -1;
+        int row_f1 = -1;
+
+        // Search for y_f0
+        {
+          std::size_t lo = 0;
+          std::size_t hi = num_rows_fine;
+          while (lo < hi) {
+            const std::size_t mid = lo + (hi - lo) / 2;
+            if (fine_rows(mid).y < y_f0) {
+              lo = mid + 1;
+            } else {
+              hi = mid;
+            }
+          }
+          if (lo < num_rows_fine && fine_rows(lo).y == y_f0) {
+            row_f0 = static_cast<int>(lo);
+          }
+        }
+
+        // Search for y_f1
+        {
+          std::size_t lo = 0;
+          std::size_t hi = num_rows_fine;
+          while (lo < hi) {
+            const std::size_t mid = lo + (hi - lo) / 2;
+            if (fine_rows(mid).y < y_f1) {
+              lo = mid + 1;
+            } else {
+              hi = mid;
+            }
+          }
+          if (lo < num_rows_fine && fine_rows(lo).y == y_f1) {
+            row_f1 = static_cast<int>(lo);
+          }
+        }
+
+        if (row_f0 < 0 || row_f1 < 0) {
+          Kokkos::atomic_store(&error_flag(), 1);
+          return;
+        }
+
+        const std::size_t begin_c = coarse_row_ptr(rc);
+        const std::size_t end_c = coarse_row_ptr(rc + 1);
+        const std::size_t begin_f0 = fine_row_ptr(row_f0);
+        const std::size_t end_f0 = fine_row_ptr(row_f0 + 1);
+        const std::size_t begin_f1 = fine_row_ptr(row_f1);
+        const std::size_t end_f1 = fine_row_ptr(row_f1 + 1);
+
+        const std::size_t count_c = end_c - begin_c;
+        const std::size_t count_f0 = end_f0 - begin_f0;
+        const std::size_t count_f1 = end_f1 - begin_f1;
+
+        if (count_c != count_f0 || count_c != count_f1) {
+          Kokkos::atomic_store(&error_flag(), 2);
+          return;
+        }
+
+        for (std::size_t k = 0; k < count_c; ++k) {
+          const std::size_t ic = begin_c + k;
+          const std::size_t iff0 = begin_f0 + k;
+          const std::size_t iff1 = begin_f1 + k;
+
+          const FieldInterval ci = coarse_intervals(ic);
+          const FieldInterval fi0 = fine_intervals(iff0);
+          const FieldInterval fi1 = fine_intervals(iff1);
+
+          const Coord expected_begin = static_cast<Coord>(ci.begin * 2);
+          const Coord expected_end = static_cast<Coord>(ci.end * 2);
+
+          if (!(fi0.begin == expected_begin && fi0.end == expected_end &&
+                fi1.begin == expected_begin && fi1.end == expected_end)) {
+            Kokkos::atomic_store(&error_flag(), 3);
+            return;
+          }
+
+          coarse_to_fine_first(ic) = static_cast<int>(iff0);
+          coarse_to_fine_second(ic) = static_cast<int>(iff1);
+          fine_to_coarse(iff0) = static_cast<int>(ic);
+          fine_to_coarse(iff1) = static_cast<int>(ic);
+        }
+      });
+
+  ExecSpace().fence();
+
+  int err = 0;
+  Kokkos::deep_copy(err, error_flag);
+  if (err != 0) {
+    if (err == 1)
+      throw std::runtime_error("AMR interval mapping: fine row not found for coarse row");
+    if (err == 2)
+      throw std::runtime_error("AMR interval mapping: coarse/fine interval counts differ");
+    if (err == 3)
+      throw std::runtime_error("AMR interval mapping: fine interval does not match refined coarse interval");
+    throw std::runtime_error("AMR interval mapping: unknown error");
+  }
+
   return mapping;
 }
 

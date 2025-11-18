@@ -48,13 +48,18 @@ int main(int argc, char* argv[]) {
     auto d = allocate_difference_output_buffer(box_dev, disk_dev);
     set_difference_device(box_dev, disk_dev, d, ctx);
 
+    auto x = allocate_union_output_buffer(box_dev, disk_dev);
+    set_symmetric_difference_device(box_dev, disk_dev, x, ctx);
+
     auto u_host = build_host_from_device(u);
     auto i_host = build_host_from_device(i);
     auto d_host = build_host_from_device(d);
+    auto x_host = build_host_from_device(x);
 
     write_legacy_quads(u_host, output_path("box_disk_union.vtk"));
     write_legacy_quads(i_host, output_path("box_disk_intersection.vtk"));
     write_legacy_quads(d_host, output_path("box_disk_difference.vtk"));
+    write_legacy_quads(x_host, output_path("box_disk_symmetric_difference.vtk"));
   }
 
   Kokkos::finalize();
