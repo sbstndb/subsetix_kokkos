@@ -423,16 +423,18 @@ struct RowUnionWorkspace {
   Kokkos::View<int*, DeviceMemorySpace> b_only_flags;
   Kokkos::View<std::size_t*, DeviceMemorySpace> b_only_positions;
   Kokkos::View<int*, DeviceMemorySpace> b_only_indices;
+   IntervalSet2DDevice::RowKeyView row_keys;
+   Kokkos::View<int*, DeviceMemorySpace> row_index_a;
+   Kokkos::View<int*, DeviceMemorySpace> row_index_b;
   Kokkos::View<std::size_t, DeviceMemorySpace> d_num_b_only;
   std::size_t capacity_a = 0;
   std::size_t capacity_b = 0;
+   std::size_t capacity_rows_out = 0;
 
   void ensure_capacity(std::size_t num_rows_a,
                        std::size_t num_rows_b) {
-    if (num_rows_a <= capacity_a &&
-        num_rows_b <= capacity_b) {
-      return;
-    }
+    const std::size_t needed_rows_out =
+        num_rows_a + num_rows_b;
 
     if (num_rows_a > capacity_a) {
       map_a_to_b = Kokkos::View<int*, DeviceMemorySpace>(
@@ -453,6 +455,19 @@ struct RowUnionWorkspace {
           "subsetix_csr_union_b_only_indices",
           num_rows_b);
       capacity_b = num_rows_b;
+    }
+
+    if (needed_rows_out > capacity_rows_out) {
+      row_keys = IntervalSet2DDevice::RowKeyView(
+          "subsetix_csr_union_row_keys_ws",
+          needed_rows_out);
+      row_index_a = Kokkos::View<int*, DeviceMemorySpace>(
+          "subsetix_csr_union_row_index_a_ws",
+          needed_rows_out);
+      row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
+          "subsetix_csr_union_row_index_b_ws",
+          needed_rows_out);
+      capacity_rows_out = needed_rows_out;
     }
 
     if (!d_num_b_only.data()) {
@@ -487,23 +502,20 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
 
   // Fast paths for empty inputs.
   if (num_rows_a == 0) {
+    workspace.ensure_capacity(num_rows_a, num_rows_b);
+
     result.num_rows = num_rows_b;
     if (num_rows_b == 0) {
       return result;
     }
 
-    result.row_keys = IntervalSet2DDevice::RowKeyView(
-        "subsetix_csr_union_row_keys_b_only", num_rows_b);
-    result.row_index_a = Kokkos::View<int*, DeviceMemorySpace>(
-        "subsetix_csr_union_row_index_a_b_only",
-        num_rows_b);
-    result.row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
-        "subsetix_csr_union_row_index_b_b_only",
-        num_rows_b);
+    result.row_keys = workspace.row_keys;
+    result.row_index_a = workspace.row_index_a;
+    result.row_index_b = workspace.row_index_b;
 
-    auto out_rows = result.row_keys;
-    auto out_idx_a = result.row_index_a;
-    auto out_idx_b = result.row_index_b;
+    auto out_rows = workspace.row_keys;
+    auto out_idx_a = workspace.row_index_a;
+    auto out_idx_b = workspace.row_index_b;
 
     Kokkos::parallel_for(
         "subsetix_csr_union_rows_b_only",
@@ -519,19 +531,16 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
   }
 
   if (num_rows_b == 0) {
-    result.num_rows = num_rows_a;
-    result.row_keys = IntervalSet2DDevice::RowKeyView(
-        "subsetix_csr_union_row_keys_a_only", num_rows_a);
-    result.row_index_a = Kokkos::View<int*, DeviceMemorySpace>(
-        "subsetix_csr_union_row_index_a_a_only",
-        num_rows_a);
-    result.row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
-        "subsetix_csr_union_row_index_b_a_only",
-        num_rows_a);
+    workspace.ensure_capacity(num_rows_a, num_rows_b);
 
-    auto out_rows = result.row_keys;
-    auto out_idx_a = result.row_index_a;
-    auto out_idx_b = result.row_index_b;
+    result.num_rows = num_rows_a;
+    result.row_keys = workspace.row_keys;
+    result.row_index_a = workspace.row_index_a;
+    result.row_index_b = workspace.row_index_b;
+
+    auto out_rows = workspace.row_keys;
+    auto out_idx_a = workspace.row_index_a;
+    auto out_idx_b = workspace.row_index_b;
 
     Kokkos::parallel_for(
         "subsetix_csr_union_rows_a_only",
@@ -669,16 +678,13 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
     return result;
   }
 
-  result.row_keys = IntervalSet2DDevice::RowKeyView(
-      "subsetix_csr_union_row_keys", num_rows_out);
-  result.row_index_a = Kokkos::View<int*, DeviceMemorySpace>(
-      "subsetix_csr_union_row_index_a", num_rows_out);
-  result.row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
-      "subsetix_csr_union_row_index_b", num_rows_out);
+  result.row_keys = workspace.row_keys;
+  result.row_index_a = workspace.row_index_a;
+  result.row_index_b = workspace.row_index_b;
 
-  auto out_rows = result.row_keys;
-  auto out_idx_a = result.row_index_a;
-  auto out_idx_b = result.row_index_b;
+  auto out_rows = workspace.row_keys;
+  auto out_idx_a = workspace.row_index_a;
+  auto out_idx_b = workspace.row_index_b;
 
   // 4) Write rows coming from A. For each row in A we count how many
   // B-only rows precede it, using a binary search in the compacted
@@ -948,6 +954,30 @@ struct RowScanWorkspace {
 };
 
 /**
+ * @brief Workspace for row-difference mapping (A rows -> B rows).
+ *
+ * Reuses mapping buffers across calls to avoid per-call allocations.
+ */
+struct RowDifferenceWorkspace {
+  IntervalSet2DDevice::RowKeyView row_keys;
+  Kokkos::View<int*, DeviceMemorySpace> row_index_b;
+  std::size_t capacity_rows = 0;
+
+  void ensure_capacity(std::size_t rows) {
+    if (rows <= capacity_rows) {
+      return;
+    }
+
+    row_keys = IntervalSet2DDevice::RowKeyView(
+        "subsetix_csr_difference_row_keys_ws", rows);
+    row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_difference_row_index_b_ws", rows);
+
+    capacity_rows = rows;
+  }
+};
+
+/**
  * @brief Build a mapping from rows of A to matching rows in B for
  *        computing A \ B.
  *
@@ -955,7 +985,8 @@ struct RowScanWorkspace {
  */
 inline RowDifferenceResult
 build_row_difference_mapping(const IntervalSet2DDevice& A,
-                             const IntervalSet2DDevice& B) {
+                             const IntervalSet2DDevice& B,
+                             RowDifferenceWorkspace& workspace) {
   RowDifferenceResult result;
 
   const std::size_t num_rows_a = A.num_rows;
@@ -965,16 +996,16 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
     return result;
   }
 
+  workspace.ensure_capacity(num_rows_a);
+
   result.num_rows = num_rows_a;
-  result.row_keys = IntervalSet2DDevice::RowKeyView(
-      "subsetix_csr_difference_row_keys", num_rows_a);
-  result.row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
-      "subsetix_csr_difference_row_index_b", num_rows_a);
+  result.row_keys = workspace.row_keys;
+  result.row_index_b = workspace.row_index_b;
 
   auto rows_a = A.row_keys;
   auto rows_b = B.row_keys;
-  auto out_rows = result.row_keys;
-  auto out_idx_b = result.row_index_b;
+  auto out_rows = workspace.row_keys;
+  auto out_idx_b = workspace.row_index_b;
 
   // Copy row keys from A.
   Kokkos::parallel_for(
@@ -1015,6 +1046,17 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
   ExecSpace().fence();
 
   return result;
+}
+
+/**
+ * @brief Convenience overload using a local workspace, for tests and
+ * small utilities.
+ */
+inline RowDifferenceResult
+build_row_difference_mapping(const IntervalSet2DDevice& A,
+                             const IntervalSet2DDevice& B) {
+  RowDifferenceWorkspace workspace;
+  return build_row_difference_mapping(A, B, workspace);
 }
 
 template <class Transform>
@@ -1318,6 +1360,7 @@ inline void reset_preallocated_interval_set(IntervalSet2DDevice& out) {
 struct CsrSetAlgebraContext {
   detail::RowIntersectionWorkspace intersection_workspace;
   detail::RowUnionWorkspace union_workspace;
+  detail::RowDifferenceWorkspace difference_workspace;
   detail::RowScanWorkspace scan_workspace;
 };
 
@@ -1690,7 +1733,8 @@ set_difference_device(const IntervalSet2DDevice& A,
   }
 
   detail::RowDifferenceResult diff_rows =
-      detail::build_row_difference_mapping(A, B);
+      detail::build_row_difference_mapping(
+          A, B, ctx.difference_workspace);
   const std::size_t num_rows_out = diff_rows.num_rows;
 
   if (num_rows_out == 0) {

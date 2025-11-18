@@ -1005,14 +1005,15 @@ void bench_difference_map_rows_alloc(benchmark::State& state,
   RectConfig a_cfg, b_cfg;
   make_intersection_configs(extent, a_cfg, b_cfg);
   IntervalSet2DDevice A = make_box(a_cfg);
-
   const std::size_t rows = A.num_rows;
 
   run_row_kernel(state, rows, [&]() {
     CsrSetAlgebraContext ctx;
-    ctx.scan_workspace.ensure_capacity(rows);
-    benchmark::DoNotOptimize(ctx.scan_workspace.row_counts.data());
-    benchmark::DoNotOptimize(ctx.scan_workspace.total_intervals.data());
+    ctx.difference_workspace.ensure_capacity(rows);
+    benchmark::DoNotOptimize(
+        ctx.difference_workspace.row_keys.data());
+    benchmark::DoNotOptimize(
+        ctx.difference_workspace.row_index_b.data());
   }, "ns_per_row");
 }
 
@@ -1024,8 +1025,11 @@ void bench_difference_map_rows(benchmark::State& state, Coord extent) {
 
   const std::size_t rows = A.num_rows;
 
+  CsrSetAlgebraContext ctx;
+
   run_row_kernel(state, rows, [&]() {
-    auto mapping = detail::build_row_difference_mapping(A, B);
+    auto mapping = detail::build_row_difference_mapping(
+        A, B, ctx.difference_workspace);
     benchmark::DoNotOptimize(mapping.row_keys.data());
     benchmark::DoNotOptimize(mapping.row_index_b.data());
   }, "ns_per_row");
