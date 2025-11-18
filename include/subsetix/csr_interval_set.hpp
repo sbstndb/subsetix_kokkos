@@ -87,30 +87,6 @@ allocate_interval_set_device(std::size_t row_capacity,
   return dev;
 }
 
-inline IntervalSet2DDevice
-allocate_union_output_buffer(const IntervalSet2DDevice& A,
-                             const IntervalSet2DDevice& B) {
-  return allocate_interval_set_device(A.num_rows + B.num_rows,
-                                      A.num_intervals + B.num_intervals);
-}
-
-inline IntervalSet2DDevice
-allocate_intersection_output_buffer(const IntervalSet2DDevice& A,
-                                    const IntervalSet2DDevice& B) {
-  const std::size_t row_capacity =
-      std::min(A.num_rows, B.num_rows);
-  const std::size_t interval_capacity =
-      A.num_intervals + B.num_intervals;
-  return allocate_interval_set_device(row_capacity, interval_capacity);
-}
-
-inline IntervalSet2DDevice
-allocate_difference_output_buffer(const IntervalSet2DDevice& lhs,
-                                  const IntervalSet2DDevice& rhs) {
-  return allocate_interval_set_device(lhs.num_rows,
-                                      lhs.num_intervals + rhs.num_intervals);
-}
-
 /**
  * @brief Build a device CSR interval set from a host CSR representation.
  */

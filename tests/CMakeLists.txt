@@ -7,6 +7,8 @@ set(SUBSETIX_TEST_SOURCES
     csr_field_ops_smoke_test.cpp
     csr_field_stencil_smoke_test.cpp
     csr_field_amr_ops_smoke_test.cpp
+    csr_field_algebra_smoke_test.cpp
+    csr_field_remap_smoke_test.cpp
     csr_union_smoke_test.cpp
     csr_union_components_smoke_test.cpp
     csr_intersection_smoke_test.cpp

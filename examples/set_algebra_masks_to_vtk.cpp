@@ -54,20 +54,23 @@ int main(int argc, char* argv[]) {
 
     CsrSetAlgebraContext ctx;
 
-    auto u = allocate_union_output_buffer(box_dev, disk_dev);
+    auto u = allocate_interval_set_device(box_dev.num_rows + disk_dev.num_rows,
+                                          box_dev.num_intervals + disk_dev.num_intervals);
     set_union_device(box_dev, disk_dev, u, ctx);
 
-    auto inter = allocate_intersection_output_buffer(box_dev, disk_dev);
+    auto inter = allocate_interval_set_device(std::min(box_dev.num_rows, disk_dev.num_rows),
+                                              box_dev.num_intervals + disk_dev.num_intervals);
     set_intersection_device(box_dev, disk_dev, inter, ctx);
 
-    auto diff = allocate_difference_output_buffer(box_dev, disk_dev);
+    auto diff = allocate_interval_set_device(box_dev.num_rows,
+                                             box_dev.num_intervals + disk_dev.num_intervals);
     set_difference_device(box_dev, disk_dev, diff, ctx);
 
     fill_on_set_device(field_dev, diff, 1.0);
     fill_on_set_device(field_dev, inter, 2.0);
 
-    auto scaled_union =
-        allocate_difference_output_buffer(u, inter);
+    auto scaled_union = allocate_interval_set_device(u.num_rows,
+                                                     u.num_intervals + inter.num_intervals);
     set_difference_device(u, inter, scaled_union, ctx);
     scale_on_set_device(field_dev, scaled_union, 0.5);
 

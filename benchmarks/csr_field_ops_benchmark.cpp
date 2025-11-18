@@ -6,6 +6,9 @@
 #include <subsetix/csr_field.hpp>
 #include <subsetix/csr_field_ops.hpp>
 #include <subsetix/csr_interval_set.hpp>
+#include <subsetix/csr_set_ops.hpp>
+#include <subsetix/csr_ops/amr.hpp>
+#include <subsetix/csr_ops/workspace.hpp>
 
 using namespace subsetix::csr;
 

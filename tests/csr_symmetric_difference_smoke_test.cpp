@@ -80,7 +80,9 @@ TEST(CSRSetOpsSmokeTest, SymmetricDifference) {
   CsrSetAlgebraContext ctx;
   
   // Allocate conservatively (union size is safe upper bound)
-  auto dev_out = allocate_union_output_buffer(dev_a, dev_b);
+  auto dev_out = allocate_interval_set_device(
+      dev_a.num_rows + dev_b.num_rows,
+      dev_a.num_intervals + dev_b.num_intervals);
   
   set_symmetric_difference_device(dev_a, dev_b, dev_out, ctx);
 
@@ -96,7 +98,9 @@ TEST(CSRSetOpsSmokeTest, SymmetricDifferenceEmpty) {
   auto dev_a = build_device_from_host(host_a);
   
   CsrSetAlgebraContext ctx;
-  auto dev_out = allocate_union_output_buffer(dev_a, dev_empty);
+  auto dev_out = allocate_interval_set_device(
+      dev_a.num_rows + dev_empty.num_rows,
+      dev_a.num_intervals + dev_empty.num_intervals);
   
   // A XOR Empty = A
   set_symmetric_difference_device(dev_a, dev_empty, dev_out, ctx);

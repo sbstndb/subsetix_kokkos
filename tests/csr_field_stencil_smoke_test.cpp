@@ -54,7 +54,7 @@ struct FivePointAverage {
                     Coord y,
                     std::size_t linear_index,
                     int interval_index,
-                    const detail::FieldStencilContext<double>& ctx) const {
+                    const subsetix::csr::detail::FieldStencilContext<double>& ctx) const {
     const double center = ctx.center(linear_index);
     const double east = ctx.right(linear_index);
     const double west = ctx.left(linear_index);

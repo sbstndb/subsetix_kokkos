@@ -2,12 +2,13 @@
 
 #include "example_output.hpp"
 
-#include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_field.hpp>
 #include <subsetix/csr_field_ops.hpp>
+#include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_set_ops.hpp>
 #include <subsetix/vtk_export.hpp>
 
+#include <cmath>
 #include <string_view>
 
 int main(int argc, char* argv[]) {
@@ -32,7 +33,8 @@ int main(int argc, char* argv[]) {
 
     auto coarse_geom_dev = make_box_device(coarse_box);
     CsrSetAlgebraContext ctx;
-    IntervalSet2DDevice fine_geom_dev;
+    IntervalSet2DDevice fine_geom_dev = allocate_interval_set_device(
+        coarse_geom_dev.num_rows * 2, coarse_geom_dev.num_intervals * 2);
     refine_level_up_device(coarse_geom_dev, fine_geom_dev, ctx);
 
     auto coarse_geom_host =

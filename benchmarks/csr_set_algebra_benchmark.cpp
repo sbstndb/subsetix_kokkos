@@ -451,29 +451,6 @@ void BM_CSRMakeBox_XXLarge(benchmark::State& state) {
   bench_box_construction(state, cfg);
 }
 
-void bench_map_rows_alloc(benchmark::State& state, Coord extent) {
-  RectConfig a_cfg, b_cfg;
-  make_intersection_configs(extent, a_cfg, b_cfg);
-  IntervalSet2DDevice A = make_box(a_cfg);
-  IntervalSet2DDevice B = make_box(b_cfg);
-
-  const std::size_t num_rows_a = A.num_rows;
-  const std::size_t num_rows_b = B.num_rows;
-  const std::size_t n_small =
-      (num_rows_a <= num_rows_b) ? num_rows_a : num_rows_b;
-
-  run_row_kernel(state, n_small, [&]() {
-    CsrSetAlgebraContext ctx;
-    ctx.intersection_workspace.ensure_capacity(n_small);
-    benchmark::DoNotOptimize(ctx.intersection_workspace.flags.data());
-    benchmark::DoNotOptimize(ctx.intersection_workspace.tmp_idx_a.data());
-    benchmark::DoNotOptimize(ctx.intersection_workspace.tmp_idx_b.data());
-    benchmark::DoNotOptimize(ctx.intersection_workspace.positions.data());
-    benchmark::DoNotOptimize(
-        ctx.intersection_workspace.d_num_rows.data());
-  }, "ns_per_row");
-}
-
 void bench_map_rows(benchmark::State& state, Coord extent) {
   RectConfig a_cfg, b_cfg;
   make_intersection_configs(extent, a_cfg, b_cfg);
@@ -485,7 +462,7 @@ void bench_map_rows(benchmark::State& state, Coord extent) {
 
   run_row_kernel(state, rows, [&]() {
     auto mapping = detail::build_row_intersection_mapping(
-        A, B, ctx.intersection_workspace);
+        A, B, ctx.workspace);
     benchmark::DoNotOptimize(mapping.row_keys.data());
     benchmark::DoNotOptimize(mapping.row_index_a.data());
     benchmark::DoNotOptimize(mapping.row_index_b.data());
@@ -741,29 +718,6 @@ void bench_fill(benchmark::State& state, Coord extent) {
 // Union row-level benchmarks
 // ============================================================================
 
-void bench_union_map_rows_alloc(benchmark::State& state, Coord extent) {
-  RectConfig a_cfg, b_cfg;
-  make_intersection_configs(extent, a_cfg, b_cfg);
-  IntervalSet2DDevice A = make_box(a_cfg);
-  IntervalSet2DDevice B = make_box(b_cfg);
-
-  run_row_kernel(state, A.num_rows + B.num_rows, [&]() {
-    CsrSetAlgebraContext ctx;
-    ctx.union_workspace.ensure_capacity(A.num_rows,
-                                        B.num_rows);
-    benchmark::DoNotOptimize(
-        ctx.union_workspace.map_a_to_b.data());
-    benchmark::DoNotOptimize(
-        ctx.union_workspace.map_b_to_a.data());
-    benchmark::DoNotOptimize(
-        ctx.union_workspace.b_only_flags.data());
-    benchmark::DoNotOptimize(
-        ctx.union_workspace.b_only_positions.data());
-    benchmark::DoNotOptimize(
-        ctx.union_workspace.b_only_indices.data());
-  }, "ns_per_row");
-}
-
 void bench_union_map_rows(benchmark::State& state, Coord extent) {
   RectConfig a_cfg, b_cfg;
   make_intersection_configs(extent, a_cfg, b_cfg);
@@ -776,7 +730,7 @@ void bench_union_map_rows(benchmark::State& state, Coord extent) {
 
   run_row_kernel(state, rows, [&]() {
     auto mapping = detail::build_row_union_mapping(
-        A, B, ctx.union_workspace);
+        A, B, ctx.workspace);
     benchmark::DoNotOptimize(mapping.row_keys.data());
     benchmark::DoNotOptimize(mapping.row_index_a.data());
     benchmark::DoNotOptimize(mapping.row_index_b.data());
@@ -1065,23 +1019,6 @@ void bench_union_fill(benchmark::State& state, Coord extent) {
 // Difference row-level benchmarks
 // ============================================================================
 
-void bench_difference_map_rows_alloc(benchmark::State& state,
-                                     Coord extent) {
-  RectConfig a_cfg, b_cfg;
-  make_intersection_configs(extent, a_cfg, b_cfg);
-  IntervalSet2DDevice A = make_box(a_cfg);
-  const std::size_t rows = A.num_rows;
-
-  run_row_kernel(state, rows, [&]() {
-    CsrSetAlgebraContext ctx;
-    ctx.difference_workspace.ensure_capacity(rows);
-    benchmark::DoNotOptimize(
-        ctx.difference_workspace.row_keys.data());
-    benchmark::DoNotOptimize(
-        ctx.difference_workspace.row_index_b.data());
-  }, "ns_per_row");
-}
-
 void bench_difference_map_rows(benchmark::State& state, Coord extent) {
   RectConfig a_cfg, b_cfg;
   make_intersection_configs(extent, a_cfg, b_cfg);
@@ -1094,7 +1031,7 @@ void bench_difference_map_rows(benchmark::State& state, Coord extent) {
 
   run_row_kernel(state, rows, [&]() {
     auto mapping = detail::build_row_difference_mapping(
-        A, B, ctx.difference_workspace);
+        A, B, ctx.workspace);
     benchmark::DoNotOptimize(mapping.row_keys.data());
     benchmark::DoNotOptimize(mapping.row_index_b.data());
   }, "ns_per_row");
@@ -1355,22 +1292,6 @@ void bench_difference_fill(benchmark::State& state, Coord extent) {
       1e9;
 }
 
-void BM_CSRIntersection_MapRowsAlloc_Tiny(benchmark::State& state) {
-  bench_map_rows_alloc(state, kSizeTiny);
-}
-
-void BM_CSRIntersection_MapRowsAlloc_Medium(benchmark::State& state) {
-  bench_map_rows_alloc(state, kSizeMedium);
-}
-
-void BM_CSRIntersection_MapRowsAlloc_Large(benchmark::State& state) {
-  bench_map_rows_alloc(state, kSizeLarge);
-}
-
-void BM_CSRIntersection_MapRowsAlloc_XLarge(benchmark::State& state) {
-  bench_map_rows_alloc(state, kSizeXLarge);
-}
-
 void BM_CSRIntersection_MapRows_Tiny(benchmark::State& state) {
   bench_map_rows(state, kSizeTiny);
 }
@@ -1451,26 +1372,6 @@ void BM_CSRIntersection_Fill_XXLarge(benchmark::State& state) {
   bench_fill(state, kSizeXXLarge);
 }
 
-void BM_CSRUnion_MapRowsAlloc_Tiny(benchmark::State& state) {
-  bench_union_map_rows_alloc(state, kSizeTiny);
-}
-
-void BM_CSRUnion_MapRowsAlloc_Medium(benchmark::State& state) {
-  bench_union_map_rows_alloc(state, kSizeMedium);
-}
-
-void BM_CSRUnion_MapRowsAlloc_Large(benchmark::State& state) {
-  bench_union_map_rows_alloc(state, kSizeLarge);
-}
-
-void BM_CSRUnion_MapRowsAlloc_XLarge(benchmark::State& state) {
-  bench_union_map_rows_alloc(state, kSizeXLarge);
-}
-
-void BM_CSRUnion_MapRowsAlloc_XXLarge(benchmark::State& state) {
-  bench_union_map_rows_alloc(state, kSizeXXLarge);
-}
-
 void BM_CSRUnion_MapRows_Tiny(benchmark::State& state) {
   bench_union_map_rows(state, kSizeTiny);
 }
@@ -1549,26 +1450,6 @@ void BM_CSRUnion_Fill_XLarge(benchmark::State& state) {
 
 void BM_CSRUnion_Fill_XXLarge(benchmark::State& state) {
   bench_union_fill(state, kSizeXXLarge);
-}
-
-void BM_CSRDifference_MapRowsAlloc_Tiny(benchmark::State& state) {
-  bench_difference_map_rows_alloc(state, kSizeTiny);
-}
-
-void BM_CSRDifference_MapRowsAlloc_Medium(benchmark::State& state) {
-  bench_difference_map_rows_alloc(state, kSizeMedium);
-}
-
-void BM_CSRDifference_MapRowsAlloc_Large(benchmark::State& state) {
-  bench_difference_map_rows_alloc(state, kSizeLarge);
-}
-
-void BM_CSRDifference_MapRowsAlloc_XLarge(benchmark::State& state) {
-  bench_difference_map_rows_alloc(state, kSizeXLarge);
-}
-
-void BM_CSRDifference_MapRowsAlloc_XXLarge(benchmark::State& state) {
-  bench_difference_map_rows_alloc(state, kSizeXXLarge);
 }
 
 void BM_CSRDifference_MapRows_Tiny(benchmark::State& state) {
@@ -1678,10 +1559,6 @@ BENCHMARK(BM_CSRMakeBox_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_XLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_XXLarge)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Tiny)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Medium)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Large)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRIntersection_MapRowsAlloc_XLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_Large)->Unit(benchmark::kNanosecond);
@@ -1702,11 +1579,6 @@ BENCHMARK(BM_CSRIntersection_Fill_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Fill_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Fill_XLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Fill_XXLarge)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRUnion_MapRowsAlloc_Tiny)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRUnion_MapRowsAlloc_Medium)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRUnion_MapRowsAlloc_Large)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRUnion_MapRowsAlloc_XLarge)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRUnion_MapRowsAlloc_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_MapRows_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_MapRows_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_MapRows_Large)->Unit(benchmark::kNanosecond);
@@ -1727,11 +1599,6 @@ BENCHMARK(BM_CSRUnion_Fill_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_Fill_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_Fill_XLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_Fill_XXLarge)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRDifference_MapRowsAlloc_Tiny)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRDifference_MapRowsAlloc_Medium)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRDifference_MapRowsAlloc_Large)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRDifference_MapRowsAlloc_XLarge)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_CSRDifference_MapRowsAlloc_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_MapRows_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_MapRows_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_MapRows_Large)->Unit(benchmark::kNanosecond);

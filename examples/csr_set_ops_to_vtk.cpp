@@ -39,16 +39,20 @@ int main(int argc, char* argv[]) {
 
     CsrSetAlgebraContext ctx;
 
-    auto u = allocate_union_output_buffer(box_dev, disk_dev);
+    auto u = allocate_interval_set_device(box_dev.num_rows + disk_dev.num_rows,
+                                          box_dev.num_intervals + disk_dev.num_intervals);
     set_union_device(box_dev, disk_dev, u, ctx);
 
-    auto i = allocate_intersection_output_buffer(box_dev, disk_dev);
+    auto i = allocate_interval_set_device(std::min(box_dev.num_rows, disk_dev.num_rows),
+                                          box_dev.num_intervals + disk_dev.num_intervals);
     set_intersection_device(box_dev, disk_dev, i, ctx);
 
-    auto d = allocate_difference_output_buffer(box_dev, disk_dev);
+    auto d = allocate_interval_set_device(box_dev.num_rows,
+                                          box_dev.num_intervals + disk_dev.num_intervals);
     set_difference_device(box_dev, disk_dev, d, ctx);
 
-    auto x = allocate_union_output_buffer(box_dev, disk_dev);
+    auto x = allocate_interval_set_device(box_dev.num_rows + disk_dev.num_rows,
+                                          box_dev.num_intervals + disk_dev.num_intervals);
     set_symmetric_difference_device(box_dev, disk_dev, x, ctx);
 
     auto u_host = build_host_from_device(u);

@@ -4,6 +4,7 @@
 
 - Root: `CMakeLists.txt`, `CMakePresets.json`, `AGENTS.md`.
 - Public headers: `include/subsetix/` (CSR geometry, fields, VTK export).
+- Implementation headers: `include/subsetix/csr_ops/` (Parallel kernels) and `include/subsetix/detail/`.
 - Library target: `subsetix_core` in `src/` (INTERFACE, links to Kokkos).
 - Tests: `tests/` (standalone executables registered via CTest).
 - Examples: `examples/` (VTK generation and usage demos).
@@ -33,7 +34,7 @@
 ## Testing Guidelines
 
 - Tests use GoogleTest and live in `tests/`, all compiled into the `subsetix_tests` executable.
-- Keep tests fast and deterministic; they must pass on serial, OpenMP, and CUDA (when enabled).  
+- Keep tests fast and deterministic; they must pass on serial, OpenMP, and CUDA (use preset `cuda-gcc12`).
 - Prefer focused `TEST()` cases over large monolithic tests; share common helpers in small headers or `.cpp` files.
 - When adding device code, exercise it at least in the serial preset.
 - For set‑algebra primitives (e.g. `set_union_device`), add both high‑level tests and focused tests for low‑level building blocks to simplify debugging.
@@ -50,3 +51,9 @@
 - Respect this layout when adding new geometry/field features; reuse existing CSR types.
 - Prefer adding example usage in `examples/` for new public capabilities.
 - When modifying CMake or presets, preserve existing presets and options unless there is a clear reason to change them.
+
+## Communication Guidelines
+
+- Always respond in chat in French.
+- Always edit code and comments in English.
+- Keep git commit messages concise and in English.

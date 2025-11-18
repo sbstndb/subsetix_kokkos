@@ -42,6 +42,14 @@ struct UnifiedCsrWorkspace {
   // Generic buffers for Interval arrays
   IntervalSet2DDevice::IntervalView interval_buf_0;
 
+  // Generic buffers for field values (double precision)
+  Kokkos::View<double*, DeviceMemorySpace> double_buf_0;
+  Kokkos::View<double*, DeviceMemorySpace> double_buf_1;
+
+  // Generic buffers for field values (single precision)
+  Kokkos::View<float*, DeviceMemorySpace> float_buf_0;
+  Kokkos::View<float*, DeviceMemorySpace> float_buf_1;
+
   // Accessors that ensure capacity
   
   Kokkos::View<int*, DeviceMemorySpace> get_int_buf_0(std::size_t size) {
@@ -108,6 +116,26 @@ struct UnifiedCsrWorkspace {
     return interval_buf_0;
   }
 
+  Kokkos::View<double*, DeviceMemorySpace> get_double_buf_0(std::size_t size) {
+    ensure_view_capacity(double_buf_0, size, "unified_ws_double_0");
+    return double_buf_0;
+  }
+
+  Kokkos::View<double*, DeviceMemorySpace> get_double_buf_1(std::size_t size) {
+    ensure_view_capacity(double_buf_1, size, "unified_ws_double_1");
+    return double_buf_1;
+  }
+
+  Kokkos::View<float*, DeviceMemorySpace> get_float_buf_0(std::size_t size) {
+    ensure_view_capacity(float_buf_0, size, "unified_ws_float_0");
+    return float_buf_0;
+  }
+
+  Kokkos::View<float*, DeviceMemorySpace> get_float_buf_1(std::size_t size) {
+    ensure_view_capacity(float_buf_1, size, "unified_ws_float_1");
+    return float_buf_1;
+  }
+
   /**
    * @brief Reclaims memory by resetting all views to empty.
    *
@@ -129,6 +157,11 @@ struct UnifiedCsrWorkspace {
     row_key_buf_0 = IntervalSet2DDevice::RowKeyView();
     row_key_buf_1 = IntervalSet2DDevice::RowKeyView();
     interval_buf_0 = IntervalSet2DDevice::IntervalView();
+
+    double_buf_0 = Kokkos::View<double*, DeviceMemorySpace>();
+    double_buf_1 = Kokkos::View<double*, DeviceMemorySpace>();
+    float_buf_0 = Kokkos::View<float*, DeviceMemorySpace>();
+    float_buf_1 = Kokkos::View<float*, DeviceMemorySpace>();
   }
 };
 

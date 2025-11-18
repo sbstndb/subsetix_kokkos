@@ -14,7 +14,8 @@ namespace {
 IntervalSet2DDevice run_union(const IntervalSet2DDevice& lhs,
                               const IntervalSet2DDevice& rhs) {
   CsrSetAlgebraContext ctx;
-  auto out = allocate_union_output_buffer(lhs, rhs);
+  auto out = allocate_interval_set_device(
+      lhs.num_rows + rhs.num_rows, lhs.num_intervals + rhs.num_intervals);
   set_union_device(lhs, rhs, out, ctx);
   return out;
 }

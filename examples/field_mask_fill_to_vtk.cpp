@@ -8,6 +8,7 @@
 #include <subsetix/csr_set_ops.hpp>
 #include <subsetix/vtk_export.hpp>
 
+#include <algorithm>
 #include <string_view>
 
 int main(int argc, char* argv[]) {
