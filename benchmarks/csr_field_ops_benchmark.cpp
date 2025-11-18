@@ -275,6 +275,64 @@ void bench_prolongation(benchmark::State& state,
       (total_seconds / total_cells) * 1e9;
 }
 
+void bench_prolongation_prediction(benchmark::State& state,
+                                   const RectConfig& coarse_cfg) {
+  IntervalField2DDevice<double> coarse =
+      make_field(coarse_cfg, 0.0);
+  auto coarse_host = build_host_field_from_device(coarse);
+  for (std::size_t row = 0; row < coarse_host.row_keys.size();
+       ++row) {
+    const Coord y = coarse_host.row_keys[row].y;
+    const std::size_t begin = coarse_host.row_ptr[row];
+    const std::size_t end = coarse_host.row_ptr[row + 1];
+    for (std::size_t k = begin; k < end; ++k) {
+      const auto fi = coarse_host.intervals[k];
+      for (Coord x = fi.begin; x < fi.end; ++x) {
+        const std::size_t offset =
+            fi.value_offset +
+            static_cast<std::size_t>(x - fi.begin);
+        coarse_host.values[offset] =
+            static_cast<double>(100 + 3 * x + 5 * y);
+      }
+    }
+  }
+  coarse = build_device_field_from_host(coarse_host);
+
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine_geom;
+  refine_level_up_device(make_mask(coarse_cfg), fine_geom, ctx);
+  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto fine_field_host =
+      make_field_like_geometry<double>(fine_geom_host, 0.0);
+  IntervalField2DDevice<double> fine =
+      build_device_field_from_host(fine_field_host);
+
+  IntervalSet2DDevice fine_mask = fine_geom;
+  const std::size_t cells =
+      cells_in_rect(RectConfig{
+          0,
+          static_cast<Coord>(2 * (coarse_cfg.x_max - coarse_cfg.x_min)),
+          0,
+          static_cast<Coord>(2 * (coarse_cfg.y_max - coarse_cfg.y_min))});
+
+  double total_seconds = 0.0;
+
+  for (auto _ : state) {
+    const auto t0 = std::chrono::steady_clock::now();
+    prolong_field_prediction_device(fine, coarse, fine_mask);
+    const auto t1 = std::chrono::steady_clock::now();
+    total_seconds +=
+        std::chrono::duration<double>(t1 - t0).count();
+    benchmark::DoNotOptimize(fine.values.data());
+  }
+
+  const double total_cells =
+      static_cast<double>(cells) *
+      static_cast<double>(state.iterations());
+  state.counters["ns_per_cell"] =
+      (total_seconds / total_cells) * 1e9;
+}
+
 // --- Fill benchmarks ---
 
 void BM_FieldFill_Tiny(benchmark::State& state) {
@@ -363,6 +421,24 @@ void BM_FieldProlong_Large(benchmark::State& state) {
   bench_prolongation(state, make_rect(1024));
 }
 
+// --- Prolongation Prediction benchmarks ---
+
+void BM_FieldProlongPrediction_Tiny(benchmark::State& state) {
+  bench_prolongation_prediction(state, make_rect(64));
+}
+
+void BM_FieldProlongPrediction_Small(benchmark::State& state) {
+  bench_prolongation_prediction(state, make_rect(256));
+}
+
+void BM_FieldProlongPrediction_Medium(benchmark::State& state) {
+  bench_prolongation_prediction(state, make_rect(512));
+}
+
+void BM_FieldProlongPrediction_Large(benchmark::State& state) {
+  bench_prolongation_prediction(state, make_rect(1024));
+}
+
 } // namespace
 
 BENCHMARK(BM_FieldFill_Tiny)->Unit(benchmark::kNanosecond);
@@ -384,6 +460,11 @@ BENCHMARK(BM_FieldProlong_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldProlong_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldProlong_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldProlong_Large)->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_FieldProlongPrediction_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldProlongPrediction_Small)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldProlongPrediction_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldProlongPrediction_Large)->Unit(benchmark::kNanosecond);
 
 int main(int argc, char** argv) {
   Kokkos::initialize(argc, argv);

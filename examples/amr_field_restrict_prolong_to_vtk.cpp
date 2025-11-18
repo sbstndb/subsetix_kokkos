@@ -132,7 +132,24 @@ int main(int argc, char* argv[]) {
     write_legacy_quads(coarse_field2_host,
                        output_path("amr_coarse_source.vtk"), "value");
     write_legacy_quads(prolonged_host,
-                       output_path("amr_fine_prolonged.vtk"),
+                       output_path("amr_fine_prolonged_injection.vtk"),
+                       "value");
+
+    // Prediction (High Order)
+    auto fine_field3_host =
+        make_field_like_geometry<double>(
+            fine_geom_host, 0.0);
+    auto fine_field3_dev =
+        build_device_field_from_host(fine_field3_host);
+    
+    prolong_field_prediction_device(fine_field3_dev,
+                                    coarse_field2_dev,
+                                    fine_mask);
+    
+    auto prolonged_prediction_host =
+        build_host_field_from_device(fine_field3_dev);
+    write_legacy_quads(prolonged_prediction_host,
+                       output_path("amr_fine_prolonged_prediction.vtk"),
                        "value");
   }
 
