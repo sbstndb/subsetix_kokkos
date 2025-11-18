@@ -38,7 +38,6 @@ std::size_t row_union_count(const IntervalView& intervals_a,
   std::size_t ib = begin_b;
 
   bool have_current = false;
-  Coord current_begin = 0;
   Coord current_end = 0;
   std::size_t count = 0;
 
@@ -63,7 +62,6 @@ std::size_t row_union_count(const IntervalView& intervals_a,
     }
 
     if (!have_current) {
-      current_begin = b;
       current_end = e;
       have_current = true;
     } else {
@@ -71,7 +69,6 @@ std::size_t row_union_count(const IntervalView& intervals_a,
         current_end = (e > current_end) ? e : current_end;
       } else {
         ++count;
-        current_begin = b;
         current_end = e;
       }
     }
