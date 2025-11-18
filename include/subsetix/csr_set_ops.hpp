@@ -1404,22 +1404,13 @@ set_intersection_device(const IntervalSet2DDevice& A,
         "insufficient row capacity in output IntervalSet2DDevice");
   }
 
+  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
+      "subsetix_csr_intersection_row_counts_prealloc", num_rows_out);
+
   auto row_keys_out_tmp = merge.row_keys;
   auto row_index_a = merge.row_index_a;
   auto row_index_b = merge.row_index_b;
   auto row_keys_out = out.row_keys;
-
-  Kokkos::parallel_for(
-      "subsetix_csr_intersection_copy_row_keys",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        row_keys_out(i) = row_keys_out_tmp(i);
-      });
-
-  ExecSpace().fence();
-
-  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
-      "subsetix_csr_intersection_row_counts_prealloc", num_rows_out);
 
   auto row_ptr_a = A.row_ptr;
   auto row_ptr_b = B.row_ptr;
@@ -1427,9 +1418,11 @@ set_intersection_device(const IntervalSet2DDevice& A,
   auto intervals_b = B.intervals;
 
   Kokkos::parallel_for(
-      "subsetix_csr_intersection_count_prealloc",
+      "subsetix_csr_intersection_copy_and_count_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
+        row_keys_out(i) = row_keys_out_tmp(i);
+
         const int ia = row_index_a(i);
         const int ib = row_index_b(i);
 

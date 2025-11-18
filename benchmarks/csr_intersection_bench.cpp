@@ -54,6 +54,7 @@ constexpr Coord kSizeTiny = 128;
 constexpr Coord kSizeMedium = 1280;
 constexpr Coord kSizeLarge = 12800;
 constexpr Coord kSizeXLarge = 128000;
+constexpr Coord kSizeXXLarge = 1280000;
 
 void bench_box_construction(benchmark::State& state,
                             const RectConfig& cfg) {
@@ -217,6 +218,19 @@ void BM_CSRIntersection_XLarge(benchmark::State& state) {
   });
 }
 
+void BM_CSRIntersection_XXLarge(benchmark::State& state) {
+  const Coord N = kSizeXXLarge;
+  RectConfig a{0, N, 0, N};
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N};
+  bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
+                                  const IntervalSet2DDevice& B,
+                                  IntervalSet2DDevice& out,
+                                  CsrSetAlgebraContext& ctx) {
+    set_intersection_device(A, B, out, ctx);
+  });
+}
+
 void BM_CSRUnion_Tiny(benchmark::State& state) {
   RectConfig a{0, 128, 0, 128};
   const Coord N = 128;
@@ -258,6 +272,19 @@ void BM_CSRUnion_Large(benchmark::State& state) {
 
 void BM_CSRUnion_XLarge(benchmark::State& state) {
   const Coord N = 128000;
+  RectConfig a{0, N, 0, N};
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N};
+  bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
+                                  const IntervalSet2DDevice& B,
+                                  IntervalSet2DDevice& out,
+                                  CsrSetAlgebraContext& ctx) {
+    set_union_device(A, B, out, ctx);
+  });
+}
+
+void BM_CSRUnion_XXLarge(benchmark::State& state) {
+  const Coord N = kSizeXXLarge;
   RectConfig a{0, N, 0, N};
   const Coord offset = N / 4;
   RectConfig b{offset, offset + N, offset, offset + N};
@@ -321,6 +348,19 @@ void BM_CSRDifference_XLarge(benchmark::State& state) {
   });
 }
 
+void BM_CSRDifference_XXLarge(benchmark::State& state) {
+  const Coord N = kSizeXXLarge;
+  RectConfig a{0, N, 0, N};
+  const Coord offset = N / 4;
+  RectConfig b{offset, offset + N, offset, offset + N};
+  bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
+                                  const IntervalSet2DDevice& B,
+                                  IntervalSet2DDevice& out,
+                                  CsrSetAlgebraContext& ctx) {
+    set_difference_device(A, B, out, ctx);
+  });
+}
+
 void BM_CSRMakeBox_Tiny(benchmark::State& state) {
   RectConfig cfg{0, 128, 0, 128};
   bench_box_construction(state, cfg);
@@ -338,6 +378,11 @@ void BM_CSRMakeBox_Large(benchmark::State& state) {
 
 void BM_CSRMakeBox_XLarge(benchmark::State& state) {
   RectConfig cfg{0, 128000, 0, 128000};
+  bench_box_construction(state, cfg);
+}
+
+void BM_CSRMakeBox_XXLarge(benchmark::State& state) {
+  RectConfig cfg{0, kSizeXXLarge, 0, kSizeXXLarge};
   bench_box_construction(state, cfg);
 }
 
@@ -667,6 +712,10 @@ void BM_CSRIntersection_MapRows_XLarge(benchmark::State& state) {
   bench_map_rows(state, kSizeXLarge);
 }
 
+void BM_CSRIntersection_MapRows_XXLarge(benchmark::State& state) {
+  bench_map_rows(state, kSizeXXLarge);
+}
+
 void BM_CSRIntersection_RowCount_Tiny(benchmark::State& state) {
   bench_row_count(state, kSizeTiny);
 }
@@ -681,6 +730,10 @@ void BM_CSRIntersection_RowCount_Large(benchmark::State& state) {
 
 void BM_CSRIntersection_RowCount_XLarge(benchmark::State& state) {
   bench_row_count(state, kSizeXLarge);
+}
+
+void BM_CSRIntersection_RowCount_XXLarge(benchmark::State& state) {
+  bench_row_count(state, kSizeXXLarge);
 }
 
 void BM_CSRIntersection_Scan_Tiny(benchmark::State& state) {
@@ -699,6 +752,10 @@ void BM_CSRIntersection_Scan_XLarge(benchmark::State& state) {
   bench_scan(state, kSizeXLarge);
 }
 
+void BM_CSRIntersection_Scan_XXLarge(benchmark::State& state) {
+  bench_scan(state, kSizeXXLarge);
+}
+
 void BM_CSRIntersection_Fill_Tiny(benchmark::State& state) {
   bench_fill(state, kSizeTiny);
 }
@@ -715,24 +772,32 @@ void BM_CSRIntersection_Fill_XLarge(benchmark::State& state) {
   bench_fill(state, kSizeXLarge);
 }
 
+void BM_CSRIntersection_Fill_XXLarge(benchmark::State& state) {
+  bench_fill(state, kSizeXXLarge);
+}
+
 } // namespace
 
 BENCHMARK(BM_CSRIntersection_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRUnion_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRUnion_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRDifference_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRDifference_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRMakeBox_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRMakeBox_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRowsAlloc_Large)->Unit(benchmark::kNanosecond);
@@ -741,18 +806,22 @@ BENCHMARK(BM_CSRIntersection_MapRows_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_MapRows_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_MapRows_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_RowCount_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_RowCount_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_RowCount_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_RowCount_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_RowCount_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Scan_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Scan_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Scan_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Scan_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_Scan_XXLarge)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Fill_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Fill_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Fill_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_CSRIntersection_Fill_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CSRIntersection_Fill_XXLarge)->Unit(benchmark::kNanosecond);
 
 int main(int argc, char** argv) {
   Kokkos::initialize(argc, argv);
