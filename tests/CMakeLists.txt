@@ -21,6 +21,7 @@ set(SUBSETIX_TEST_SOURCES
     csr_translation_smoke_test.cpp
     csr_amr_refine_project_smoke_test.cpp
     csr_morphology_smoke_test.cpp
+    csr_threshold_smoke_test.cpp
     workspace_capacity_test.cpp
     vtk_export_test.cpp
 )
