@@ -288,14 +288,68 @@ template <typename T>
 inline void copy_on_set_device(IntervalField2DDevice<T>& dst,
                                const IntervalField2DDevice<T>& src,
                                const IntervalSet2DDevice& mask) {
+  if (mask.num_rows == 0 || mask.num_intervals == 0) {
+    return;
+  }
+
+  // Build mappings for both dst and src relative to mask
+  auto dst_mapping = detail::build_mask_field_mapping(dst, mask);
+  auto src_mapping = detail::build_mask_field_mapping(src, mask);
+  
+  auto interval_to_row = dst_mapping.interval_to_row; // same for both
+  
+  auto dst_row_map = dst_mapping.row_map;
+  auto dst_interval_to_field_interval = dst_mapping.interval_to_field_interval;
+  
+  auto src_row_map = src_mapping.row_map;
+  auto src_interval_to_field_interval = src_mapping.interval_to_field_interval;
+
+  auto mask_row_keys = mask.row_keys;
+  auto mask_intervals = mask.intervals;
+  
+  auto dst_intervals = dst.intervals;
+  auto dst_values = dst.values;
+  
+  auto src_intervals = src.intervals;
   auto src_values = src.values;
-  apply_on_set_device(
-      dst, mask,
-      KOKKOS_LAMBDA(
-          Coord /*x*/, Coord /*y*/,
-          typename IntervalField2DDevice<T>::ValueView::
-              reference_type cell,
-          std::size_t idx) { cell = src_values(idx); });
+
+  Kokkos::parallel_for(
+      "subsetix_copy_on_set_device",
+      Kokkos::RangePolicy<ExecSpace>(0,
+                                     static_cast<int>(mask.num_intervals)),
+      KOKKOS_LAMBDA(const int interval_idx) {
+        const int row_idx = interval_to_row(interval_idx);
+        const int dst_row = dst_row_map(row_idx);
+        const int src_row = src_row_map(row_idx);
+        
+        if (row_idx < 0 || dst_row < 0 || src_row < 0) {
+          return;
+        }
+
+        const int dst_iv_idx = dst_interval_to_field_interval(interval_idx);
+        const int src_iv_idx = src_interval_to_field_interval(interval_idx);
+        
+        if (dst_iv_idx < 0 || src_iv_idx < 0) {
+          return;
+        }
+
+        const auto mask_iv = mask_intervals(interval_idx);
+        
+        const auto dst_iv = dst_intervals(dst_iv_idx);
+        const std::size_t dst_base_offset = dst_iv.value_offset;
+        const Coord dst_base_begin = dst_iv.begin;
+        
+        const auto src_iv = src_intervals(src_iv_idx);
+        const std::size_t src_base_offset = src_iv.value_offset;
+        const Coord src_base_begin = src_iv.begin;
+
+        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+          const std::size_t dst_idx = dst_base_offset + static_cast<std::size_t>(x - dst_base_begin);
+          const std::size_t src_idx = src_base_offset + static_cast<std::size_t>(x - src_base_begin);
+          dst_values(dst_idx) = src_values(src_idx);
+        }
+      });
+  ExecSpace().fence();
 }
 
 } // namespace csr
