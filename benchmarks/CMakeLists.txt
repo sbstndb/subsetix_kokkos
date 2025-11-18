@@ -37,3 +37,13 @@ target_link_libraries(csr_morphology_benchmark
         subsetix_core
         benchmark::benchmark
 )
+
+add_executable(csr_threshold_benchmark
+    csr_threshold_benchmark.cpp
+)
+
+target_link_libraries(csr_threshold_benchmark
+    PRIVATE
+        subsetix_core
+        benchmark::benchmark
+)

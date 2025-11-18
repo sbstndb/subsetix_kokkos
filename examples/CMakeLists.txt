@@ -60,3 +60,12 @@ target_link_libraries(csr_morphology_to_vtk
     PRIVATE
         subsetix_core
 )
+
+add_executable(threshold_to_vtk
+    threshold_to_vtk.cpp
+)
+
+target_link_libraries(threshold_to_vtk
+    PRIVATE
+        subsetix_core
+)
