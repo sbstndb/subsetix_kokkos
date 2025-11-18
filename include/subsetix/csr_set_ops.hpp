@@ -27,6 +27,9 @@ struct RowIntersectionWorkspace {
   Kokkos::View<int*, DeviceMemorySpace> tmp_idx_b;
   Kokkos::View<std::size_t*, DeviceMemorySpace> positions;
   Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows;
+  IntervalSet2DDevice::RowKeyView row_keys;
+  Kokkos::View<int*, DeviceMemorySpace> row_index_a;
+  Kokkos::View<int*, DeviceMemorySpace> row_index_b;
   std::size_t capacity_small = 0;
 
   void ensure_capacity(std::size_t n_small) {
@@ -42,6 +45,13 @@ struct RowIntersectionWorkspace {
         "subsetix_csr_intersection_tmp_idx_b", n_small);
     positions = Kokkos::View<std::size_t*, DeviceMemorySpace>(
         "subsetix_csr_intersection_row_positions", n_small);
+
+    row_keys = IntervalSet2DDevice::RowKeyView(
+        "subsetix_csr_intersection_row_keys_ws", n_small);
+    row_index_a = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_intersection_row_index_a_ws", n_small);
+    row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_intersection_row_index_b_ws", n_small);
 
     if (!d_num_rows.data()) {
       d_num_rows = Kokkos::View<std::size_t, DeviceMemorySpace>(
@@ -861,16 +871,15 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
     return result;
   }
 
-  result.row_keys = IntervalSet2DDevice::RowKeyView(
-      "subsetix_csr_intersection_row_keys", num_rows_out);
-  result.row_index_a = Kokkos::View<int*, DeviceMemorySpace>(
-      "subsetix_csr_intersection_row_index_a", num_rows_out);
-  result.row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
-      "subsetix_csr_intersection_row_index_b", num_rows_out);
+  // Reuse preallocated mapping buffers from the workspace; only the
+  // first num_rows_out entries are written and used by callers.
+  result.row_keys = workspace.row_keys;
+  result.row_index_a = workspace.row_index_a;
+  result.row_index_b = workspace.row_index_b;
 
-  auto out_rows = result.row_keys;
-  auto out_idx_a = result.row_index_a;
-  auto out_idx_b = result.row_index_b;
+  auto out_rows = workspace.row_keys;
+  auto out_idx_a = workspace.row_index_a;
+  auto out_idx_b = workspace.row_index_b;
 
   // 3) Compact matching rows into the output views.
   Kokkos::parallel_for(
