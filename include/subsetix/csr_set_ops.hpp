@@ -407,45 +407,48 @@ struct RowMergeResult {
   std::size_t num_rows = 0;
 };
 
-struct RowUnionElement {
-  RowKey2D key;
-  int src; // 0 = A, 1 = B
-  int idx;
-};
-
-struct RowUnionLess {
-  KOKKOS_INLINE_FUNCTION
-  bool operator()(const RowUnionElement& a,
-                  const RowUnionElement& b) const {
-    return a.key.y < b.key.y;
-  }
-};
-
 struct RowUnionWorkspace {
-  Kokkos::View<RowUnionElement*, DeviceMemorySpace> elems;
-  Kokkos::View<int*, DeviceMemorySpace> is_head;
-  Kokkos::View<std::size_t*, DeviceMemorySpace> head_pos;
-  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_rows;
-  std::size_t capacity_total = 0;
+  Kokkos::View<int*, DeviceMemorySpace> map_a_to_b;
+  Kokkos::View<int*, DeviceMemorySpace> map_b_to_a;
+  Kokkos::View<int*, DeviceMemorySpace> b_only_flags;
+  Kokkos::View<std::size_t*, DeviceMemorySpace> b_only_positions;
+  Kokkos::View<int*, DeviceMemorySpace> b_only_indices;
+  Kokkos::View<std::size_t, DeviceMemorySpace> d_num_b_only;
+  std::size_t capacity_a = 0;
+  std::size_t capacity_b = 0;
 
-  void ensure_capacity(std::size_t total) {
-    if (total <= capacity_total) {
+  void ensure_capacity(std::size_t num_rows_a,
+                       std::size_t num_rows_b) {
+    if (num_rows_a <= capacity_a &&
+        num_rows_b <= capacity_b) {
       return;
     }
 
-    elems = Kokkos::View<RowUnionElement*, DeviceMemorySpace>(
-        "subsetix_csr_union_elems", total);
-    is_head = Kokkos::View<int*, DeviceMemorySpace>(
-        "subsetix_csr_union_is_head", total);
-    head_pos = Kokkos::View<std::size_t*, DeviceMemorySpace>(
-        "subsetix_csr_union_head_pos", total);
-
-    if (!d_num_rows.data()) {
-      d_num_rows = Kokkos::View<std::size_t, DeviceMemorySpace>(
-          "subsetix_csr_union_num_rows");
+    if (num_rows_a > capacity_a) {
+      map_a_to_b = Kokkos::View<int*, DeviceMemorySpace>(
+          "subsetix_csr_union_map_a_to_b", num_rows_a);
+      capacity_a = num_rows_a;
     }
 
-    capacity_total = total;
+    if (num_rows_b > capacity_b) {
+      map_b_to_a = Kokkos::View<int*, DeviceMemorySpace>(
+          "subsetix_csr_union_map_b_to_a", num_rows_b);
+      b_only_flags = Kokkos::View<int*, DeviceMemorySpace>(
+          "subsetix_csr_union_b_only_flags", num_rows_b);
+      b_only_positions =
+          Kokkos::View<std::size_t*, DeviceMemorySpace>(
+              "subsetix_csr_union_b_only_positions",
+              num_rows_b);
+      b_only_indices = Kokkos::View<int*, DeviceMemorySpace>(
+          "subsetix_csr_union_b_only_indices",
+          num_rows_b);
+      capacity_b = num_rows_b;
+    }
+
+    if (!d_num_b_only.data()) {
+      d_num_b_only = Kokkos::View<std::size_t, DeviceMemorySpace>(
+          "subsetix_csr_union_num_b_only");
+    }
   }
 };
 
@@ -462,7 +465,6 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
                         const IntervalSet2DDevice& B,
                         RowUnionWorkspace& workspace) {
   RowMergeResult result;
-
   const std::size_t num_rows_a = A.num_rows;
   const std::size_t num_rows_b = B.num_rows;
 
@@ -473,79 +475,157 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
   auto rows_a = A.row_keys;
   auto rows_b = B.row_keys;
 
-  const std::size_t total = num_rows_a + num_rows_b;
+  // Fast paths for empty inputs.
+  if (num_rows_a == 0) {
+    result.num_rows = num_rows_b;
+    if (num_rows_b == 0) {
+      return result;
+    }
 
-  workspace.ensure_capacity(total);
+    result.row_keys = IntervalSet2DDevice::RowKeyView(
+        "subsetix_csr_union_row_keys_b_only", num_rows_b);
+    result.row_index_a = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_union_row_index_a_b_only",
+        num_rows_b);
+    result.row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_union_row_index_b_b_only",
+        num_rows_b);
 
-  // Pack all row keys from A and B into a single device array with
-  // source tags, then sort by Y and compact uniques.
-  auto elems = workspace.elems;
+    auto out_rows = result.row_keys;
+    auto out_idx_a = result.row_index_a;
+    auto out_idx_b = result.row_index_b;
 
-  // Fill from A.
-  Kokkos::parallel_for(
-      "subsetix_csr_union_pack_a",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        elems(i).key = rows_a(i);
-        elems(i).src = 0;
-        elems(i).idx = static_cast<int>(i);
-      });
+    Kokkos::parallel_for(
+        "subsetix_csr_union_rows_b_only",
+        Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
+        KOKKOS_LAMBDA(const std::size_t j) {
+          out_rows(j) = rows_b(j);
+          out_idx_a(j) = -1;
+          out_idx_b(j) = static_cast<int>(j);
+        });
 
-  // Fill from B.
-  Kokkos::parallel_for(
-      "subsetix_csr_union_pack_b",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
-      KOKKOS_LAMBDA(const std::size_t j) {
-        const std::size_t pos = num_rows_a + j;
-        elems(pos).key = rows_b(j);
-        elems(pos).src = 1;
-        elems(pos).idx = static_cast<int>(j);
-      });
-
-  ExecSpace().fence();
-
-  ExecSpace exec;
-  Kokkos::sort(exec, elems, RowUnionLess{});
-  exec.fence();
-
-  if (total == 0) {
+    ExecSpace().fence();
     return result;
   }
 
-  // Mark the first occurrence of each distinct row key.
-  auto is_head = workspace.is_head;
+  if (num_rows_b == 0) {
+    result.num_rows = num_rows_a;
+    result.row_keys = IntervalSet2DDevice::RowKeyView(
+        "subsetix_csr_union_row_keys_a_only", num_rows_a);
+    result.row_index_a = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_union_row_index_a_a_only",
+        num_rows_a);
+    result.row_index_b = Kokkos::View<int*, DeviceMemorySpace>(
+        "subsetix_csr_union_row_index_b_a_only",
+        num_rows_a);
 
+    auto out_rows = result.row_keys;
+    auto out_idx_a = result.row_index_a;
+    auto out_idx_b = result.row_index_b;
+
+    Kokkos::parallel_for(
+        "subsetix_csr_union_rows_a_only",
+        Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+        KOKKOS_LAMBDA(const std::size_t i) {
+          out_rows(i) = rows_a(i);
+          out_idx_a(i) = static_cast<int>(i);
+          out_idx_b(i) = -1;
+        });
+
+    ExecSpace().fence();
+    return result;
+  }
+
+  // General case: A and B both non-empty. We exploit that row_keys in
+  // A and B are individually sorted by Y to build the union mapping
+  // with parallel binary searches and scans, without a global sort.
+  workspace.ensure_capacity(num_rows_a, num_rows_b);
+
+  auto map_a_to_b = workspace.map_a_to_b;
+  auto map_b_to_a = workspace.map_b_to_a;
+  auto b_only_flags = workspace.b_only_flags;
+  auto b_only_positions = workspace.b_only_positions;
+  auto b_only_indices = workspace.b_only_indices;
+  auto d_num_b_only = workspace.d_num_b_only;
+
+  // 1) For each row of A, binary-search its Y in B.
   Kokkos::parallel_for(
-      "subsetix_csr_union_mark_heads",
-      Kokkos::RangePolicy<ExecSpace>(0, total),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        if (i == 0) {
-          is_head(i) = 1;
+      "subsetix_csr_union_map_a_to_b",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+      KOKKOS_LAMBDA(const std::size_t ia) {
+        const Coord ya = rows_a(ia).y;
+
+        std::size_t lo = 0;
+        std::size_t hi = num_rows_b;
+        while (lo < hi) {
+          const std::size_t mid = (lo + hi) / 2;
+          const Coord yb = rows_b(mid).y;
+          if (yb < ya) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
+          }
+        }
+
+        if (lo < num_rows_b && rows_b(lo).y == ya) {
+          map_a_to_b(ia) = static_cast<int>(lo);
         } else {
-          const Coord y_curr = elems(i).key.y;
-          const Coord y_prev = elems(i - 1).key.y;
-          is_head(i) = (y_curr != y_prev) ? 1 : 0;
+          map_a_to_b(ia) = -1;
         }
       });
 
   ExecSpace().fence();
 
-  // Exclusive scan of heads to get output positions and count.
-  auto head_pos = workspace.head_pos;
-  auto d_num_rows = workspace.d_num_rows;
+  // 2) For each row of B, binary-search its Y in A.
+  Kokkos::parallel_for(
+      "subsetix_csr_union_map_b_to_a",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
+      KOKKOS_LAMBDA(const std::size_t ib) {
+        const Coord yb = rows_b(ib).y;
+
+        std::size_t lo = 0;
+        std::size_t hi = num_rows_a;
+        while (lo < hi) {
+          const std::size_t mid = (lo + hi) / 2;
+          const Coord ya = rows_a(mid).y;
+          if (ya < yb) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
+          }
+        }
+
+        if (lo < num_rows_a && rows_a(lo).y == yb) {
+          map_b_to_a(ib) = static_cast<int>(lo);
+        } else {
+          map_b_to_a(ib) = -1;
+        }
+      });
+
+  ExecSpace().fence();
+
+  // 3) Extract rows of B that are not present in A.
+  Kokkos::parallel_for(
+      "subsetix_csr_union_mark_b_only",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
+      KOKKOS_LAMBDA(const std::size_t ib) {
+        b_only_flags(ib) = (map_b_to_a(ib) < 0) ? 1 : 0;
+      });
+
+  ExecSpace().fence();
 
   Kokkos::parallel_scan(
-      "subsetix_csr_union_head_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, total),
-      KOKKOS_LAMBDA(const std::size_t i,
+      "subsetix_csr_union_b_only_scan",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
+      KOKKOS_LAMBDA(const std::size_t ib,
                     std::size_t& update,
                     const bool final_pass) {
         const std::size_t flag =
-            static_cast<std::size_t>(is_head(i));
+            static_cast<std::size_t>(b_only_flags(ib));
         if (final_pass) {
-          head_pos(i) = update;
-          if (i + 1 == total) {
-            d_num_rows() = update + flag;
+          b_only_positions(ib) = update;
+          if (ib + 1 == num_rows_b) {
+            d_num_b_only() = update + flag;
           }
         }
         update += flag;
@@ -553,8 +633,26 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  std::size_t num_rows_out = 0;
-  Kokkos::deep_copy(num_rows_out, d_num_rows);
+  std::size_t num_b_only = 0;
+  Kokkos::deep_copy(num_b_only, d_num_b_only);
+
+  if (num_b_only > 0) {
+    Kokkos::parallel_for(
+        "subsetix_csr_union_compact_b_only",
+        Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
+        KOKKOS_LAMBDA(const std::size_t ib) {
+          if (!b_only_flags(ib)) {
+            return;
+          }
+          const std::size_t pos = b_only_positions(ib);
+          b_only_indices(pos) = static_cast<int>(ib);
+        });
+
+    ExecSpace().fence();
+  }
+
+  const std::size_t num_rows_out =
+      num_rows_a + num_b_only;
 
   result.num_rows = num_rows_out;
   if (num_rows_out == 0) {
@@ -572,43 +670,73 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
   auto out_idx_a = result.row_index_a;
   auto out_idx_b = result.row_index_b;
 
-  // Compact grouped entries (at most two per Y: one from A, one from B).
+  // 4) Write rows coming from A. For each row in A we count how many
+  // B-only rows precede it, using a binary search in the compacted
+  // B-only list, and place it at its union rank.
   Kokkos::parallel_for(
-      "subsetix_csr_union_compact",
-      Kokkos::RangePolicy<ExecSpace>(0, total),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        if (!is_head(i)) {
-          return;
-        }
+      "subsetix_csr_union_write_from_a",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+      KOKKOS_LAMBDA(const std::size_t ia) {
+        const Coord ya = rows_a(ia).y;
 
-        const std::size_t pos = head_pos(i);
-        const RowUnionElement e0 = elems(i);
-
-        int ia = -1;
-        int ib = -1;
-
-        if (e0.src == 0) {
-          ia = e0.idx;
-        } else {
-          ib = e0.idx;
-        }
-
-        if (i + 1 < total &&
-            elems(i + 1).key.y == e0.key.y) {
-          const RowUnionElement e1 = elems(i + 1);
-          if (e1.src == 0 && ia < 0) {
-            ia = e1.idx;
-          } else if (e1.src == 1 && ib < 0) {
-            ib = e1.idx;
+        std::size_t lo = 0;
+        std::size_t hi = num_b_only;
+        while (lo < hi) {
+          const std::size_t mid = (lo + hi) / 2;
+          const int jb = b_only_indices(mid);
+          const Coord yb = rows_b(jb).y;
+          if (yb < ya) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
           }
         }
 
-        out_rows(pos) = e0.key;
-        out_idx_a(pos) = ia;
-        out_idx_b(pos) = ib;
+        const std::size_t cnt_b_before = lo;
+        const std::size_t pos =
+            ia + cnt_b_before;
+
+        out_rows(pos) = rows_a(ia);
+        out_idx_a(pos) = static_cast<int>(ia);
+        out_idx_b(pos) = map_a_to_b(ia);
       });
 
   ExecSpace().fence();
+
+  // 5) Write rows that exist only in B. For each such row we count how
+  // many A rows precede it using a binary search in A, and place it at
+  // its union rank.
+  if (num_b_only > 0) {
+    Kokkos::parallel_for(
+        "subsetix_csr_union_write_from_b_only",
+        Kokkos::RangePolicy<ExecSpace>(0, num_b_only),
+        KOKKOS_LAMBDA(const std::size_t k) {
+          const int jb = b_only_indices(k);
+          const Coord yb = rows_b(jb).y;
+
+          std::size_t lo = 0;
+          std::size_t hi = num_rows_a;
+          while (lo < hi) {
+            const std::size_t mid = (lo + hi) / 2;
+            const Coord ya = rows_a(mid).y;
+            if (ya < yb) {
+              lo = mid + 1;
+            } else {
+              hi = mid;
+            }
+          }
+
+          const std::size_t cnt_a_before = lo;
+          const std::size_t pos =
+              cnt_a_before + k;
+
+          out_rows(pos) = rows_b(jb);
+          out_idx_a(pos) = -1;
+          out_idx_b(pos) = jb;
+        });
+
+    ExecSpace().fence();
+  }
 
   return result;
 }

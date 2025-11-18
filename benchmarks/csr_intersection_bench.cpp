@@ -682,15 +682,20 @@ void bench_union_map_rows_alloc(benchmark::State& state, Coord extent) {
   IntervalSet2DDevice A = make_box(a_cfg);
   IntervalSet2DDevice B = make_box(b_cfg);
 
-  const std::size_t total = A.num_rows + B.num_rows;
-
-  run_row_kernel(state, total, [&]() {
+  run_row_kernel(state, A.num_rows + B.num_rows, [&]() {
     CsrSetAlgebraContext ctx;
-    ctx.union_workspace.ensure_capacity(total);
-    benchmark::DoNotOptimize(ctx.union_workspace.elems.data());
-    benchmark::DoNotOptimize(ctx.union_workspace.is_head.data());
-    benchmark::DoNotOptimize(ctx.union_workspace.head_pos.data());
-    benchmark::DoNotOptimize(ctx.union_workspace.d_num_rows.data());
+    ctx.union_workspace.ensure_capacity(A.num_rows,
+                                        B.num_rows);
+    benchmark::DoNotOptimize(
+        ctx.union_workspace.map_a_to_b.data());
+    benchmark::DoNotOptimize(
+        ctx.union_workspace.map_b_to_a.data());
+    benchmark::DoNotOptimize(
+        ctx.union_workspace.b_only_flags.data());
+    benchmark::DoNotOptimize(
+        ctx.union_workspace.b_only_positions.data());
+    benchmark::DoNotOptimize(
+        ctx.union_workspace.b_only_indices.data());
   }, "ns_per_row");
 }
 
