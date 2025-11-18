@@ -109,12 +109,22 @@ void BM_Threshold_Large(benchmark::State& state) {
   bench_threshold(state, make_rect(2048));
 }
 
+void BM_Threshold_XLarge(benchmark::State& state) {
+  bench_threshold(state, make_rect(4096));
+}
+
+void BM_Threshold_Huge(benchmark::State& state) {
+  bench_threshold(state, make_rect(8192));
+}
+
 } // namespace
 
 BENCHMARK(BM_Threshold_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_Threshold_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_Threshold_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_Threshold_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_Threshold_XLarge)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_Threshold_Huge)->Unit(benchmark::kNanosecond);
 
 int main(int argc, char** argv) {
   Kokkos::initialize(argc, argv);
@@ -126,4 +136,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   return 0;
 }
-
