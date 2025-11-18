@@ -27,20 +27,7 @@ template <typename T>
 inline void field_add_device(IntervalField2DDevice<T>& result,
                              const IntervalField2DDevice<T>& a,
                              const IntervalField2DDevice<T>& b) {
-  if (a.num_rows != b.num_rows || a.num_rows != result.num_rows) {
-    throw std::runtime_error(
-        "field_add_device: fields must have the same number of rows");
-  }
-  if (a.num_intervals != b.num_intervals || a.num_intervals != result.num_intervals) {
-    throw std::runtime_error(
-        "field_add_device: fields must have the same number of intervals");
-  }
-  if (a.value_count != b.value_count || a.value_count != result.value_count) {
-    throw std::runtime_error(
-        "field_add_device: fields must have the same value count");
-  }
-
-  const std::size_t n = a.value_count;
+  const std::size_t n = result.value_count;
   if (n == 0) {
     return;
   }
@@ -68,20 +55,7 @@ template <typename T>
 inline void field_sub_device(IntervalField2DDevice<T>& result,
                              const IntervalField2DDevice<T>& a,
                              const IntervalField2DDevice<T>& b) {
-  if (a.num_rows != b.num_rows || a.num_rows != result.num_rows) {
-    throw std::runtime_error(
-        "field_sub_device: fields must have the same number of rows");
-  }
-  if (a.num_intervals != b.num_intervals || a.num_intervals != result.num_intervals) {
-    throw std::runtime_error(
-        "field_sub_device: fields must have the same number of intervals");
-  }
-  if (a.value_count != b.value_count || a.value_count != result.value_count) {
-    throw std::runtime_error(
-        "field_sub_device: fields must have the same value count");
-  }
-
-  const std::size_t n = a.value_count;
+  const std::size_t n = result.value_count;
   if (n == 0) {
     return;
   }
@@ -109,20 +83,7 @@ template <typename T>
 inline void field_mul_device(IntervalField2DDevice<T>& result,
                              const IntervalField2DDevice<T>& a,
                              const IntervalField2DDevice<T>& b) {
-  if (a.num_rows != b.num_rows || a.num_rows != result.num_rows) {
-    throw std::runtime_error(
-        "field_mul_device: fields must have the same number of rows");
-  }
-  if (a.num_intervals != b.num_intervals || a.num_intervals != result.num_intervals) {
-    throw std::runtime_error(
-        "field_mul_device: fields must have the same number of intervals");
-  }
-  if (a.value_count != b.value_count || a.value_count != result.value_count) {
-    throw std::runtime_error(
-        "field_mul_device: fields must have the same value count");
-  }
-
-  const std::size_t n = a.value_count;
+  const std::size_t n = result.value_count;
   if (n == 0) {
     return;
   }
@@ -151,20 +112,7 @@ template <typename T>
 inline void field_div_device(IntervalField2DDevice<T>& result,
                              const IntervalField2DDevice<T>& a,
                              const IntervalField2DDevice<T>& b) {
-  if (a.num_rows != b.num_rows || a.num_rows != result.num_rows) {
-    throw std::runtime_error(
-        "field_div_device: fields must have the same number of rows");
-  }
-  if (a.num_intervals != b.num_intervals || a.num_intervals != result.num_intervals) {
-    throw std::runtime_error(
-        "field_div_device: fields must have the same number of intervals");
-  }
-  if (a.value_count != b.value_count || a.value_count != result.value_count) {
-    throw std::runtime_error(
-        "field_div_device: fields must have the same value count");
-  }
-
-  const std::size_t n = a.value_count;
+  const std::size_t n = result.value_count;
   if (n == 0) {
     return;
   }
@@ -191,20 +139,7 @@ inline void field_div_device(IntervalField2DDevice<T>& result,
 template <typename T>
 inline void field_abs_device(IntervalField2DDevice<T>& result,
                              const IntervalField2DDevice<T>& a) {
-  if (a.num_rows != result.num_rows) {
-    throw std::runtime_error(
-        "field_abs_device: fields must have the same number of rows");
-  }
-  if (a.num_intervals != result.num_intervals) {
-    throw std::runtime_error(
-        "field_abs_device: fields must have the same number of intervals");
-  }
-  if (a.value_count != result.value_count) {
-    throw std::runtime_error(
-        "field_abs_device: fields must have the same value count");
-  }
-
-  const std::size_t n = a.value_count;
+  const std::size_t n = result.value_count;
   if (n == 0) {
     return;
   }
@@ -234,20 +169,7 @@ inline void field_axpby_device(IntervalField2DDevice<T>& result,
                                const IntervalField2DDevice<T>& a,
                                const T& beta,
                                const IntervalField2DDevice<T>& b) {
-  if (a.num_rows != b.num_rows || a.num_rows != result.num_rows) {
-    throw std::runtime_error(
-        "field_axpby_device: fields must have the same number of rows");
-  }
-  if (a.num_intervals != b.num_intervals || a.num_intervals != result.num_intervals) {
-    throw std::runtime_error(
-        "field_axpby_device: fields must have the same number of intervals");
-  }
-  if (a.value_count != b.value_count || a.value_count != result.value_count) {
-    throw std::runtime_error(
-        "field_axpby_device: fields must have the same value count");
-  }
-
-  const std::size_t n = a.value_count;
+  const std::size_t n = result.value_count;
   if (n == 0) {
     return;
   }
@@ -276,19 +198,6 @@ inline void field_axpby_device(IntervalField2DDevice<T>& result,
 template <typename T>
 inline T field_dot_device(const IntervalField2DDevice<T>& a,
                           const IntervalField2DDevice<T>& b) {
-  if (a.num_rows != b.num_rows) {
-    throw std::runtime_error(
-        "field_dot_device: fields must have the same number of rows");
-  }
-  if (a.num_intervals != b.num_intervals) {
-    throw std::runtime_error(
-        "field_dot_device: fields must have the same number of intervals");
-  }
-  if (a.value_count != b.value_count) {
-    throw std::runtime_error(
-        "field_dot_device: fields must have the same value count");
-  }
-
   const std::size_t n = a.value_count;
   if (n == 0) {
     return T(0);

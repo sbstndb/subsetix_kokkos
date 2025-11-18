@@ -42,13 +42,9 @@ struct UnifiedCsrWorkspace {
   // Generic buffers for Interval arrays
   IntervalSet2DDevice::IntervalView interval_buf_0;
 
-  // Generic buffers for field values (double precision)
-  Kokkos::View<double*, DeviceMemorySpace> double_buf_0;
-  Kokkos::View<double*, DeviceMemorySpace> double_buf_1;
-
-  // Generic buffers for field values (single precision)
-  Kokkos::View<float*, DeviceMemorySpace> float_buf_0;
-  Kokkos::View<float*, DeviceMemorySpace> float_buf_1;
+  // Generic raw memory pool for any type of values
+  Kokkos::View<uint64_t*, DeviceMemorySpace> raw_pool_0;
+  Kokkos::View<uint64_t*, DeviceMemorySpace> raw_pool_1;
 
   // Accessors that ensure capacity
   
@@ -116,24 +112,37 @@ struct UnifiedCsrWorkspace {
     return interval_buf_0;
   }
 
-  Kokkos::View<double*, DeviceMemorySpace> get_double_buf_0(std::size_t size) {
-    ensure_view_capacity(double_buf_0, size, "unified_ws_double_0");
-    return double_buf_0;
+  /**
+   * @brief Get a typed view from the generic raw memory pool 0.
+   *
+   * This allows reusing the same memory for double, float, int64_t, etc.
+   * The returned view is Unmanaged (does not own memory).
+   */
+  template <typename T>
+  Kokkos::View<T*, DeviceMemorySpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+  get_value_buf_0(std::size_t size) {
+    const std::size_t bytes_needed = size * sizeof(T);
+    const std::size_t uint64_needed = (bytes_needed + sizeof(uint64_t) - 1) / sizeof(uint64_t);
+    
+    ensure_view_capacity(raw_pool_0, uint64_needed, "unified_ws_raw_0");
+    
+    return Kokkos::View<T*, DeviceMemorySpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>>(
+        reinterpret_cast<T*>(raw_pool_0.data()), size);
   }
 
-  Kokkos::View<double*, DeviceMemorySpace> get_double_buf_1(std::size_t size) {
-    ensure_view_capacity(double_buf_1, size, "unified_ws_double_1");
-    return double_buf_1;
-  }
-
-  Kokkos::View<float*, DeviceMemorySpace> get_float_buf_0(std::size_t size) {
-    ensure_view_capacity(float_buf_0, size, "unified_ws_float_0");
-    return float_buf_0;
-  }
-
-  Kokkos::View<float*, DeviceMemorySpace> get_float_buf_1(std::size_t size) {
-    ensure_view_capacity(float_buf_1, size, "unified_ws_float_1");
-    return float_buf_1;
+  /**
+   * @brief Get a typed view from the generic raw memory pool 1.
+   */
+  template <typename T>
+  Kokkos::View<T*, DeviceMemorySpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+  get_value_buf_1(std::size_t size) {
+    const std::size_t bytes_needed = size * sizeof(T);
+    const std::size_t uint64_needed = (bytes_needed + sizeof(uint64_t) - 1) / sizeof(uint64_t);
+    
+    ensure_view_capacity(raw_pool_1, uint64_needed, "unified_ws_raw_1");
+    
+    return Kokkos::View<T*, DeviceMemorySpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>>(
+        reinterpret_cast<T*>(raw_pool_1.data()), size);
   }
 
   /**
@@ -158,10 +167,8 @@ struct UnifiedCsrWorkspace {
     row_key_buf_1 = IntervalSet2DDevice::RowKeyView();
     interval_buf_0 = IntervalSet2DDevice::IntervalView();
 
-    double_buf_0 = Kokkos::View<double*, DeviceMemorySpace>();
-    double_buf_1 = Kokkos::View<double*, DeviceMemorySpace>();
-    float_buf_0 = Kokkos::View<float*, DeviceMemorySpace>();
-    float_buf_1 = Kokkos::View<float*, DeviceMemorySpace>();
+    raw_pool_0 = Kokkos::View<uint64_t*, DeviceMemorySpace>();
+    raw_pool_1 = Kokkos::View<uint64_t*, DeviceMemorySpace>();
   }
 };
 

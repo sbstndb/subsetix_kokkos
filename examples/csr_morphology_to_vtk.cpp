@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
     CsrSetAlgebraContext ctx;
     
     IntervalSet2DDevice shape =
-        allocate_interval_set_device(d_outer.num_rows, d_outer.num_intervals);
+        allocate_interval_set_device(d_outer.num_rows, d_outer.num_intervals + d_inner.num_intervals);
     set_difference_device(d_outer, d_inner, shape, ctx);
     
     auto h_shape = build_host_from_device(shape);
