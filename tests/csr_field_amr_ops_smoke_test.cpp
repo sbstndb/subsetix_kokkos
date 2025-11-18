@@ -195,3 +195,62 @@ TEST(CSRFieldAmrOpsSmokeTest, ProlongCopiesCoarseValues) {
     }
   }
 }
+
+TEST(CSRFieldAmrOpsSmokeTest, ProlongWithPredictionLinearReconstruction) {
+  // Coarse 4x4 domain
+  auto coarse_geom = make_box_mask(0, 4, 0, 4);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine_geom;
+  refine_level_up_device(coarse_geom, fine_geom, ctx);
+
+  auto coarse_geom_host = build_host_from_device(coarse_geom);
+  auto fine_geom_host = build_host_from_device(fine_geom);
+
+  auto coarse_field_host =
+      make_field_like_geometry<double>(coarse_geom_host, 0.0);
+  
+  // P(x,y) = 2x + 4y
+  fill_field_with_pattern<double>(
+      coarse_field_host,
+      [](Coord x, Coord y) {
+        return static_cast<double>(2 * x + 4 * y);
+      });
+
+  auto coarse_field_dev =
+      build_device_field_from_host(coarse_field_host);
+  auto fine_field_host =
+      make_field_like_geometry<double>(fine_geom_host, 0.0);
+  auto fine_field_dev =
+      build_device_field_from_host(fine_field_host);
+  
+  prolong_field_prediction_device(fine_field_dev, coarse_field_dev, fine_geom);
+
+  auto prolonged = build_host_field_from_device(fine_field_dev);
+
+  // Check internal cells where we expect exact reconstruction
+  // Coarse x in [1, 2], y in [1, 2]
+  // Fine x in [2, 5], y in [2, 5] (approx)
+  
+  for (std::size_t row = 0; row < prolonged.row_keys.size(); ++row) {
+    const Coord y = prolonged.row_keys[row].y;
+    if (y < 2 || y > 5) continue;
+    
+    const std::size_t begin = prolonged.row_ptr[row];
+    const std::size_t end = prolonged.row_ptr[row + 1];
+    for (std::size_t k = begin; k < end; ++k) {
+      const auto fi = prolonged.intervals[k];
+      for (Coord x = fi.begin; x < fi.end; ++x) {
+        if (x < 2 || x > 5) continue;
+        
+        // Expected fine value for linear field: x + 2y - 1.5
+        double expected = static_cast<double>(x + 2 * y) - 1.5;
+        
+        const std::size_t offset =
+            fi.value_offset +
+            static_cast<std::size_t>(x - fi.begin);
+        EXPECT_NEAR(prolonged.values[offset], expected, 1e-10) 
+             << "at fine x=" << x << " y=" << y;
+      }
+    }
+  }
+}
