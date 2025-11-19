@@ -5,6 +5,7 @@ add_executable(subsetix_test_core
     test_main.cpp
     kokkos_smoke_test.cpp
     csr_interval_set_smoke_test.cpp
+    csr_interval_subset_smoke_test.cpp
     csr_builders_smoke_test.cpp
     csr_field_smoke_test.cpp
     workspace_capacity_test.cpp

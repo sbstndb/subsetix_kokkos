@@ -104,7 +104,8 @@ template <class Op>
 void bench_subview_op(benchmark::State& state,
                       const RectConfig& geom_cfg,
                       const RectConfig& mask_cfg,
-                      Op op) {
+                      Op op,
+                      bool use_subset = false) {
   Field2DDevice<double> field = make_field(geom_cfg, 0.0);
   IntervalSet2DDevice mask = make_mask(mask_cfg);
   const std::size_t cells = cells_in_rect(mask_cfg);
@@ -114,6 +115,10 @@ void bench_subview_op(benchmark::State& state,
   }
 
   auto sub = make_subview(field, mask, "bench_subview");
+  CsrSetAlgebraContext ctx;
+  if (use_subset) {
+    subsetix::csr::detail::ensure_subview_subset(sub, &ctx);
+  }
   double total_seconds = 0.0;
 
   for (auto _ : state) {
@@ -201,7 +206,8 @@ void bench_stencil(benchmark::State& state,
 
 void bench_subview_stencil(benchmark::State& state,
                            const RectConfig& geom_cfg,
-                           const RectConfig& mask_cfg) {
+                           const RectConfig& mask_cfg,
+                           bool use_subset = false) {
   Field2DDevice<double> input =
       make_field(geom_cfg, 0.0);
   Field2DDevice<double> output =
@@ -235,6 +241,12 @@ void bench_subview_stencil(benchmark::State& state,
   auto src = make_subview(input, mask, "subview_stencil_src");
   auto dst =
       make_subview(output, mask, "subview_stencil_dst");
+
+  CsrSetAlgebraContext ctx;
+  if (use_subset) {
+    subsetix::csr::detail::ensure_subview_subset(dst, &ctx);
+    subsetix::csr::detail::ensure_subview_subset(src, &ctx);
+  }
 
   double total_seconds = 0.0;
 
@@ -308,7 +320,8 @@ void bench_restriction(benchmark::State& state,
 }
 
 void bench_subview_restriction(benchmark::State& state,
-                               const RectConfig& coarse_cfg) {
+                               const RectConfig& coarse_cfg,
+                               bool use_subset = false) {
   Field2DDevice<double> coarse =
       make_field(coarse_cfg, 0.0);
   IntervalSet2DDevice coarse_mask = make_mask(coarse_cfg);
@@ -341,6 +354,9 @@ void bench_subview_restriction(benchmark::State& state,
       build_device_field_from_host(fine_field_host);
 
   const std::size_t cells = cells_in_rect(coarse_cfg);
+  if (use_subset) {
+    subsetix::csr::detail::ensure_subview_subset(coarse_sub, &ctx);
+  }
   double total_seconds = 0.0;
 
   for (auto _ : state) {
@@ -418,7 +434,8 @@ void bench_prolongation(benchmark::State& state,
 }
 
 void bench_subview_prolongation(benchmark::State& state,
-                                const RectConfig& coarse_cfg) {
+                                const RectConfig& coarse_cfg,
+                                bool use_subset = false) {
   Field2DDevice<double> coarse =
       make_field(coarse_cfg, 0.0);
   auto coarse_host = build_host_field_from_device(coarse);
@@ -459,6 +476,9 @@ void bench_subview_prolongation(benchmark::State& state,
           static_cast<Coord>(2 * (coarse_cfg.x_max - coarse_cfg.x_min)),
           0,
           static_cast<Coord>(2 * (coarse_cfg.y_max - coarse_cfg.y_min))});
+  if (use_subset) {
+    subsetix::csr::detail::ensure_subview_subset(fine_sub, &ctx);
+  }
 
   double total_seconds = 0.0;
 
@@ -538,7 +558,8 @@ void bench_prolongation_prediction(benchmark::State& state,
 
 void bench_subview_prolongation_prediction(
     benchmark::State& state,
-    const RectConfig& coarse_cfg) {
+    const RectConfig& coarse_cfg,
+    bool use_subset = false) {
   Field2DDevice<double> coarse =
       make_field(coarse_cfg, 0.0);
   auto coarse_host = build_host_field_from_device(coarse);
@@ -579,6 +600,9 @@ void bench_subview_prolongation_prediction(
           static_cast<Coord>(2 * (coarse_cfg.x_max - coarse_cfg.x_min)),
           0,
           static_cast<Coord>(2 * (coarse_cfg.y_max - coarse_cfg.y_min))});
+  if (use_subset) {
+    subsetix::csr::detail::ensure_subview_subset(fine_sub, &ctx);
+  }
 
   double total_seconds = 0.0;
 
@@ -734,6 +758,34 @@ void BM_FieldSubViewFill_Large(benchmark::State& state) {
   });
 }
 
+void BM_FieldSubViewFillSubset_Tiny(benchmark::State& state) {
+  const RectConfig cfg = make_rect(64);
+  bench_subview_op(state, cfg, cfg, [](auto& sub) {
+    fill_subview_device(sub, 1.0);
+  }, true);
+}
+
+void BM_FieldSubViewFillSubset_Small(benchmark::State& state) {
+  const RectConfig cfg = make_rect(256);
+  bench_subview_op(state, cfg, cfg, [](auto& sub) {
+    fill_subview_device(sub, 1.0);
+  }, true);
+}
+
+void BM_FieldSubViewFillSubset_Medium(benchmark::State& state) {
+  const RectConfig cfg = make_rect(1024);
+  bench_subview_op(state, cfg, cfg, [](auto& sub) {
+    fill_subview_device(sub, 1.0);
+  }, true);
+}
+
+void BM_FieldSubViewFillSubset_Large(benchmark::State& state) {
+  const RectConfig cfg = make_rect(2048);
+  bench_subview_op(state, cfg, cfg, [](auto& sub) {
+    fill_subview_device(sub, 1.0);
+  }, true);
+}
+
 // --- Subview Stencil benchmarks ---
 
 void BM_FieldSubViewStencil_Tiny(benchmark::State& state) {
@@ -756,6 +808,26 @@ void BM_FieldSubViewStencil_Large(benchmark::State& state) {
   bench_subview_stencil(state, cfg, interior_rect(cfg));
 }
 
+void BM_FieldSubViewStencilSubset_Tiny(benchmark::State& state) {
+  const RectConfig cfg = make_rect(64);
+  bench_subview_stencil(state, cfg, interior_rect(cfg), true);
+}
+
+void BM_FieldSubViewStencilSubset_Small(benchmark::State& state) {
+  const RectConfig cfg = make_rect(256);
+  bench_subview_stencil(state, cfg, interior_rect(cfg), true);
+}
+
+void BM_FieldSubViewStencilSubset_Medium(benchmark::State& state) {
+  const RectConfig cfg = make_rect(1024);
+  bench_subview_stencil(state, cfg, interior_rect(cfg), true);
+}
+
+void BM_FieldSubViewStencilSubset_Large(benchmark::State& state) {
+  const RectConfig cfg = make_rect(2048);
+  bench_subview_stencil(state, cfg, interior_rect(cfg), true);
+}
+
 // --- Subview Restriction benchmarks ---
 
 void BM_FieldSubViewRestrict_Tiny(benchmark::State& state) {
@@ -772,6 +844,22 @@ void BM_FieldSubViewRestrict_Medium(benchmark::State& state) {
 
 void BM_FieldSubViewRestrict_Large(benchmark::State& state) {
   bench_subview_restriction(state, make_rect(1024));
+}
+
+void BM_FieldSubViewRestrictSubset_Tiny(benchmark::State& state) {
+  bench_subview_restriction(state, make_rect(64), true);
+}
+
+void BM_FieldSubViewRestrictSubset_Small(benchmark::State& state) {
+  bench_subview_restriction(state, make_rect(256), true);
+}
+
+void BM_FieldSubViewRestrictSubset_Medium(benchmark::State& state) {
+  bench_subview_restriction(state, make_rect(512), true);
+}
+
+void BM_FieldSubViewRestrictSubset_Large(benchmark::State& state) {
+  bench_subview_restriction(state, make_rect(1024), true);
 }
 
 // --- Subview Prolongation benchmarks ---
@@ -792,6 +880,22 @@ void BM_FieldSubViewProlong_Large(benchmark::State& state) {
   bench_subview_prolongation(state, make_rect(1024));
 }
 
+void BM_FieldSubViewProlongSubset_Tiny(benchmark::State& state) {
+  bench_subview_prolongation(state, make_rect(64), true);
+}
+
+void BM_FieldSubViewProlongSubset_Small(benchmark::State& state) {
+  bench_subview_prolongation(state, make_rect(256), true);
+}
+
+void BM_FieldSubViewProlongSubset_Medium(benchmark::State& state) {
+  bench_subview_prolongation(state, make_rect(512), true);
+}
+
+void BM_FieldSubViewProlongSubset_Large(benchmark::State& state) {
+  bench_subview_prolongation(state, make_rect(1024), true);
+}
+
 // --- Subview Prolongation Prediction benchmarks ---
 
 void BM_FieldSubViewProlongPrediction_Tiny(benchmark::State& state) {
@@ -808,6 +912,22 @@ void BM_FieldSubViewProlongPrediction_Medium(benchmark::State& state) {
 
 void BM_FieldSubViewProlongPrediction_Large(benchmark::State& state) {
   bench_subview_prolongation_prediction(state, make_rect(1024));
+}
+
+void BM_FieldSubViewProlongPredictionSubset_Tiny(benchmark::State& state) {
+  bench_subview_prolongation_prediction(state, make_rect(64), true);
+}
+
+void BM_FieldSubViewProlongPredictionSubset_Small(benchmark::State& state) {
+  bench_subview_prolongation_prediction(state, make_rect(256), true);
+}
+
+void BM_FieldSubViewProlongPredictionSubset_Medium(benchmark::State& state) {
+  bench_subview_prolongation_prediction(state, make_rect(512), true);
+}
+
+void BM_FieldSubViewProlongPredictionSubset_Large(benchmark::State& state) {
+  bench_subview_prolongation_prediction(state, make_rect(1024), true);
 }
 
 } // namespace
@@ -841,26 +961,46 @@ BENCHMARK(BM_FieldSubViewFill_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewFill_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewFill_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewFill_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewFillSubset_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewFillSubset_Small)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewFillSubset_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewFillSubset_Large)->Unit(benchmark::kNanosecond);
 
 BENCHMARK(BM_FieldSubViewStencil_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencil_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencil_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencil_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewStencilSubset_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewStencilSubset_Small)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewStencilSubset_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewStencilSubset_Large)->Unit(benchmark::kNanosecond);
 
 BENCHMARK(BM_FieldSubViewRestrict_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewRestrict_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewRestrict_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewRestrict_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewRestrictSubset_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewRestrictSubset_Small)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewRestrictSubset_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewRestrictSubset_Large)->Unit(benchmark::kNanosecond);
 
 BENCHMARK(BM_FieldSubViewProlong_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewProlong_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewProlong_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewProlong_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewProlongSubset_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewProlongSubset_Small)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewProlongSubset_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewProlongSubset_Large)->Unit(benchmark::kNanosecond);
 
 BENCHMARK(BM_FieldSubViewProlongPrediction_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewProlongPrediction_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewProlongPrediction_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewProlongPrediction_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewProlongPredictionSubset_Tiny)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewProlongPredictionSubset_Small)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewProlongPredictionSubset_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewProlongPredictionSubset_Large)->Unit(benchmark::kNanosecond);
 
 int main(int argc, char** argv) {
   Kokkos::initialize(argc, argv);

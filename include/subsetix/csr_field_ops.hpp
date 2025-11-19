@@ -20,3 +20,4 @@
 #include <subsetix/csr_ops/field_algebra.hpp>
 #include <subsetix/csr_ops/field_remap.hpp>
 #include <subsetix/csr_ops/field_subview.hpp>
+#include <subsetix/csr_ops/field_subset.hpp>

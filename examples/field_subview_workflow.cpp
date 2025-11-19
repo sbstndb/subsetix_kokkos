@@ -5,6 +5,7 @@
 #include <subsetix/csr_field.hpp>
 #include <subsetix/csr_field_ops.hpp>
 #include <subsetix/csr_interval_set.hpp>
+#include <subsetix/csr_ops/workspace.hpp>
 #include <subsetix/vtk_export.hpp>
 
 #include <string_view>
@@ -93,7 +94,8 @@ int main(int argc, char* argv[]) {
     auto patch_filtered_view =
         make_subview(filtered_field_dev, patch_mask, "patch_filtered");
 
-    fill_subview_device(patch_view, 5.0);
+    CsrSetAlgebraContext patch_ctx;
+    fill_subview_device(patch_view, 5.0, patch_ctx);
     scale_subview_device(patch_view, 1.2);
 
     // Run a smoothing stencil on the interior region via subviews.
@@ -102,12 +104,14 @@ int main(int argc, char* argv[]) {
     auto interior_dst =
         make_subview(filtered_field_dev, interior_mask, "interior_dst");
 
+    CsrSetAlgebraContext interior_ctx;
     apply_stencil_on_subview_device(interior_dst,
                                     interior_src,
-                                    FivePointAverage{});
+                                    FivePointAverage{},
+                                    interior_ctx);
 
     // Restore the high-frequency patch inside the filtered field.
-    copy_subview_device(patch_filtered_view, patch_view);
+    copy_subview_device(patch_filtered_view, patch_view, patch_ctx);
 
     auto output_original =
         build_host_field_from_device(field_dev);

@@ -7,6 +7,7 @@
 #include <Kokkos_Core.hpp>
 
 #include <subsetix/csr_interval_set.hpp>
+#include <subsetix/csr_interval_subset.hpp>
 
 namespace subsetix {
 namespace csr {
@@ -300,9 +301,11 @@ template <typename T, class MemorySpace = DeviceMemorySpace>
 struct Field2DSubView {
   using FieldView = Field2D<T, MemorySpace>;
   using GeometryView = IntervalSet2DView<MemorySpace>;
+  using SubSetView = IntervalSubSet2DView<MemorySpace>;
 
   FieldView parent;
   GeometryView region;
+  SubSetView subset;
   std::string label;
 
   KOKKOS_INLINE_FUNCTION
@@ -312,6 +315,11 @@ struct Field2DSubView {
 
   KOKKOS_INLINE_FUNCTION
   std::size_t size() const { return region.total_cells; }
+
+  KOKKOS_INLINE_FUNCTION
+  bool has_subset() const {
+    return subset.valid();
+  }
 };
 
 template <typename T>
@@ -340,4 +348,3 @@ make_subview(Field2D<T, MemorySpace>& field,
 
 } // namespace csr
 } // namespace subsetix
-
