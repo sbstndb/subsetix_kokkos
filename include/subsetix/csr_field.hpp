@@ -289,7 +289,55 @@ make_field_like_geometry(const IntervalSet2DHost& geom,
   return field;
 }
 
+/**
+ * @brief Lightweight view representing a field restricted to a sub-geometry.
+ *
+ * This structure simply bundles a parent Field2D and the IntervalSet that
+ * defines the subset of cells we want to operate on. It does not own data and
+ * is safe to copy because it only stores Kokkos::View handles.
+ */
+template <typename T, class MemorySpace = DeviceMemorySpace>
+struct Field2DSubView {
+  using FieldView = Field2D<T, MemorySpace>;
+  using GeometryView = IntervalSet2DView<MemorySpace>;
+
+  FieldView parent;
+  GeometryView region;
+  std::string label;
+
+  KOKKOS_INLINE_FUNCTION
+  bool valid() const {
+    return parent.geometry.num_rows > 0 && region.num_rows > 0;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  std::size_t size() const { return region.total_cells; }
+};
+
+template <typename T>
+using Field2DSubViewDevice = Field2DSubView<T, DeviceMemorySpace>;
+
+template <typename T>
+using Field2DSubViewHost = Field2DSubView<T, HostMemorySpace>;
+
+/**
+ * @brief Build a subview from a parent field and a region geometry.
+ *
+ * No deep copy is performed. The returned view remains valid as long as the
+ * parent field and the region geometry remain valid.
+ */
+template <typename T, class MemorySpace>
+inline Field2DSubView<T, MemorySpace>
+make_subview(Field2D<T, MemorySpace>& field,
+             const IntervalSet2DView<MemorySpace>& region,
+             const std::string& label = {}) {
+  Field2DSubView<T, MemorySpace> sub;
+  sub.parent = field;
+  sub.region = region;
+  sub.label = label.empty() ? field.label : label;
+  return sub;
+}
+
 } // namespace csr
 } // namespace subsetix
-
 

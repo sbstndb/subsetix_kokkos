@@ -78,3 +78,12 @@ target_link_libraries(multilevel_amr_demo
     PRIVATE
         subsetix_core
 )
+
+add_executable(field_subview_workflow
+    field_subview_workflow.cpp
+)
+
+target_link_libraries(field_subview_workflow
+    PRIVATE
+        subsetix_core
+)

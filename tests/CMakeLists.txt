@@ -39,6 +39,7 @@ add_executable(subsetix_test_advanced
     csr_morphology_smoke_test.cpp
     csr_threshold_smoke_test.cpp
     csr_translation_smoke_test.cpp
+    csr_field_subview_smoke_test.cpp
 )
 target_link_libraries(subsetix_test_advanced PRIVATE subsetix_core GTest::gtest)
 add_test(NAME AdvancedTests COMMAND subsetix_test_advanced)

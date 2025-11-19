@@ -11,6 +11,7 @@
  *   - csr_ops/field_amr.hpp: AMR operations (restrict, prolong)
  *   - csr_ops/field_algebra.hpp: Arithmetic operations (add, sub, mul, div)
  *   - csr_ops/field_remap.hpp: Projection and remapping between geometries
+ *   - csr_ops/field_subview.hpp: High-level subview utilities
  */
 
 #include <subsetix/csr_ops/field_core.hpp>
@@ -18,3 +19,4 @@
 #include <subsetix/csr_ops/field_amr.hpp>
 #include <subsetix/csr_ops/field_algebra.hpp>
 #include <subsetix/csr_ops/field_remap.hpp>
+#include <subsetix/csr_ops/field_subview.hpp>
