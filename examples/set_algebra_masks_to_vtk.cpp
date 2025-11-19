@@ -66,13 +66,17 @@ int main(int argc, char* argv[]) {
                                              box_dev.num_intervals + disk_dev.num_intervals);
     set_difference_device(box_dev, disk_dev, diff, ctx);
 
-    fill_on_set_device(field_dev, diff, 1.0);
-    fill_on_set_device(field_dev, inter, 2.0);
+    auto diff_view = make_subview(field_dev, diff, "diff_patch");
+    auto inter_view = make_subview(field_dev, inter, "inter_patch");
+    fill_subview_device(diff_view, 1.0);
+    fill_subview_device(inter_view, 2.0);
 
     auto scaled_union = allocate_interval_set_device(u.num_rows,
                                                      u.num_intervals + inter.num_intervals);
     set_difference_device(u, inter, scaled_union, ctx);
-    scale_on_set_device(field_dev, scaled_union, 0.5);
+    auto scaled_union_view =
+        make_subview(field_dev, scaled_union, "scaled_union");
+    scale_subview_device(scaled_union_view, 0.5);
 
     auto result_host =
         build_host_field_from_device(field_dev);

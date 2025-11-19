@@ -8,6 +8,7 @@
 #include <subsetix/csr_field.hpp>
 #include <subsetix/multilevel.hpp>
 #include <subsetix/vtk_export.hpp>
+#include <subsetix/csr_field_ops.hpp>
 #include <subsetix/csr_ops/amr.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>
 #include <subsetix/csr_set_ops.hpp> // For intersection
@@ -133,11 +134,13 @@ void run_demo() {
   // 4. Prolong to L1
   std::cout << "Prolonging to Level 1..." << std::endl;
   // We treat the geometry of L1 as the "mask" where we want values
-  prolong_field_on_set_device(field.levels[1], field.levels[0], geo.levels[1]);
+  auto level1_sub = make_subview(field.levels[1], geo.levels[1], "level1");
+  prolong_field_subview_device(level1_sub, field.levels[0]);
   
   // 5. Prolong to L2
   std::cout << "Prolonging to Level 2..." << std::endl;
-  prolong_field_on_set_device(field.levels[2], field.levels[1], geo.levels[2]);
+  auto level2_sub = make_subview(field.levels[2], geo.levels[2], "level2");
+  prolong_field_subview_device(level2_sub, field.levels[1]);
   
   // 6. Export
   std::cout << "Exporting to VTK..." << std::endl;

@@ -94,7 +94,11 @@ int main(int argc, char* argv[]) {
         make_field_like_geometry<float>(threshold_set_host, 0.0f));
         
     // Copy values from original field where mask is active
-    copy_on_set_device(result_field_dev, field_dev, threshold_set_dev);
+    auto threshold_src =
+        make_subview(field_dev, threshold_set_dev, "threshold_src");
+    auto threshold_dst =
+        make_subview(result_field_dev, threshold_set_dev, "threshold_dst");
+    copy_subview_device(threshold_dst, threshold_src);
     
     auto result_field_host = build_host_field_from_device(result_field_dev);
     write_legacy_quads(result_field_host, output_path("threshold_values.vtk"), "value");
@@ -103,4 +107,3 @@ int main(int argc, char* argv[]) {
   Kokkos::finalize();
   return 0;
 }
-

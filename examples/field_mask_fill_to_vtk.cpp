@@ -54,8 +54,11 @@ int main(int argc, char* argv[]) {
     auto random_mask =
         make_random_device(rnd_dom, 0.15, 123456);
 
-    fill_on_set_device(field_dev, disk_mask, 1.0);
-    scale_on_set_device(field_dev, random_mask, 2.0);
+    auto disk_view = make_subview(field_dev, disk_mask, "disk_mask");
+    auto random_view = make_subview(field_dev, random_mask, "random_mask");
+
+    fill_subview_device(disk_view, 1.0);
+    scale_subview_device(random_view, 2.0);
 
     auto field_modified_host =
         build_host_field_from_device(field_dev);
@@ -67,8 +70,9 @@ int main(int argc, char* argv[]) {
     auto field_copy_dev =
         build_device_field_from_host(field_copy_host);
 
-    copy_on_set_device(field_copy_dev, field_dev,
-                       disk_mask);
+    auto copy_src = make_subview(field_dev, disk_mask, "copy_src");
+    auto copy_dst = make_subview(field_copy_dev, disk_mask, "copy_dst");
+    copy_subview_device(copy_dst, copy_src);
 
     auto field_copy_result_host =
         build_host_field_from_device(field_copy_dev);

@@ -81,9 +81,9 @@ int main(int argc, char* argv[]) {
         build_device_field_from_host(fine_field_host);
     auto coarse_mask = coarse_geom_dev;
 
-    restrict_field_on_set_device(coarse_field_dev,
-                                 fine_field_dev,
-                                 coarse_mask);
+    auto coarse_sub = make_subview(coarse_field_dev, coarse_mask,
+                                   "coarse_mask");
+    restrict_field_subview_device(coarse_sub, fine_field_dev);
 
     auto restricted_host =
         build_host_field_from_device(coarse_field_dev);
@@ -123,9 +123,8 @@ int main(int argc, char* argv[]) {
         build_device_field_from_host(fine_field2_host);
 
     auto fine_mask = fine_geom_dev;
-    prolong_field_on_set_device(fine_field2_dev,
-                                coarse_field2_dev,
-                                fine_mask);
+    auto fine_sub = make_subview(fine_field2_dev, fine_mask, "fine_mask");
+    prolong_field_subview_device(fine_sub, coarse_field2_dev);
 
     auto prolonged_host =
         build_host_field_from_device(fine_field2_dev);
@@ -142,9 +141,10 @@ int main(int argc, char* argv[]) {
     auto fine_field3_dev =
         build_device_field_from_host(fine_field3_host);
     
-    prolong_field_prediction_device(fine_field3_dev,
-                                    coarse_field2_dev,
-                                    fine_mask);
+    auto fine_pred_sub =
+        make_subview(fine_field3_dev, fine_mask, "fine_pred");
+    prolong_field_prediction_subview_device(fine_pred_sub,
+                                            coarse_field2_dev);
     
     auto prolonged_prediction_host =
         build_host_field_from_device(fine_field3_dev);

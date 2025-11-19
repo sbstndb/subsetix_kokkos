@@ -124,10 +124,10 @@ int main(int argc, char* argv[]) {
     auto mask_dev = make_box_device(inner);
 
     for (int it = 0; it < iterations; ++it) {
-      apply_stencil_on_set_device(field_next_dev,
-                                  field_curr_dev,
-                                  mask_dev,
-                                  FivePointAverage{});
+      auto src = make_subview(field_curr_dev, mask_dev);
+      auto dst = make_subview(field_next_dev, mask_dev);
+      apply_stencil_on_subview_device(dst, src,
+                                      FivePointAverage{});
       std::swap(field_curr_dev, field_next_dev);
     }
 
