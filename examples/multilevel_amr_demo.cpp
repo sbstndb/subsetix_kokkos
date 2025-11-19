@@ -10,6 +10,7 @@
 #include <subsetix/vtk_export.hpp>
 #include <subsetix/csr_ops/amr.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>
+#include <subsetix/csr_set_ops.hpp> // For intersection
 
 using namespace subsetix;
 using namespace subsetix::csr;
@@ -65,7 +66,7 @@ IntervalField2DDevice<T> make_field_like_device(const IntervalSet2DDevice& geom,
 void run_demo() {
   std::cout << "Running Multilevel AMR Demo..." << std::endl;
 
-  // 1. Setup Geometry: A Disk
+  // 1. Setup Geometry: A base disk refined locally
   // Level 0: [-2, 2] x [-2, 2] covered by 40x40 cells => dx = 0.1
   MultilevelGeoDevice geo;
   geo.origin_x = -2.0;
@@ -74,23 +75,53 @@ void run_demo() {
   geo.root_dy = 0.1;
   geo.num_active_levels = 3;
 
+  CsrSetAlgebraContext ctx;
+
+  // --- Level 0 ---
+  // Base Disk
   Disk2D disk0;
   disk0.cx = 20;
   disk0.cy = 20;
   disk0.radius = 15;
   
-  // Create Level 0
-  std::cout << "Creating Level 0..." << std::endl;
+  std::cout << "Creating Level 0 (Base Disk)..." << std::endl;
   geo.levels[0] = make_disk_device(disk0);
   
-  // Create Level 1 (Refine L0)
-  std::cout << "Creating Level 1 (Refining L0)..." << std::endl;
-  CsrSetAlgebraContext ctx;
-  refine_level_up_device(geo.levels[0], geo.levels[1], ctx);
+  // --- Level 1 ---
+  // Refine L0 -> L1_full, then intersect with a smaller central disk
+  std::cout << "Creating Level 1 (Refining L0 + Intersection)..." << std::endl;
+  IntervalSet2DDevice l1_full;
+  refine_level_up_device(geo.levels[0], l1_full, ctx);
   
-  // Create Level 2 (Refine L1)
-  std::cout << "Creating Level 2 (Refining L1)..." << std::endl;
-  refine_level_up_device(geo.levels[1], geo.levels[2], ctx);
+  // Center of L1 is at (40, 40) because coords doubled
+  // Radius 15 refined becomes 30. We want a smaller radius, say 20 (in fine coords).
+  Disk2D disk1;
+  disk1.cx = 40;
+  disk1.cy = 40;
+  disk1.radius = 20;
+  IntervalSet2DDevice mask_l1 = make_disk_device(disk1);
+  
+  // Allocate output with sufficient capacity (upper bound = l1_full)
+  geo.levels[1] = allocate_interval_set_device(l1_full.num_rows, l1_full.num_intervals);
+  set_intersection_device(l1_full, mask_l1, geo.levels[1], ctx);
+  
+  // --- Level 2 ---
+  // Refine L1 -> L2_full, then intersect with an even smaller central disk
+  std::cout << "Creating Level 2 (Refining L1 + Intersection)..." << std::endl;
+  IntervalSet2DDevice l2_full;
+  refine_level_up_device(geo.levels[1], l2_full, ctx);
+  
+  // Center of L2 is at (80, 80)
+  // Radius 20 refined becomes 40. We want smaller, say 25.
+  Disk2D disk2;
+  disk2.cx = 80;
+  disk2.cy = 80;
+  disk2.radius = 25;
+  IntervalSet2DDevice mask_l2 = make_disk_device(disk2);
+  
+  // Allocate output
+  geo.levels[2] = allocate_interval_set_device(l2_full.num_rows, l2_full.num_intervals);
+  set_intersection_device(l2_full, mask_l2, geo.levels[2], ctx);
   
   // 2. Setup Fields
   MultilevelFieldDevice<float> field;
@@ -141,11 +172,6 @@ void run_demo() {
   // 6. Export
   std::cout << "Exporting to VTK..." << std::endl;
   
-  // We need to export fields level by level because write_multilevel_vtk currently only exports geometry (Scalar=Level).
-  // We should probably enhance write_multilevel_vtk to support a scalar field, or write separate files.
-  // For this demo, let's write separate files per level for the field, 
-  // AND one multilevel file for the geometry structure.
-  
   auto h_geo = deep_copy_to_host(geo);
   subsetix::vtk::write_multilevel_vtk(h_geo, "demo_multilevel_geo.vtk");
   
@@ -170,4 +196,3 @@ int main(int argc, char* argv[]) {
   Kokkos::finalize();
   return 0;
 }
-
