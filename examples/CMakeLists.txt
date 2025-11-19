@@ -87,3 +87,12 @@ target_link_libraries(field_subview_workflow
     PRIVATE
         subsetix_core
 )
+
+add_executable(field_subview_overlap_stencil
+    field_subview_overlap_stencil.cpp
+)
+
+target_link_libraries(field_subview_overlap_stencil
+    PRIVATE
+        subsetix_core
+)

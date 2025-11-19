@@ -97,6 +97,9 @@ inline void copy_on_subset_device(Field2DDevice<T>& dst,
   auto src_values = src.values;
   auto src_intervals = src.geometry.intervals;
   auto src_offsets = src.geometry.cell_offsets;
+  auto src_rows = src.geometry.row_keys;
+  auto src_row_ptr = src.geometry.row_ptr;
+  const std::size_t src_num_rows = src.geometry.num_rows;
 
   auto subset_indices = subset.interval_indices;
   auto subset_x_begin = subset.x_begin;
@@ -112,20 +115,46 @@ inline void copy_on_subset_device(Field2DDevice<T>& dst,
             subset_indices(entry_idx);
         const Interval dst_iv =
             dst_intervals(interval_idx);
-        const Interval src_iv =
-            src_intervals(interval_idx);
         const std::size_t dst_base =
             dst_offsets(interval_idx);
-        const std::size_t src_base =
-            src_offsets(interval_idx);
         const Coord dst_begin = dst_iv.begin;
-        const Coord src_begin = src_iv.begin;
         const Coord xb = subset_x_begin(entry_idx);
         const Coord xe = subset_x_end(entry_idx);
+        const int dst_row_idx = subset_rows(entry_idx);
+        const Coord y = dst_rows(dst_row_idx).y;
 
-        (void)subset_rows(entry_idx); // keep structure consistent
+        const int src_row_idx =
+            detail::find_row_index(src_rows, src_num_rows, y);
+        if (src_row_idx < 0) {
+          return;
+        }
+        const std::size_t src_row_begin = src_row_ptr(src_row_idx);
+        const std::size_t src_row_end = src_row_ptr(src_row_idx + 1);
+        if (src_row_begin == src_row_end) {
+          return;
+        }
+
+        int src_interval_idx =
+            detail::find_interval_index(src_intervals, src_row_begin,
+                                        src_row_end, xb);
+        if (src_interval_idx < 0) {
+          return;
+        }
+        Interval src_iv = src_intervals(src_interval_idx);
+        std::size_t src_base = src_offsets(src_interval_idx);
+        Coord src_begin = src_iv.begin;
 
         for (Coord x = xb; x < xe; ++x) {
+          while (x >= src_iv.end) {
+            ++src_interval_idx;
+            if (src_interval_idx >= static_cast<int>(src_row_end)) {
+              return;
+            }
+            src_iv = src_intervals(src_interval_idx);
+            src_base = src_offsets(src_interval_idx);
+            src_begin = src_iv.begin;
+          }
+
           const std::size_t dst_idx =
               dst_base +
               static_cast<std::size_t>(x - dst_begin);
@@ -163,6 +192,11 @@ inline void apply_stencil_on_subset_device(
   auto intervals = field_out.geometry.intervals;
   auto offsets = field_out.geometry.cell_offsets;
   auto values_out = field_out.values;
+  auto src_rows = field_in.geometry.row_keys;
+  auto src_row_ptr = field_in.geometry.row_ptr;
+  auto src_intervals = field_in.geometry.intervals;
+  auto src_offsets = field_in.geometry.cell_offsets;
+  const std::size_t src_num_rows = field_in.geometry.num_rows;
 
   const detail::VerticalIntervalMapping vertical =
       detail::build_vertical_interval_mapping(field_in);
@@ -188,14 +222,50 @@ inline void apply_stencil_on_subset_device(
         const Coord xb = mask_x_begin(entry_idx);
         const Coord xe = mask_x_end(entry_idx);
 
+        const int src_row_idx =
+            detail::find_row_index(src_rows, src_num_rows, y);
+        if (src_row_idx < 0) {
+          return;
+        }
+        const std::size_t src_row_begin = src_row_ptr(src_row_idx);
+        const std::size_t src_row_end = src_row_ptr(src_row_idx + 1);
+        if (src_row_begin == src_row_end) {
+          return;
+        }
+
+        int src_interval_idx =
+            detail::find_interval_index(src_intervals, src_row_begin,
+                                        src_row_end, xb);
+        if (src_interval_idx < 0) {
+          return;
+        }
+
+        Interval src_iv = src_intervals(src_interval_idx);
+        std::size_t src_base = src_offsets(src_interval_idx);
+        Coord src_begin = src_iv.begin;
+
         for (Coord x = xb; x < xe; ++x) {
-          const std::size_t linear_index =
+          while (x >= src_iv.end) {
+            ++src_interval_idx;
+            if (src_interval_idx >= static_cast<int>(src_row_end)) {
+              return;
+            }
+            src_iv = src_intervals(src_interval_idx);
+            src_base = src_offsets(src_interval_idx);
+            src_begin = src_iv.begin;
+          }
+
+          const std::size_t dst_linear_index =
               base_offset +
               static_cast<std::size_t>(x - base_begin);
+          const std::size_t src_linear_index =
+              src_base +
+              static_cast<std::size_t>(x - src_begin);
+
           const T value =
-              stencil(x, y, linear_index,
-                      static_cast<int>(interval_idx), ctx);
-          values_out(linear_index) = value;
+              stencil(x, y, src_linear_index,
+                      src_interval_idx, ctx);
+          values_out(dst_linear_index) = value;
         }
       });
   ExecSpace().fence();

@@ -66,6 +66,34 @@ IntervalSet2DHost make_interior_mask() {
   return mask;
 }
 
+IntervalSet2DHost split_geometry_intervals(const IntervalSet2DHost& base) {
+  IntervalSet2DHost out;
+  out.row_keys = base.row_keys;
+  out.row_ptr.resize(base.row_ptr.size());
+  out.intervals.clear();
+
+  for (std::size_t row = 0; row < base.row_keys.size(); ++row) {
+    const std::size_t begin = base.row_ptr[row];
+    const std::size_t end = base.row_ptr[row + 1];
+    out.row_ptr[row] = out.intervals.size();
+    for (std::size_t k = begin; k < end; ++k) {
+      const Interval iv = base.intervals[k];
+      const Coord len = static_cast<Coord>(iv.end - iv.begin);
+      if (len <= 1) {
+        out.intervals.push_back(iv);
+        continue;
+      }
+      const Coord mid = iv.begin + len / 2;
+      out.intervals.push_back(Interval{iv.begin, mid});
+      out.intervals.push_back(Interval{mid, iv.end});
+    }
+    out.row_ptr[row + 1] = out.intervals.size();
+  }
+
+  out.rebuild_mapping();
+  return out;
+}
+
 struct FivePointAverage {
   KOKKOS_INLINE_FUNCTION
   double operator()(Coord x, Coord y, std::size_t linear_index,
@@ -252,6 +280,87 @@ TEST(CsrFieldSubViewTest, StencilOnSubregionWithSubset) {
 
   EXPECT_DOUBLE_EQ(result.values[5], expected_cell_1);
   EXPECT_DOUBLE_EQ(result.values[6], expected_cell_2);
+}
+
+TEST(CsrFieldSubViewTest, CopySubViewHandlesDifferentLayoutsWithSubset) {
+  Box2D domain{0, 8, 0, 4};
+  auto dense_geom_dev = make_box_device(domain);
+  auto dense_geom_host = build_host_from_device(dense_geom_dev);
+  auto split_geom_host = split_geometry_intervals(dense_geom_host);
+
+  auto src_host =
+      make_field_like_geometry<double>(dense_geom_host, 0.0);
+  fill_field_with_pattern<double>(
+      src_host, [](Coord x, Coord y) {
+        return static_cast<double>(x + 5 * y);
+      });
+  auto dst_host =
+      make_field_like_geometry<double>(split_geom_host, -1.0);
+
+  auto src_dev = build_device_field_from_host(src_host);
+  auto dst_dev = build_device_field_from_host(dst_host);
+
+  Box2D region = domain;
+  region.x_min = 1;
+  region.x_max = domain.x_max - 1;
+  region.y_min = 1;
+  region.y_max = domain.y_max - 1;
+  auto mask_dev = make_box_device(region);
+
+  auto src_sub = make_subview(src_dev, mask_dev, "copy_src");
+  auto dst_sub = make_subview(dst_dev, mask_dev, "copy_dst");
+
+  CsrSetAlgebraContext ctx;
+  copy_subview_device(dst_sub, src_sub, ctx);
+
+  auto copied = build_host_field_from_device(dst_dev);
+
+  double value = 0.0;
+  ASSERT_TRUE(host_try_get(copied, 2, 2, value));
+  EXPECT_DOUBLE_EQ(value, static_cast<double>(2 + 5 * 2));
+  ASSERT_TRUE(host_try_get(copied, 5, 1, value));
+  EXPECT_DOUBLE_EQ(value, static_cast<double>(5 + 5 * 1));
+}
+
+TEST(CsrFieldSubViewTest, StencilOnSubregionHandlesDifferentLayouts) {
+  Box2D domain{0, 8, 0, 4};
+  auto dense_geom_dev = make_box_device(domain);
+  auto dense_geom_host = build_host_from_device(dense_geom_dev);
+  auto split_geom_host = split_geometry_intervals(dense_geom_host);
+
+  auto src_host =
+      make_field_like_geometry<double>(split_geom_host, 0.0);
+  fill_field_with_pattern<double>(
+      src_host, [](Coord x, Coord y) {
+        return static_cast<double>(x + 10 * y);
+      });
+  auto dst_host =
+      make_field_like_geometry<double>(dense_geom_host, 0.0);
+
+  auto src_dev = build_device_field_from_host(src_host);
+  auto dst_dev = build_device_field_from_host(dst_host);
+
+  Box2D region{1, 7, 1, 3};
+  auto mask_dev = make_box_device(region);
+
+  auto src_sub = make_subview(src_dev, mask_dev, "split_src");
+  auto dst_sub = make_subview(dst_dev, mask_dev, "dense_dst");
+
+  CsrSetAlgebraContext ctx;
+  apply_stencil_on_subview_device(dst_sub, src_sub,
+                                  FivePointAverage{}, ctx);
+
+  auto result = build_host_field_from_device(dst_dev);
+  double value = 0.0;
+  ASSERT_TRUE(host_try_get(result, 3, 2, value));
+  const double center = static_cast<double>(3 + 10 * 2);
+  const double east = static_cast<double>(4 + 10 * 2);
+  const double west = static_cast<double>(2 + 10 * 2);
+  const double north = static_cast<double>(3 + 10 * 3);
+  const double south = static_cast<double>(3 + 10 * 1);
+  const double expected =
+      (center + east + west + north + south) / 5.0;
+  EXPECT_DOUBLE_EQ(value, expected);
 }
 
 TEST(CsrFieldSubViewTest, RestrictSubViewAveragesFineValues) {
