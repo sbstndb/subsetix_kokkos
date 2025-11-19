@@ -24,10 +24,10 @@ using ExecSpace = Kokkos::DefaultExecutionSpace;
  * row_ptr, and intervals). Only the values are different.
  */
 template <typename T>
-inline void field_add_device(IntervalField2DDevice<T>& result,
-                             const IntervalField2DDevice<T>& a,
-                             const IntervalField2DDevice<T>& b) {
-  const std::size_t n = result.value_count;
+inline void field_add_device(Field2DDevice<T>& result,
+                             const Field2DDevice<T>& a,
+                             const Field2DDevice<T>& b) {
+  const std::size_t n = result.size();
   if (n == 0) {
     return;
   }
@@ -37,7 +37,7 @@ inline void field_add_device(IntervalField2DDevice<T>& result,
   auto result_vals = result.values;
 
   Kokkos::parallel_for(
-      "subsetix_field_add",
+      "subsetix_field2d_add",
       Kokkos::RangePolicy<ExecSpace>(0, n),
       KOKKOS_LAMBDA(const std::size_t i) {
         result_vals(i) = a_vals(i) + b_vals(i);
@@ -52,10 +52,10 @@ inline void field_add_device(IntervalField2DDevice<T>& result,
  * Precondition: All three fields must have the same geometry.
  */
 template <typename T>
-inline void field_sub_device(IntervalField2DDevice<T>& result,
-                             const IntervalField2DDevice<T>& a,
-                             const IntervalField2DDevice<T>& b) {
-  const std::size_t n = result.value_count;
+inline void field_sub_device(Field2DDevice<T>& result,
+                             const Field2DDevice<T>& a,
+                             const Field2DDevice<T>& b) {
+  const std::size_t n = result.size();
   if (n == 0) {
     return;
   }
@@ -65,7 +65,7 @@ inline void field_sub_device(IntervalField2DDevice<T>& result,
   auto result_vals = result.values;
 
   Kokkos::parallel_for(
-      "subsetix_field_sub",
+      "subsetix_field2d_sub",
       Kokkos::RangePolicy<ExecSpace>(0, n),
       KOKKOS_LAMBDA(const std::size_t i) {
         result_vals(i) = a_vals(i) - b_vals(i);
@@ -80,10 +80,10 @@ inline void field_sub_device(IntervalField2DDevice<T>& result,
  * Precondition: All three fields must have the same geometry.
  */
 template <typename T>
-inline void field_mul_device(IntervalField2DDevice<T>& result,
-                             const IntervalField2DDevice<T>& a,
-                             const IntervalField2DDevice<T>& b) {
-  const std::size_t n = result.value_count;
+inline void field_mul_device(Field2DDevice<T>& result,
+                             const Field2DDevice<T>& a,
+                             const Field2DDevice<T>& b) {
+  const std::size_t n = result.size();
   if (n == 0) {
     return;
   }
@@ -93,7 +93,7 @@ inline void field_mul_device(IntervalField2DDevice<T>& result,
   auto result_vals = result.values;
 
   Kokkos::parallel_for(
-      "subsetix_field_mul",
+      "subsetix_field2d_mul",
       Kokkos::RangePolicy<ExecSpace>(0, n),
       KOKKOS_LAMBDA(const std::size_t i) {
         result_vals(i) = a_vals(i) * b_vals(i);
@@ -109,10 +109,10 @@ inline void field_mul_device(IntervalField2DDevice<T>& result,
  * Warning: No division-by-zero check is performed.
  */
 template <typename T>
-inline void field_div_device(IntervalField2DDevice<T>& result,
-                             const IntervalField2DDevice<T>& a,
-                             const IntervalField2DDevice<T>& b) {
-  const std::size_t n = result.value_count;
+inline void field_div_device(Field2DDevice<T>& result,
+                             const Field2DDevice<T>& a,
+                             const Field2DDevice<T>& b) {
+  const std::size_t n = result.size();
   if (n == 0) {
     return;
   }
@@ -122,7 +122,7 @@ inline void field_div_device(IntervalField2DDevice<T>& result,
   auto result_vals = result.values;
 
   Kokkos::parallel_for(
-      "subsetix_field_div",
+      "subsetix_field2d_div",
       Kokkos::RangePolicy<ExecSpace>(0, n),
       KOKKOS_LAMBDA(const std::size_t i) {
         result_vals(i) = a_vals(i) / b_vals(i);
@@ -137,9 +137,9 @@ inline void field_div_device(IntervalField2DDevice<T>& result,
  * Precondition: Both fields must have the same geometry.
  */
 template <typename T>
-inline void field_abs_device(IntervalField2DDevice<T>& result,
-                             const IntervalField2DDevice<T>& a) {
-  const std::size_t n = result.value_count;
+inline void field_abs_device(Field2DDevice<T>& result,
+                             const Field2DDevice<T>& a) {
+  const std::size_t n = result.size();
   if (n == 0) {
     return;
   }
@@ -148,7 +148,7 @@ inline void field_abs_device(IntervalField2DDevice<T>& result,
   auto result_vals = result.values;
 
   Kokkos::parallel_for(
-      "subsetix_field_abs",
+      "subsetix_field2d_abs",
       Kokkos::RangePolicy<ExecSpace>(0, n),
       KOKKOS_LAMBDA(const std::size_t i) {
         const T val = a_vals(i);
@@ -164,12 +164,12 @@ inline void field_abs_device(IntervalField2DDevice<T>& result,
  * Precondition: All three fields must have the same geometry.
  */
 template <typename T>
-inline void field_axpby_device(IntervalField2DDevice<T>& result,
+inline void field_axpby_device(Field2DDevice<T>& result,
                                const T& alpha,
-                               const IntervalField2DDevice<T>& a,
+                               const Field2DDevice<T>& a,
                                const T& beta,
-                               const IntervalField2DDevice<T>& b) {
-  const std::size_t n = result.value_count;
+                               const Field2DDevice<T>& b) {
+  const std::size_t n = result.size();
   if (n == 0) {
     return;
   }
@@ -181,7 +181,7 @@ inline void field_axpby_device(IntervalField2DDevice<T>& result,
   auto result_vals = result.values;
 
   Kokkos::parallel_for(
-      "subsetix_field_axpby",
+      "subsetix_field2d_axpby",
       Kokkos::RangePolicy<ExecSpace>(0, n),
       KOKKOS_LAMBDA(const std::size_t i) {
         result_vals(i) = alpha_copy * a_vals(i) + beta_copy * b_vals(i);
@@ -196,9 +196,9 @@ inline void field_axpby_device(IntervalField2DDevice<T>& result,
  * Precondition: Both fields must have the same geometry.
  */
 template <typename T>
-inline T field_dot_device(const IntervalField2DDevice<T>& a,
-                          const IntervalField2DDevice<T>& b) {
-  const std::size_t n = a.value_count;
+inline T field_dot_device(const Field2DDevice<T>& a,
+                          const Field2DDevice<T>& b) {
+  const std::size_t n = a.size();
   if (n == 0) {
     return T(0);
   }
@@ -208,7 +208,7 @@ inline T field_dot_device(const IntervalField2DDevice<T>& a,
 
   T result = T(0);
   Kokkos::parallel_reduce(
-      "subsetix_field_dot",
+      "subsetix_field2d_dot",
       Kokkos::RangePolicy<ExecSpace>(0, n),
       KOKKOS_LAMBDA(const std::size_t i, T& sum) {
         sum += a_vals(i) * b_vals(i);
@@ -224,8 +224,8 @@ inline T field_dot_device(const IntervalField2DDevice<T>& a,
  * Precondition: Field must be initialized.
  */
 template <typename T>
-inline T field_norm_l2_device(const IntervalField2DDevice<T>& a) {
-  const std::size_t n = a.value_count;
+inline T field_norm_l2_device(const Field2DDevice<T>& a) {
+  const std::size_t n = a.size();
   if (n == 0) {
     return T(0);
   }
@@ -234,7 +234,7 @@ inline T field_norm_l2_device(const IntervalField2DDevice<T>& a) {
 
   T sum_sq = T(0);
   Kokkos::parallel_reduce(
-      "subsetix_field_norm_l2",
+      "subsetix_field2d_norm_l2",
       Kokkos::RangePolicy<ExecSpace>(0, n),
       KOKKOS_LAMBDA(const std::size_t i, T& local_sum) {
         const T val = a_vals(i);

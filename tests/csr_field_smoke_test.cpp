@@ -17,10 +17,9 @@ IntervalField2DHost<float> build_scaled_field_roundtrip() {
   auto dev_field = build_device_field_from_host(host_field);
 
   using ExecSpace = Kokkos::DefaultExecutionSpace;
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
   Kokkos::parallel_for(
       "subsetix_csr_field_scale_values",
-      Kokkos::RangePolicy<ExecSpace>(0, dev_field.value_count),
+      Kokkos::RangePolicy<ExecSpace>(0, dev_field.size()),
       KOKKOS_LAMBDA(const std::size_t i) {
         dev_field.values(i) *= 2.0f;
       });

@@ -17,50 +17,11 @@ using namespace subsetix::csr;
 
 // Helper to allocate a field with the same geometry as an interval set
 template <typename T>
-IntervalField2DDevice<T> make_field_like_device(const IntervalSet2DDevice& geom, T init_val = 0) {
-  IntervalField2DDevice<T> field;
-  field.num_rows = geom.num_rows;
-  field.num_intervals = geom.num_intervals;
-
-  field.row_keys = geom.row_keys; // Shared view (read-only)
-  field.row_ptr = geom.row_ptr;   // Shared view (read-only)
-
-  // Create FieldIntervals from Intervals
-  // We need to compute value_offset for each interval.
-  // This requires a scan.
-  
-  Kokkos::View<FieldInterval*, DeviceMemorySpace> intervals("field_intervals", geom.num_intervals);
-  auto geom_intervals = geom.intervals;
-  
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_values("total_values");
-
-  Kokkos::parallel_scan("scan_values", geom.num_intervals, 
-    KOKKOS_LAMBDA(const int i, std::size_t& update, const bool final) {
-      const auto iv = geom_intervals(i);
-      const std::size_t len = static_cast<std::size_t>(iv.end - iv.begin);
-      if (final) {
-        FieldInterval fi;
-        fi.begin = iv.begin;
-        fi.end = iv.end;
-        fi.value_offset = update;
-        intervals(i) = fi;
-        if (i + 1 == static_cast<int>(geom.num_intervals)) {
-          total_values() = update + len;
-        }
-      }
-      update += len;
-    });
-  
-  field.intervals = intervals;
-  
-  std::size_t count = 0;
-  Kokkos::deep_copy(count, total_values);
-  field.value_count = count;
-  
-  field.values = Kokkos::View<T*, DeviceMemorySpace>("field_values", count);
-  Kokkos::deep_copy(field.values, init_val);
-  
-  return field;
+Field2DDevice<T> make_field_like_device(const IntervalSet2DDevice& geom,
+                                        T init_val = 0) {
+  auto geom_host = build_host_from_device(geom);
+  auto field_host = make_field_like_geometry<T>(geom_host, init_val);
+  return build_device_field_from_host(field_host);
 }
 
 void run_demo() {
@@ -142,22 +103,28 @@ void run_demo() {
   double ox = geo.origin_x;
   double oy = geo.origin_y;
   double dx = geo.root_dx;
+
+  auto row_keys = f0.geometry.row_keys;
+  auto row_ptr = f0.geometry.row_ptr;
+  auto intervals = f0.geometry.intervals;
+  auto offsets = f0.geometry.cell_offsets;
+  auto values = f0.values;
   
-  Kokkos::parallel_for("init_field_l0", f0.num_rows, 
+  Kokkos::parallel_for("init_field_l0", f0.geometry.num_rows,
     KOKKOS_LAMBDA(const int i) {
-       Coord y_idx = f0.row_keys(i).y;
+       Coord y_idx = row_keys(i).y;
        double y = oy + y_idx * dx;
        
-       std::size_t begin = f0.row_ptr(i);
-       std::size_t end = f0.row_ptr(i+1);
+       std::size_t begin = row_ptr(i);
+       std::size_t end = row_ptr(i+1);
        
        for (std::size_t k=begin; k<end; ++k) {
-         const auto iv = f0.intervals(k);
-         std::size_t offset = iv.value_offset;
+         const auto iv = intervals(k);
+         std::size_t offset = offsets(k);
          for (Coord x_idx = iv.begin; x_idx < iv.end; ++x_idx) {
            double x = ox + x_idx * dx;
            float val = static_cast<float>(std::exp(-(x*x + y*y)));
-           f0.values(offset + (x_idx - iv.begin)) = val;
+           values(offset + static_cast<std::size_t>(x_idx - iv.begin)) = val;
          }
        }
     });

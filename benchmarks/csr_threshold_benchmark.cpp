@@ -43,7 +43,7 @@ IntervalSet2DDevice make_mask(const RectConfig& cfg) {
   return make_box_device(box);
 }
 
-IntervalField2DDevice<double> make_random_field(
+Field2DDevice<double> make_random_field(
     const RectConfig& cfg, double fill_ratio) {
   auto geom = make_mask(cfg);
   auto geom_host = build_host_from_device(geom);
@@ -64,7 +64,7 @@ IntervalField2DDevice<double> make_random_field(
 
 void bench_threshold(benchmark::State& state, const RectConfig& cfg) {
   // Create a fully dense field
-  IntervalField2DDevice<double> field = make_random_field(cfg, 1.0);
+  Field2DDevice<double> field = make_random_field(cfg, 1.0);
   
   const std::size_t cells = cells_in_rect(cfg);
   

@@ -67,10 +67,11 @@ int find_interval_index(const IntervalView& intervals,
 
 template <typename T>
 struct FieldReadAccessor {
-  typename IntervalField2DDevice<T>::RowKeyView row_keys;
-  typename IntervalField2DDevice<T>::IndexView row_ptr;
-  typename IntervalField2DDevice<T>::IntervalView intervals;
-  typename IntervalField2DDevice<T>::ValueView values;
+  typename Field2DDevice<T>::RowKeyView row_keys;
+  typename Field2DDevice<T>::IndexView row_ptr;
+  typename Field2DDevice<T>::IntervalView intervals;
+  Kokkos::View<std::size_t*, DeviceMemorySpace> offsets;
+  typename Field2DDevice<T>::ValueView values;
   std::size_t num_rows = 0;
 
   KOKKOS_INLINE_FUNCTION
@@ -89,7 +90,7 @@ struct FieldReadAccessor {
     }
     const auto iv = intervals(interval_idx);
     const std::size_t offset =
-        iv.value_offset +
+        offsets(interval_idx) +
         static_cast<std::size_t>(x - iv.begin);
     out = values(offset);
     return true;
@@ -116,11 +117,11 @@ struct VerticalIntervalMapping {
 template <typename T>
 inline VerticalIntervalMapping
 build_vertical_interval_mapping(
-    const IntervalField2DDevice<T>& field) {
+    const Field2DDevice<T>& field) {
   VerticalIntervalMapping mapping;
 
-  const std::size_t num_rows = field.num_rows;
-  const std::size_t num_intervals = field.num_intervals;
+  const std::size_t num_rows = field.geometry.num_rows;
+  const std::size_t num_intervals = field.geometry.num_intervals;
 
   Kokkos::View<int*, DeviceMemorySpace> up(
       "subsetix_field_interval_up", num_intervals);
@@ -137,8 +138,8 @@ build_vertical_interval_mapping(
   Kokkos::deep_copy(up, -1);
   Kokkos::deep_copy(down, -1);
 
-  auto row_keys = field.row_keys;
-  auto row_ptr = field.row_ptr;
+  auto row_keys = field.geometry.row_keys;
+  auto row_ptr = field.geometry.row_ptr;
 
   Kokkos::parallel_for(
       "subsetix_vertical_interval_mapping",
@@ -220,8 +221,9 @@ build_vertical_interval_mapping(
 
 template <typename T>
 struct FieldStencilContext {
-  typename IntervalField2DDevice<T>::IntervalView intervals;
-  typename IntervalField2DDevice<T>::ValueView values;
+  typename Field2DDevice<T>::IntervalView intervals;
+  Kokkos::View<std::size_t*, DeviceMemorySpace> offsets;
+  typename Field2DDevice<T>::ValueView values;
   Kokkos::View<int*, DeviceMemorySpace> up_interval;
   Kokkos::View<int*, DeviceMemorySpace> down_interval;
 
@@ -245,9 +247,9 @@ struct FieldStencilContext {
           int center_interval_idx) const {
     const int up_idx =
         up_interval(center_interval_idx);
-    const FieldInterval iv = intervals(up_idx);
+    const Interval iv = intervals(up_idx);
     const std::size_t offset =
-        iv.value_offset +
+        offsets(up_idx) +
         static_cast<std::size_t>(x - iv.begin);
     return values(offset);
   }
@@ -257,9 +259,9 @@ struct FieldStencilContext {
           int center_interval_idx) const {
     const int down_idx =
         down_interval(center_interval_idx);
-    const FieldInterval iv = intervals(down_idx);
+    const Interval iv = intervals(down_idx);
     const std::size_t offset =
-        iv.value_offset +
+        offsets(down_idx) +
         static_cast<std::size_t>(x - iv.begin);
     return values(offset);
   }
@@ -285,15 +287,15 @@ struct FieldStencilContext {
  */
 template <typename T, class StencilFunctor>
 inline void apply_stencil_on_set_device(
-    IntervalField2DDevice<T>& field_out,
-    const IntervalField2DDevice<T>& field_in,
+    Field2DDevice<T>& field_out,
+    const Field2DDevice<T>& field_in,
     const IntervalSet2DDevice& mask,
     StencilFunctor stencil) {
   if (mask.num_rows == 0 || mask.num_intervals == 0) {
     return;
   }
 
-  if (field_out.num_rows == 0 || field_in.num_rows == 0) {
+  if (field_out.geometry.num_rows == 0 || field_in.geometry.num_rows == 0) {
     throw std::runtime_error(
         "fields must be initialized before applying a stencil");
   }
@@ -307,7 +309,8 @@ inline void apply_stencil_on_set_device(
 
   auto mask_row_keys = mask.row_keys;
   auto mask_intervals = mask.intervals;
-  auto field_out_intervals = field_out.intervals;
+  auto field_out_intervals = field_out.geometry.intervals;
+  auto field_out_offsets = field_out.geometry.cell_offsets;
   auto field_out_values = field_out.values;
 
   const detail::VerticalIntervalMapping vertical =
@@ -315,7 +318,8 @@ inline void apply_stencil_on_set_device(
           field_in);
 
   detail::FieldStencilContext<T> ctx;
-  ctx.intervals = field_in.intervals;
+  ctx.intervals = field_in.geometry.intervals;
+  ctx.offsets = field_in.geometry.cell_offsets;
   ctx.values = field_in.values;
   ctx.up_interval = vertical.up_interval;
   ctx.down_interval = vertical.down_interval;
@@ -341,9 +345,9 @@ inline void apply_stencil_on_set_device(
         const auto field_iv =
             field_out_intervals(field_interval_idx);
         const Coord y = mask_row_keys(row_idx).y;
-          const std::size_t base_offset =
-              field_iv.value_offset;
-          const Coord base_begin = field_iv.begin;
+        const std::size_t base_offset =
+            field_out_offsets(field_interval_idx);
+        const Coord base_begin = field_iv.begin;
 
           for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
             const std::size_t linear_index =

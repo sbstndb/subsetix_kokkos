@@ -23,16 +23,16 @@ namespace csr {
  * @return IntervalSet2DDevice containing intervals where the condition is met.
  */
 template <typename T>
-IntervalSet2DDevice threshold_field(const IntervalField2DDevice<T>& field,
+IntervalSet2DDevice threshold_field(const Field2DDevice<T>& field,
                                     double epsilon) {
   using ExecSpace = Kokkos::DefaultExecutionSpace;
   IntervalSet2DDevice result_set;
 
-  if (field.num_rows == 0) {
+  if (field.geometry.num_rows == 0) {
     return result_set;
   }
 
-  const std::size_t num_rows = field.num_rows;
+  const std::size_t num_rows = field.geometry.num_rows;
   result_set.num_rows = num_rows;
 
   // Allocate result row structures
@@ -43,14 +43,15 @@ IntervalSet2DDevice threshold_field(const IntervalField2DDevice<T>& field,
   SetIndexView row_ptr("subsetix_threshold_row_ptr", num_rows + 1);
   
   // Copy row keys directly as geometry rows are preserved (though some might become empty)
-  Kokkos::deep_copy(row_keys, field.row_keys);
+  Kokkos::deep_copy(row_keys, field.geometry.row_keys);
 
   // Temporary storage for per-row interval counts
   Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
       "subsetix_threshold_row_counts", num_rows);
 
-  auto field_row_ptr = field.row_ptr;
-  auto field_intervals = field.intervals;
+  auto field_row_ptr = field.geometry.row_ptr;
+  auto field_intervals = field.geometry.intervals;
+  auto field_offsets = field.geometry.cell_offsets;
   auto field_values = field.values;
 
   // -------------------------------------------------------------------------
@@ -71,7 +72,7 @@ IntervalSet2DDevice threshold_field(const IntervalField2DDevice<T>& field,
           const auto iv = field_intervals(k);
           const Coord x_begin = iv.begin;
           const Coord x_end = iv.end;
-          const std::size_t val_offset = iv.value_offset;
+          const std::size_t val_offset = field_offsets(k);
 
           // Check for gap between field intervals
           if (current_segment_active && x_begin > last_processed_end) {
@@ -164,7 +165,7 @@ IntervalSet2DDevice threshold_field(const IntervalField2DDevice<T>& field,
             const auto iv = field_intervals(k);
             const Coord x_begin = iv.begin;
             const Coord x_end = iv.end;
-            const std::size_t val_offset = iv.value_offset;
+            const std::size_t val_offset = field_offsets(k);
 
             if (current_segment_active && x_begin > last_processed_end) {
               // Write interval ending at last_processed_end

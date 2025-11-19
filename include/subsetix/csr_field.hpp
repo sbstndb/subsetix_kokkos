@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <vector>
+#include <string>
 
 #include <Kokkos_Core.hpp>
 
@@ -101,41 +102,60 @@ struct IntervalField2DHost {
 };
 
 /**
- * @brief Device-friendly field representation using Kokkos::View.
+ * @brief Lightweight field wrapper that shares geometry with IntervalSet2DView.
  *
- * Geometry is stored in CSR form similarly to IntervalSet2DDevice, but each
- * interval also carries an offset into the linear values array.
+ * The geometry is provided by an IntervalSet2DView, while values are stored
+ * in a contiguous Kokkos::View sized to geometry.total_cells.
  */
-template <typename T, class MemorySpace>
-struct IntervalField2DView {
-  using RowKeyView = Kokkos::View<RowKey2D*, MemorySpace>;
-  using IndexView = Kokkos::View<std::size_t*, MemorySpace>;
-  using IntervalView = Kokkos::View<FieldInterval*, MemorySpace>;
+template <typename T, class MemorySpace = DeviceMemorySpace>
+struct Field2D {
+  using GeometryView = IntervalSet2DView<MemorySpace>;
+  using RowKeyView = typename GeometryView::RowKeyView;
+  using IndexView = typename GeometryView::IndexView;
+  using IntervalView = typename GeometryView::IntervalView;
   using ValueView = Kokkos::View<T*, MemorySpace>;
 
-  RowKeyView row_keys;    ///< [num_rows]
-  IndexView row_ptr;      ///< [num_rows + 1]
-  IntervalView intervals; ///< [num_intervals]
-  ValueView values;       ///< [value_count]
+  GeometryView geometry;
+  ValueView values;
+  std::string label;
 
-  std::size_t num_rows = 0;
-  std::size_t num_intervals = 0;
-  std::size_t value_count = 0;
+  Field2D() = default;
+
+  Field2D(const GeometryView& geom, std::string name = "subsetix_field")
+      : geometry(geom), label(std::move(name)) {
+    const std::size_t value_count = geometry.total_cells;
+    if (value_count == 0) {
+      values = ValueView();
+    } else {
+      values = ValueView(label + "_values", value_count);
+    }
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  std::size_t size() const { return geometry.total_cells; }
+
+  KOKKOS_INLINE_FUNCTION
+  T& at(std::size_t interval_idx, Coord x) const {
+    const Interval iv = geometry.intervals(interval_idx);
+    const std::size_t base = geometry.cell_offsets(interval_idx);
+    return values(base + static_cast<std::size_t>(x - iv.begin));
+  }
 };
 
 template <typename T>
-using IntervalField2DDevice = IntervalField2DView<T, DeviceMemorySpace>;
+using Field2DDevice = Field2D<T, DeviceMemorySpace>;
 
 template <typename T>
-using IntervalField2DHostView = IntervalField2DView<T, HostMemorySpace>;
+using Field2DHost = Field2D<T, HostMemorySpace>;
 
 /**
  * @brief Build a device field from a host field.
  */
 template <typename T>
-inline IntervalField2DDevice<T>
-build_device_field_from_host(const IntervalField2DHost<T>& host) {
-  IntervalField2DDevice<T> dev;
+inline Field2DDevice<T>
+build_device_field_from_host(const IntervalField2DHost<T>& host,
+                             const std::string& label = "subsetix_field") {
+  Field2DDevice<T> dev;
 
   const std::size_t num_rows = host.row_keys.size();
   const std::size_t num_row_ptr = host.row_ptr.size();
@@ -146,53 +166,31 @@ build_device_field_from_host(const IntervalField2DHost<T>& host) {
     return dev;
   }
 
-  dev.row_keys = typename IntervalField2DDevice<T>::RowKeyView(
-      Kokkos::view_alloc(Kokkos::WithoutInitializing,
-                         "subsetix_csr_field_row_keys"),
-      num_rows);
-  dev.row_ptr = typename IntervalField2DDevice<T>::IndexView(
-      Kokkos::view_alloc(Kokkos::WithoutInitializing,
-                         "subsetix_csr_field_row_ptr"),
-      num_row_ptr);
-  dev.intervals = typename IntervalField2DDevice<T>::IntervalView(
-      Kokkos::view_alloc(Kokkos::WithoutInitializing,
-                         "subsetix_csr_field_intervals"),
-      num_intervals);
-  dev.values = typename IntervalField2DDevice<T>::ValueView(
-      Kokkos::view_alloc(Kokkos::WithoutInitializing,
-                         "subsetix_csr_field_values"),
-      value_count);
-
-  Kokkos::View<RowKey2D*, HostMemorySpace> h_row_keys(
-      "subsetix_csr_field_row_keys_host", num_rows);
-  Kokkos::View<std::size_t*, HostMemorySpace> h_row_ptr(
-      "subsetix_csr_field_row_ptr_host", num_row_ptr);
-  Kokkos::View<FieldInterval*, HostMemorySpace> h_intervals(
-      "subsetix_csr_field_intervals_host", num_intervals);
-  Kokkos::View<T*, HostMemorySpace> h_values(
-      "subsetix_csr_field_values_host", value_count);
-
-  for (std::size_t i = 0; i < num_rows; ++i) {
-    h_row_keys(i) = host.row_keys[i];
+  IntervalSet2DHost geom_host;
+  geom_host.row_keys = host.row_keys;
+  geom_host.row_ptr = host.row_ptr;
+  geom_host.intervals.reserve(num_intervals);
+  for (const FieldInterval& fi : host.intervals) {
+    geom_host.intervals.push_back(Interval{fi.begin, fi.end});
   }
-  for (std::size_t i = 0; i < num_row_ptr; ++i) {
-    h_row_ptr(i) = host.row_ptr[i];
-  }
-  for (std::size_t i = 0; i < num_intervals; ++i) {
-    h_intervals(i) = host.intervals[i];
-  }
-  for (std::size_t i = 0; i < value_count; ++i) {
-    h_values(i) = host.values[i];
-  }
+  geom_host.rebuild_mapping();
 
-  Kokkos::deep_copy(dev.row_keys, h_row_keys);
-  Kokkos::deep_copy(dev.row_ptr, h_row_ptr);
-  Kokkos::deep_copy(dev.intervals, h_intervals);
-  Kokkos::deep_copy(dev.values, h_values);
+  dev.geometry = build_device_from_host(geom_host);
+  dev.label = label;
 
-  dev.num_rows = num_rows;
-  dev.num_intervals = num_intervals;
-  dev.value_count = value_count;
+  if (value_count > 0) {
+    dev.values = typename Field2DDevice<T>::ValueView(
+        Kokkos::view_alloc(Kokkos::WithoutInitializing,
+                           label.empty() ? "subsetix_csr_field_values"
+                                         : label + "_values"),
+        value_count);
+    Kokkos::View<T*, HostMemorySpace> h_values(
+        "subsetix_csr_field_values_host", value_count);
+    for (std::size_t i = 0; i < value_count; ++i) {
+      h_values(i) = host.values[i];
+    }
+    Kokkos::deep_copy(dev.values, h_values);
+  }
 
   return dev;
 }
@@ -202,45 +200,34 @@ build_device_field_from_host(const IntervalField2DHost<T>& host) {
  */
 template <typename T>
 inline IntervalField2DHost<T>
-build_host_field_from_device(const IntervalField2DDevice<T>& dev) {
+build_host_field_from_device(const Field2DDevice<T>& dev) {
   IntervalField2DHost<T> host;
 
-  const std::size_t num_rows = dev.num_rows;
-  const std::size_t num_intervals = dev.num_intervals;
-  const std::size_t value_count = dev.value_count;
-
-  if (num_rows == 0) {
+  if (dev.geometry.num_rows == 0) {
     return host;
   }
 
-  // Create mirrors of the device views. Note that device views may have larger capacity
-  // than the actual size (num_rows, etc.). We must copy only the valid parts.
-  // Or copy everything and resize on host.
-  // Kokkos::create_mirror_view_and_copy copies the WHOLE view extent.
-  // If capacity >> size, this is wasteful and potentially wrong if we assume size == extent.
-  
-  auto h_row_keys_full = Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_keys);
-  auto h_row_ptr_full = Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_ptr);
-  auto h_intervals_full = Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.intervals);
-  auto h_values_full = Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.values);
+  auto geom_host = build_host_from_device(dev.geometry);
+  host.row_keys = geom_host.row_keys;
+  host.row_ptr = geom_host.row_ptr;
+  host.intervals.resize(geom_host.intervals.size());
 
-  host.row_keys.resize(num_rows);
-  host.row_ptr.resize(num_rows + 1);
-  host.intervals.resize(num_intervals);
+  for (std::size_t i = 0; i < geom_host.intervals.size(); ++i) {
+    FieldInterval fi;
+    fi.begin = geom_host.intervals[i].begin;
+    fi.end = geom_host.intervals[i].end;
+    fi.value_offset = geom_host.cell_offsets[i];
+    host.intervals[i] = fi;
+  }
+
+  const std::size_t value_count = geom_host.total_cells;
   host.values.resize(value_count);
-
-  // Copy only valid data
-  for (std::size_t i = 0; i < num_rows; ++i) {
-    host.row_keys[i] = h_row_keys_full(i);
-  }
-  for (std::size_t i = 0; i < num_rows + 1; ++i) {
-    host.row_ptr[i] = h_row_ptr_full(i);
-  }
-  for (std::size_t i = 0; i < num_intervals; ++i) {
-    host.intervals[i] = h_intervals_full(i);
-  }
-  for (std::size_t i = 0; i < value_count; ++i) {
-    host.values[i] = h_values_full(i);
+  if (value_count > 0) {
+    auto h_values =
+        Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.values);
+    for (std::size_t i = 0; i < value_count; ++i) {
+      host.values[i] = h_values(i);
+    }
   }
 
   return host;
@@ -304,3 +291,5 @@ make_field_like_geometry(const IntervalSet2DHost& geom,
 
 } // namespace csr
 } // namespace subsetix
+
+

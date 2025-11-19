@@ -63,7 +63,7 @@ struct MultilevelGeo {
  */
 template <typename T, class MemorySpace>
 struct MultilevelField {
-  using FieldView = csr::IntervalField2DView<T, MemorySpace>;
+  using FieldView = csr::Field2D<T, MemorySpace>;
 
   int num_active_levels = 0;
   Kokkos::Array<FieldView, MAX_LEVELS> levels;
@@ -118,10 +118,13 @@ inline MultilevelGeoHost deep_copy_to_host(const MultilevelGeoDevice& dev_geo) {
 
     h_view.num_rows = d_view.num_rows;
     h_view.num_intervals = d_view.num_intervals;
+    h_view.total_cells = d_view.total_cells;
 
     h_view.row_keys = Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.row_keys);
     h_view.row_ptr = Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.row_ptr);
     h_view.intervals = Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.intervals);
+    h_view.cell_offsets =
+        Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.cell_offsets);
   }
 
   return host_geo;
@@ -139,18 +142,26 @@ inline MultilevelFieldHost<T> deep_copy_to_host(const MultilevelFieldDevice<T>& 
     const auto& d_view = dev_field.levels[i];
     auto& h_view = host_field.levels[i];
 
-    if (d_view.num_rows == 0) {
+    if (d_view.geometry.num_rows == 0) {
       continue;
     }
 
-    h_view.num_rows = d_view.num_rows;
-    h_view.num_intervals = d_view.num_intervals;
-    h_view.value_count = d_view.value_count;
+    h_view.geometry.num_rows = d_view.geometry.num_rows;
+    h_view.geometry.num_intervals = d_view.geometry.num_intervals;
+    h_view.geometry.total_cells = d_view.geometry.total_cells;
 
-    h_view.row_keys = Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.row_keys);
-    h_view.row_ptr = Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.row_ptr);
-    h_view.intervals = Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.intervals);
-    h_view.values = Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.values);
+    h_view.geometry.row_keys =
+        Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.geometry.row_keys);
+    h_view.geometry.row_ptr =
+        Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.geometry.row_ptr);
+    h_view.geometry.intervals =
+        Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.geometry.intervals);
+    h_view.geometry.cell_offsets =
+        Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.geometry.cell_offsets);
+
+    h_view.values =
+        Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.values);
+    h_view.label = d_view.label;
   }
 
   return host_field;

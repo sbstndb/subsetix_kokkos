@@ -32,13 +32,13 @@ IntervalSet2DHost make_mask_host() {
   return mask;
 }
 
-void apply_custom_pattern(IntervalField2DDevice<int>& field,
+void apply_custom_pattern(Field2DDevice<int>& field,
                           const IntervalSet2DDevice& mask) {
   apply_on_set_device(
       field, mask,
       KOKKOS_LAMBDA(
           Coord x, Coord y,
-          IntervalField2DDevice<int>::ValueView::reference_type value,
+          Field2DDevice<int>::ValueView::reference_type value,
           std::size_t /*idx*/) {
         value = static_cast<int>(x + 10 * y);
       });

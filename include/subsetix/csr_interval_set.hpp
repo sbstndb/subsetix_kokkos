@@ -37,9 +37,21 @@ struct IntervalSet2DHost {
   std::vector<RowKey2D> row_keys;
   std::vector<std::size_t> row_ptr;
   std::vector<Interval> intervals;
+  std::vector<std::size_t> cell_offsets;
+  std::size_t total_cells = 0;
 
   std::size_t num_rows() const { return row_keys.size(); }
   std::size_t num_intervals() const { return intervals.size(); }
+
+  void rebuild_mapping() {
+    cell_offsets.resize(intervals.size());
+    std::size_t accum = 0;
+    for (std::size_t i = 0; i < intervals.size(); ++i) {
+      cell_offsets[i] = accum;
+      accum += static_cast<std::size_t>(intervals[i].end - intervals[i].begin);
+    }
+    total_cells = accum;
+  }
 };
 
 /**
@@ -52,11 +64,13 @@ struct IntervalSet2DView {
   using RowKeyView = Kokkos::View<RowKey2D*, MemorySpace>;
   using IndexView = Kokkos::View<std::size_t*, MemorySpace>;
   using IntervalView = Kokkos::View<Interval*, MemorySpace>;
+  using OffsetView = Kokkos::View<std::size_t*, MemorySpace>;
 
   RowKeyView row_keys;    ///< [num_rows]
   IndexView row_ptr;      ///< [num_rows + 1]
   IntervalView intervals; ///< [num_intervals]
-
+  OffsetView cell_offsets; ///< [num_intervals]
+  std::size_t total_cells = 0;
   std::size_t num_rows = 0;
   std::size_t num_intervals = 0;
 };
@@ -81,17 +95,62 @@ allocate_interval_set_device(std::size_t row_capacity,
       "subsetix_csr_prealloc_row_ptr", row_ptr_size);
   dev.intervals = IntervalSet2DDevice::IntervalView(
       "subsetix_csr_prealloc_intervals", interval_capacity);
+  dev.cell_offsets = IntervalSet2DDevice::OffsetView(
+      "subsetix_csr_prealloc_offsets", interval_capacity);
 
   dev.num_rows = 0;
   dev.num_intervals = 0;
+  dev.total_cells = 0;
   return dev;
+}
+
+inline void compute_cell_offsets_device(IntervalSet2DDevice& dev) {
+  using ExecSpace = Kokkos::DefaultExecutionSpace;
+
+  if (dev.num_intervals == 0) {
+    dev.total_cells = 0;
+    return;
+  }
+
+  if (dev.cell_offsets.extent(0) < dev.num_intervals) {
+    dev.cell_offsets = IntervalSet2DDevice::OffsetView(
+        "subsetix_csr_offsets", dev.num_intervals);
+  }
+
+  auto intervals = dev.intervals;
+  auto offsets = dev.cell_offsets;
+  Kokkos::View<std::size_t, DeviceMemorySpace> total("subsetix_csr_total_cells");
+
+  Kokkos::parallel_scan(
+      "subsetix_csr_compute_offsets",
+      Kokkos::RangePolicy<ExecSpace>(0, dev.num_intervals),
+      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update,
+                    const bool final_pass) {
+        const Interval iv = intervals(i);
+        const std::size_t len =
+            static_cast<std::size_t>(iv.end - iv.begin);
+        if (final_pass) {
+          offsets(i) = update;
+          if (i + 1 == dev.num_intervals) {
+            total() = update + len;
+          }
+        }
+        update += len;
+      });
+
+  ExecSpace().fence();
+
+  std::size_t total_cells = 0;
+  Kokkos::deep_copy(total_cells, total);
+  dev.total_cells = total_cells;
 }
 
 /**
  * @brief Build a device CSR interval set from a host CSR representation.
  */
 inline IntervalSet2DDevice
-build_device_from_host(const IntervalSet2DHost& host) {
+build_device_from_host(const IntervalSet2DHost& host_in) {
+  IntervalSet2DHost host = host_in;
   IntervalSet2DDevice dev;
 
   const std::size_t num_rows = host.row_keys.size();
@@ -104,10 +163,15 @@ build_device_from_host(const IntervalSet2DHost& host) {
     return dev;
   }
 
+  if (host.cell_offsets.size() != host.intervals.size()) {
+    host.rebuild_mapping();
+  }
+
   const std::size_t num_intervals = host.intervals.size();
 
   dev.num_rows = num_rows;
   dev.num_intervals = num_intervals;
+  dev.total_cells = host.total_cells;
 
   typename IntervalSet2DDevice::RowKeyView row_keys(
       "subsetix_csr_row_keys", num_rows);
@@ -115,6 +179,8 @@ build_device_from_host(const IntervalSet2DHost& host) {
       "subsetix_csr_row_ptr", row_ptr_size);
   typename IntervalSet2DDevice::IntervalView intervals(
       "subsetix_csr_intervals", num_intervals);
+  typename IntervalSet2DDevice::OffsetView cell_offsets(
+      "subsetix_csr_offsets", num_intervals);
 
   Kokkos::View<RowKey2D*, HostMemorySpace> h_row_keys(
       "subsetix_csr_row_keys_host", num_rows);
@@ -122,6 +188,8 @@ build_device_from_host(const IntervalSet2DHost& host) {
       "subsetix_csr_row_ptr_host", row_ptr_size);
   Kokkos::View<Interval*, HostMemorySpace> h_intervals(
       "subsetix_csr_intervals_host", num_intervals);
+  Kokkos::View<std::size_t*, HostMemorySpace> h_offsets(
+      "subsetix_csr_offsets_host", num_intervals);
 
   for (std::size_t i = 0; i < num_rows; ++i) {
     h_row_keys(i) = host.row_keys[i];
@@ -131,15 +199,18 @@ build_device_from_host(const IntervalSet2DHost& host) {
   }
   for (std::size_t i = 0; i < num_intervals; ++i) {
     h_intervals(i) = host.intervals[i];
+    h_offsets(i) = host.cell_offsets[i];
   }
 
   Kokkos::deep_copy(row_keys, h_row_keys);
   Kokkos::deep_copy(row_ptr, h_row_ptr);
   Kokkos::deep_copy(intervals, h_intervals);
+  Kokkos::deep_copy(cell_offsets, h_offsets);
 
   dev.row_keys = row_keys;
   dev.row_ptr = row_ptr;
   dev.intervals = intervals;
+  dev.cell_offsets = cell_offsets;
 
   return dev;
 }
@@ -158,12 +229,11 @@ build_host_from_device(const IntervalSet2DDevice& dev) {
     return host;
   }
 
-  // Use copies of views to avoid size mismatch (capacity vs size)
-  auto h_row_keys_full =
+  auto h_row_keys =
       Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_keys);
-  auto h_row_ptr_full =
+  auto h_row_ptr =
       Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_ptr);
-  auto h_intervals_full =
+  auto h_intervals =
       Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.intervals);
 
   host.row_keys.resize(num_rows);
@@ -171,14 +241,16 @@ build_host_from_device(const IntervalSet2DDevice& dev) {
   host.intervals.resize(num_intervals);
 
   for (std::size_t i = 0; i < num_rows; ++i) {
-    host.row_keys[i] = h_row_keys_full(i);
+    host.row_keys[i] = h_row_keys(i);
   }
   for (std::size_t i = 0; i < num_rows + 1; ++i) {
-    host.row_ptr[i] = h_row_ptr_full(i);
+    host.row_ptr[i] = h_row_ptr(i);
   }
   for (std::size_t i = 0; i < num_intervals; ++i) {
-    host.intervals[i] = h_intervals_full(i);
+    host.intervals[i] = h_intervals(i);
   }
+
+  host.rebuild_mapping();
 
   return host;
 }
@@ -253,6 +325,7 @@ make_box_device(const Box2D& box) {
   dev.row_keys = row_keys;
   dev.row_ptr = row_ptr;
   dev.intervals = intervals;
+  compute_cell_offsets_device(dev);
   return dev;
 }
 
@@ -377,6 +450,7 @@ make_disk_device(const Disk2D& disk) {
   dev.row_keys = row_keys;
   dev.row_ptr = row_ptr;
   dev.intervals = intervals;
+  compute_cell_offsets_device(dev);
 
   return dev;
 }
@@ -518,6 +592,7 @@ make_random_device(const Domain2D& domain,
   dev.row_keys = row_keys;
   dev.row_ptr = row_ptr;
   dev.intervals = intervals;
+  compute_cell_offsets_device(dev);
 
   return dev;
 }
@@ -672,6 +747,7 @@ make_checkerboard_device(const Domain2D& domain, Coord cell_size) {
   dev.row_keys = row_keys;
   dev.row_ptr = row_ptr;
   dev.intervals = intervals;
+  compute_cell_offsets_device(dev);
 
   return dev;
 }

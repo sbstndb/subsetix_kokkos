@@ -58,7 +58,7 @@ RectConfig interior_rect(const RectConfig& cfg) {
   return r;
 }
 
-IntervalField2DDevice<double> make_field(
+Field2DDevice<double> make_field(
     const RectConfig& cfg, double init_value) {
   auto geom = make_mask(cfg);
   auto geom_host = build_host_from_device(geom);
@@ -72,7 +72,7 @@ void bench_field_op(benchmark::State& state,
                     const RectConfig& geom_cfg,
                     const RectConfig& mask_cfg,
                     Op op) {
-  IntervalField2DDevice<double> field =
+  Field2DDevice<double> field =
       make_field(geom_cfg, 0.0);
   IntervalSet2DDevice mask = make_mask(mask_cfg);
   const std::size_t cells = cells_in_rect(mask_cfg);
@@ -119,9 +119,9 @@ struct FivePointAverage {
 void bench_stencil(benchmark::State& state,
                    const RectConfig& geom_cfg,
                    const RectConfig& mask_cfg) {
-  IntervalField2DDevice<double> input =
+  Field2DDevice<double> input =
       make_field(geom_cfg, 0.0);
-  IntervalField2DDevice<double> output =
+  Field2DDevice<double> output =
       make_field(geom_cfg, 0.0);
   IntervalSet2DDevice mask = make_mask(mask_cfg);
   const std::size_t cells = cells_in_rect(mask_cfg);
@@ -169,7 +169,7 @@ void bench_stencil(benchmark::State& state,
 
 void bench_restriction(benchmark::State& state,
                        const RectConfig& coarse_cfg) {
-  IntervalField2DDevice<double> coarse =
+  Field2DDevice<double> coarse =
       make_field(coarse_cfg, 0.0);
   IntervalSet2DDevice coarse_mask = make_mask(coarse_cfg);
 
@@ -195,7 +195,7 @@ void bench_restriction(benchmark::State& state,
       }
     }
   }
-  IntervalField2DDevice<double> fine =
+  Field2DDevice<double> fine =
       build_device_field_from_host(fine_field_host);
 
   const std::size_t cells = cells_in_rect(coarse_cfg);
@@ -219,7 +219,7 @@ void bench_restriction(benchmark::State& state,
 
 void bench_prolongation(benchmark::State& state,
                         const RectConfig& coarse_cfg) {
-  IntervalField2DDevice<double> coarse =
+  Field2DDevice<double> coarse =
       make_field(coarse_cfg, 0.0);
   auto coarse_host = build_host_field_from_device(coarse);
   for (std::size_t row = 0; row < coarse_host.row_keys.size();
@@ -246,7 +246,7 @@ void bench_prolongation(benchmark::State& state,
   auto fine_geom_host = build_host_from_device(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
-  IntervalField2DDevice<double> fine =
+  Field2DDevice<double> fine =
       build_device_field_from_host(fine_field_host);
 
   IntervalSet2DDevice fine_mask = fine_geom;
@@ -277,7 +277,7 @@ void bench_prolongation(benchmark::State& state,
 
 void bench_prolongation_prediction(benchmark::State& state,
                                    const RectConfig& coarse_cfg) {
-  IntervalField2DDevice<double> coarse =
+  Field2DDevice<double> coarse =
       make_field(coarse_cfg, 0.0);
   auto coarse_host = build_host_field_from_device(coarse);
   for (std::size_t row = 0; row < coarse_host.row_keys.size();
@@ -304,7 +304,7 @@ void bench_prolongation_prediction(benchmark::State& state,
   auto fine_geom_host = build_host_from_device(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
-  IntervalField2DDevice<double> fine =
+  Field2DDevice<double> fine =
       build_device_field_from_host(fine_field_host);
 
   IntervalSet2DDevice fine_mask = fine_geom;

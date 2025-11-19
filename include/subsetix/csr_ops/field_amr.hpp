@@ -31,14 +31,14 @@ struct AmrIntervalMapping {
 template <typename T>
 inline AmrIntervalMapping
 build_amr_interval_mapping(
-    const IntervalField2DDevice<T>& coarse_field,
-    const IntervalField2DDevice<T>& fine_field) {
+    const Field2DDevice<T>& coarse_field,
+    const Field2DDevice<T>& fine_field) {
   AmrIntervalMapping mapping;
 
-  const std::size_t num_rows_coarse = coarse_field.num_rows;
-  const std::size_t num_rows_fine = fine_field.num_rows;
-  const std::size_t num_intervals_coarse = coarse_field.num_intervals;
-  const std::size_t num_intervals_fine = fine_field.num_intervals;
+  const std::size_t num_rows_coarse = coarse_field.geometry.num_rows;
+  const std::size_t num_rows_fine = fine_field.geometry.num_rows;
+  const std::size_t num_intervals_coarse = coarse_field.geometry.num_intervals;
+  const std::size_t num_intervals_fine = fine_field.geometry.num_intervals;
 
   Kokkos::View<int*, DeviceMemorySpace> coarse_to_fine_first(
       "subsetix_field_coarse_to_fine_first", num_intervals_coarse);
@@ -61,13 +61,13 @@ build_amr_interval_mapping(
     return mapping;
   }
 
-  auto coarse_rows = coarse_field.row_keys;
-  auto coarse_row_ptr = coarse_field.row_ptr;
-  auto coarse_intervals = coarse_field.intervals;
+  auto coarse_rows = coarse_field.geometry.row_keys;
+  auto coarse_row_ptr = coarse_field.geometry.row_ptr;
+  auto coarse_intervals = coarse_field.geometry.intervals;
 
-  auto fine_rows = fine_field.row_keys;
-  auto fine_row_ptr = fine_field.row_ptr;
-  auto fine_intervals = fine_field.intervals;
+  auto fine_rows = fine_field.geometry.row_keys;
+  auto fine_row_ptr = fine_field.geometry.row_ptr;
+  auto fine_intervals = fine_field.geometry.intervals;
 
   // Error flags
   Kokkos::View<int, DeviceMemorySpace> error_flag("subsetix_amr_error_flag");
@@ -161,9 +161,9 @@ build_amr_interval_mapping(
                   const std::size_t iff0 = begin_f0 + k;
                   const std::size_t iff1 = begin_f1 + k;
 
-                  const FieldInterval ci = coarse_intervals(ic);
-                  const FieldInterval fi0 = fine_intervals(iff0);
-                  const FieldInterval fi1 = fine_intervals(iff1);
+                  const Interval ci = coarse_intervals(ic);
+                  const Interval fi0 = fine_intervals(iff0);
+                  const Interval fi1 = fine_intervals(iff1);
 
                   const Coord expected_begin = static_cast<Coord>(ci.begin * 2);
                   const Coord expected_end = static_cast<Coord>(ci.end * 2);
@@ -197,8 +197,8 @@ build_amr_interval_mapping(
 
 template <typename T>
 inline void restrict_field_on_set_device(
-    IntervalField2DDevice<T>& coarse_field,
-    const IntervalField2DDevice<T>& fine_field,
+    Field2DDevice<T>& coarse_field,
+    const Field2DDevice<T>& fine_field,
     const IntervalSet2DDevice& coarse_mask) {
   if (coarse_mask.num_rows == 0 ||
       coarse_mask.num_intervals == 0) {
@@ -213,7 +213,8 @@ inline void restrict_field_on_set_device(
   auto row_map = mapping.row_map;
 
   auto mask_intervals = coarse_mask.intervals;
-  auto coarse_intervals = coarse_field.intervals;
+  auto coarse_intervals = coarse_field.geometry.intervals;
+  auto coarse_offsets = coarse_field.geometry.cell_offsets;
   auto coarse_values = coarse_field.values;
 
   const detail::AmrIntervalMapping amr_mapping =
@@ -223,7 +224,8 @@ inline void restrict_field_on_set_device(
       amr_mapping.coarse_to_fine_first;
   auto coarse_to_fine_second =
       amr_mapping.coarse_to_fine_second;
-  auto fine_intervals = fine_field.intervals;
+  auto fine_intervals = fine_field.geometry.intervals;
+  auto fine_offsets = fine_field.geometry.cell_offsets;
   auto fine_values = fine_field.values;
 
   Kokkos::parallel_for(
@@ -256,7 +258,7 @@ inline void restrict_field_on_set_device(
         const auto mask_iv = mask_intervals(interval_idx);
         const auto coarse_iv =
             coarse_intervals(coarse_interval_idx);
-        const std::size_t base_offset = coarse_iv.value_offset;
+        const std::size_t base_offset = coarse_offsets(coarse_interval_idx);
         const Coord base_begin = coarse_iv.begin;
 
         const auto fine_iv0 =
@@ -264,9 +266,9 @@ inline void restrict_field_on_set_device(
         const auto fine_iv1 =
             fine_intervals(fine_interval_idx1);
         const std::size_t fine_base_offset0 =
-            fine_iv0.value_offset;
+            fine_offsets(fine_interval_idx0);
         const std::size_t fine_base_offset1 =
-            fine_iv1.value_offset;
+            fine_offsets(fine_interval_idx1);
         const Coord fine_base_begin0 =
             fine_iv0.begin;
         const Coord fine_base_begin1 =
@@ -315,8 +317,8 @@ inline void restrict_field_on_set_device(
 
 template <typename T, typename Reconstructor>
 inline void prolong_field_generic_device(
-    IntervalField2DDevice<T>& fine_field,
-    const IntervalField2DDevice<T>& coarse_field,
+    Field2DDevice<T>& fine_field,
+    const Field2DDevice<T>& coarse_field,
     const IntervalSet2DDevice& fine_mask,
     Reconstructor reconstructor) {
   if (fine_mask.num_rows == 0 ||
@@ -332,8 +334,9 @@ inline void prolong_field_generic_device(
   auto row_map = mapping.row_map;
 
   auto mask_intervals = fine_mask.intervals;
-  auto fine_row_keys = fine_field.row_keys;
-  auto fine_intervals = fine_field.intervals;
+  auto fine_row_keys = fine_field.geometry.row_keys;
+  auto fine_intervals = fine_field.geometry.intervals;
+  auto fine_offsets = fine_field.geometry.cell_offsets;
   auto fine_values = fine_field.values;
 
   const detail::AmrIntervalMapping amr_mapping =
@@ -341,7 +344,8 @@ inline void prolong_field_generic_device(
           coarse_field, fine_field);
   auto fine_to_coarse =
       amr_mapping.fine_to_coarse;
-  auto coarse_intervals = coarse_field.intervals;
+  auto coarse_intervals = coarse_field.geometry.intervals;
+  auto coarse_offsets = coarse_field.geometry.cell_offsets;
   auto coarse_values = coarse_field.values;
 
   Kokkos::parallel_for(
@@ -371,13 +375,13 @@ inline void prolong_field_generic_device(
         const auto mask_iv = mask_intervals(interval_idx);
         const auto fine_iv =
             fine_intervals(fine_interval_idx);
-        const std::size_t base_offset = fine_iv.value_offset;
+        const std::size_t base_offset = fine_offsets(fine_interval_idx);
         const Coord base_begin = fine_iv.begin;
         
         const auto coarse_iv =
             coarse_intervals(coarse_interval_idx);
         const std::size_t coarse_base_offset =
-            coarse_iv.value_offset;
+            coarse_offsets(coarse_interval_idx);
         const Coord coarse_base_begin =
             coarse_iv.begin;
         const Coord fine_y = fine_row_keys(field_row).y;
@@ -405,23 +409,24 @@ template <typename T>
 struct InjectionReconstructor {
     KOKKOS_INLINE_FUNCTION
     T operator()(Coord, Coord, Coord, std::size_t coarse_offset, int,
-                 typename IntervalField2DDevice<T>::IntervalView,
-                 typename IntervalField2DDevice<T>::ValueView coarse_values) const {
+                 typename Field2DDevice<T>::IntervalView,
+                 typename Field2DDevice<T>::ValueView coarse_values) const {
         return coarse_values(coarse_offset);
     }
 };
 
 template <typename T>
 struct LinearPredictionReconstructor {
-    typename IntervalField2DDevice<T>::IntervalView coarse_intervals_view; // captured separately if needed, but passed in operator
-    typename IntervalField2DDevice<T>::ValueView coarse_values_view; // captured separately
+    typename Field2DDevice<T>::IntervalView coarse_intervals_view; // optional view copy
+    Kokkos::View<std::size_t*, DeviceMemorySpace> coarse_offsets_view;
+    typename Field2DDevice<T>::ValueView coarse_values_view; // captured separately
     Kokkos::View<int*, DeviceMemorySpace> up_interval;
     Kokkos::View<int*, DeviceMemorySpace> down_interval;
 
     KOKKOS_INLINE_FUNCTION
     T operator()(Coord fine_x, Coord fine_y, Coord coarse_x, std::size_t coarse_offset, int coarse_interval_idx,
-                 typename IntervalField2DDevice<T>::IntervalView coarse_intervals,
-                 typename IntervalField2DDevice<T>::ValueView coarse_values) const {
+                 typename Field2DDevice<T>::IntervalView coarse_intervals,
+                 typename Field2DDevice<T>::ValueView coarse_values) const {
         
         const T u_center = coarse_values(coarse_offset);
         const auto coarse_iv = coarse_intervals(coarse_interval_idx);
@@ -446,8 +451,10 @@ struct LinearPredictionReconstructor {
         if (up_idx >= 0) {
           const auto iv_up = coarse_intervals(up_idx);
           if (coarse_x >= iv_up.begin && coarse_x < iv_up.end) {
-            u_up = coarse_values(iv_up.value_offset +
-                                 static_cast<std::size_t>(coarse_x - iv_up.begin));
+            const std::size_t offset =
+                coarse_offsets_view(up_idx) +
+                static_cast<std::size_t>(coarse_x - iv_up.begin);
+            u_up = coarse_values(offset);
           }
         }
 
@@ -457,8 +464,10 @@ struct LinearPredictionReconstructor {
         if (down_idx >= 0) {
           const auto iv_down = coarse_intervals(down_idx);
           if (coarse_x >= iv_down.begin && coarse_x < iv_down.end) {
-            u_down = coarse_values(iv_down.value_offset +
-                                   static_cast<std::size_t>(coarse_x - iv_down.begin));
+            const std::size_t offset =
+                coarse_offsets_view(down_idx) +
+                static_cast<std::size_t>(coarse_x - iv_down.begin);
+            u_down = coarse_values(offset);
           }
         }
 
@@ -478,22 +487,25 @@ struct LinearPredictionReconstructor {
 
 template <typename T>
 inline void prolong_field_on_set_device(
-    IntervalField2DDevice<T>& fine_field,
-    const IntervalField2DDevice<T>& coarse_field,
+    Field2DDevice<T>& fine_field,
+    const Field2DDevice<T>& coarse_field,
     const IntervalSet2DDevice& fine_mask) {
     prolong_field_generic_device(fine_field, coarse_field, fine_mask, InjectionReconstructor<T>{});
 }
 
 template <typename T>
 inline void prolong_field_prediction_device(
-    IntervalField2DDevice<T>& fine_field,
-    const IntervalField2DDevice<T>& coarse_field,
+    Field2DDevice<T>& fine_field,
+    const Field2DDevice<T>& coarse_field,
     const IntervalSet2DDevice& fine_mask) {
   const detail::VerticalIntervalMapping vertical =
       detail::build_vertical_interval_mapping(
           coarse_field);
   
   LinearPredictionReconstructor<T> op;
+  op.coarse_intervals_view = coarse_field.geometry.intervals;
+  op.coarse_offsets_view = coarse_field.geometry.cell_offsets;
+  op.coarse_values_view = coarse_field.values;
   op.up_interval = vertical.up_interval;
   op.down_interval = vertical.down_interval;
 

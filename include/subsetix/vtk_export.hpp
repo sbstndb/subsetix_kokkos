@@ -365,13 +365,13 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
   // 1. Count total cells across all active levels
   for (int l = 0; l < field.num_active_levels; ++l) {
     const auto& view = field.levels[l];
-    if (view.num_rows == 0) continue;
+    if (view.geometry.num_rows == 0) continue;
 
-    for (std::size_t i = 0; i < view.num_rows; ++i) {
-      const std::size_t begin = view.row_ptr(i);
-      const std::size_t end = view.row_ptr(i + 1);
+    for (std::size_t i = 0; i < view.geometry.num_rows; ++i) {
+      const std::size_t begin = view.geometry.row_ptr(i);
+      const std::size_t end = view.geometry.row_ptr(i + 1);
       for (std::size_t k = begin; k < end; ++k) {
-        const auto& iv = view.intervals(k);
+        const auto& iv = view.geometry.intervals(k);
         const Coord len = iv.end - iv.begin;
         if (len > 0) {
           num_cells += static_cast<std::size_t>(len);
@@ -402,22 +402,22 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
   // 2. Emit Points with physical coordinates
   for (int l = 0; l < field.num_active_levels; ++l) {
     const auto& view = field.levels[l];
-    if (view.num_rows == 0) continue;
+    if (view.geometry.num_rows == 0) continue;
 
     const double dx = geo.dx_at(l);
     const double dy = geo.dy_at(l);
     const double ox = geo.origin_x;
     const double oy = geo.origin_y;
 
-    for (std::size_t i = 0; i < view.num_rows; ++i) {
-      const Coord y_idx = view.row_keys(i).y;
+    for (std::size_t i = 0; i < view.geometry.num_rows; ++i) {
+      const Coord y_idx = view.geometry.row_keys(i).y;
       const double y0 = oy + static_cast<double>(y_idx) * dy;
       const double y1 = oy + static_cast<double>(y_idx + 1) * dy;
 
-      const std::size_t begin = view.row_ptr(i);
-      const std::size_t end = view.row_ptr(i + 1);
+      const std::size_t begin = view.geometry.row_ptr(i);
+      const std::size_t end = view.geometry.row_ptr(i + 1);
       for (std::size_t k = begin; k < end; ++k) {
-        const auto& iv = view.intervals(k);
+        const auto& iv = view.geometry.intervals(k);
         for (Coord x_idx = iv.begin; x_idx < iv.end; ++x_idx) {
           const double x0 = ox + static_cast<double>(x_idx) * dx;
           const double x1 = ox + static_cast<double>(x_idx + 1) * dx;
@@ -453,20 +453,20 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
 
   for (int l = 0; l < field.num_active_levels; ++l) {
     const auto& view = field.levels[l];
-    if (view.num_rows == 0) continue;
+    if (view.geometry.num_rows == 0) continue;
 
-    for (std::size_t i = 0; i < view.num_rows; ++i) {
-      const std::size_t begin = view.row_ptr(i);
-      const std::size_t end = view.row_ptr(i + 1);
+    for (std::size_t i = 0; i < view.geometry.num_rows; ++i) {
+      const std::size_t begin = view.geometry.row_ptr(i);
+      const std::size_t end = view.geometry.row_ptr(i + 1);
       for (std::size_t k = begin; k < end; ++k) {
-        const auto& iv = view.intervals(k);
-        const std::size_t offset = iv.value_offset;
+        const auto& iv = view.geometry.intervals(k);
+        const std::size_t offset = view.geometry.cell_offsets(k);
         for (Coord x_idx = iv.begin; x_idx < iv.end; ++x_idx) {
           const std::size_t idx =
               offset + static_cast<std::size_t>(x_idx - iv.begin);
           float v = 0.0f;
           // Access values from Host View (not std::vector)
-          if (idx < view.value_count) {
+          if (idx < view.values.extent(0)) {
             v = static_cast<float>(view.values(idx));
           }
           ofs << v << "\n";
@@ -481,13 +481,13 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
 
   for (int l = 0; l < field.num_active_levels; ++l) {
     const auto& view = field.levels[l];
-    if (view.num_rows == 0) continue;
+    if (view.geometry.num_rows == 0) continue;
 
-    for (std::size_t i = 0; i < view.num_rows; ++i) {
-      const std::size_t begin = view.row_ptr(i);
-      const std::size_t end = view.row_ptr(i + 1);
+    for (std::size_t i = 0; i < view.geometry.num_rows; ++i) {
+      const std::size_t begin = view.geometry.row_ptr(i);
+      const std::size_t end = view.geometry.row_ptr(i + 1);
       for (std::size_t k = begin; k < end; ++k) {
-        const auto& iv = view.intervals(k);
+        const auto& iv = view.geometry.intervals(k);
         const Coord len = iv.end - iv.begin;
         for (Coord j = 0; j < len; ++j) {
           ofs << l << "\n";

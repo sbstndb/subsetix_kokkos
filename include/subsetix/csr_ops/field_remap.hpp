@@ -36,11 +36,11 @@ struct RemapMapping {
 
 template <typename T>
 inline RemapMapping<T>
-build_remap_mapping(const IntervalField2DDevice<T>& dst,
-                    const IntervalField2DDevice<T>& src) {
+build_remap_mapping(const Field2DDevice<T>& dst,
+                    const Field2DDevice<T>& src) {
   RemapMapping<T> mapping;
 
-  const std::size_t num_dst_intervals = dst.num_intervals;
+  const std::size_t num_dst_intervals = dst.geometry.num_intervals;
   if (num_dst_intervals == 0) {
     return mapping;
   }
@@ -56,16 +56,18 @@ build_remap_mapping(const IntervalField2DDevice<T>& dst,
   Kokkos::deep_copy(mapping.dst_interval_to_src_interval_start, -1);
   Kokkos::deep_copy(mapping.dst_interval_to_src_interval_count, 0);
 
-  auto dst_row_keys = dst.row_keys;
-  auto dst_row_ptr = dst.row_ptr;
-  auto dst_intervals = dst.intervals;
+  auto dst_row_keys = dst.geometry.row_keys;
+  auto dst_row_ptr = dst.geometry.row_ptr;
+  auto dst_intervals = dst.geometry.intervals;
+  auto dst_offsets = dst.geometry.cell_offsets;
 
-  auto src_row_keys = src.row_keys;
-  auto src_row_ptr = src.row_ptr;
-  auto src_intervals = src.intervals;
+  auto src_row_keys = src.geometry.row_keys;
+  auto src_row_ptr = src.geometry.row_ptr;
+  auto src_intervals = src.geometry.intervals;
+  auto src_offsets = src.geometry.cell_offsets;
 
-  const std::size_t num_dst_rows = dst.num_rows;
-  const std::size_t num_src_rows = src.num_rows;
+  const std::size_t num_dst_rows = dst.geometry.num_rows;
+  const std::size_t num_src_rows = src.geometry.num_rows;
 
   auto dst_to_src_row = mapping.dst_interval_to_src_row;
   auto dst_to_src_start = mapping.dst_interval_to_src_interval_start;
@@ -164,23 +166,25 @@ build_remap_mapping(const IntervalField2DDevice<T>& dst,
  * geometry, allowing you to project field values onto the new geometry.
  */
 template <typename T>
-inline void remap_field_device(IntervalField2DDevice<T>& dst,
-                                const IntervalField2DDevice<T>& src,
-                                const T& default_value) {
-  if (dst.num_intervals == 0) {
+inline void remap_field_device(Field2DDevice<T>& dst,
+                               const Field2DDevice<T>& src,
+                               const T& default_value) {
+  if (dst.geometry.num_intervals == 0) {
     return;
   }
 
   // Build mapping
   const auto mapping = detail::build_remap_mapping(dst, src);
 
-  auto dst_row_keys = dst.row_keys;
-  auto dst_row_ptr = dst.row_ptr;
-  auto dst_intervals = dst.intervals;
+  auto dst_row_keys = dst.geometry.row_keys;
+  auto dst_row_ptr = dst.geometry.row_ptr;
+  auto dst_intervals = dst.geometry.intervals;
+  auto dst_offsets = dst.geometry.cell_offsets;
   auto dst_values = dst.values;
 
-  auto src_row_ptr = src.row_ptr;
-  auto src_intervals = src.intervals;
+  auto src_row_ptr = src.geometry.row_ptr;
+  auto src_intervals = src.geometry.intervals;
+  auto src_offsets = src.geometry.cell_offsets;
   auto src_values = src.values;
 
   auto dst_to_src_row = mapping.dst_interval_to_src_row;
@@ -191,10 +195,10 @@ inline void remap_field_device(IntervalField2DDevice<T>& dst,
 
   Kokkos::parallel_for(
       "subsetix_remap_field",
-      Kokkos::RangePolicy<ExecSpace>(0, dst.num_intervals),
+      Kokkos::RangePolicy<ExecSpace>(0, dst.geometry.num_intervals),
       KOKKOS_LAMBDA(const std::size_t di) {
         const auto dst_iv = dst_intervals(di);
-        const std::size_t dst_offset = dst_iv.value_offset;
+        const std::size_t dst_offset = dst_offsets(di);
         const Coord dst_begin = dst_iv.begin;
         const Coord dst_end = dst_iv.end;
 
@@ -232,7 +236,7 @@ inline void remap_field_device(IntervalField2DDevice<T>& dst,
 
             if (x >= src_iv.begin && x < src_iv.end) {
               // Found: copy value
-              const std::size_t src_idx = src_iv.value_offset +
+              const std::size_t src_idx = src_offsets(si) +
                                           static_cast<std::size_t>(x - src_iv.begin);
               dst_values(dst_idx) = src_values(src_idx);
               found = true;
@@ -259,19 +263,21 @@ inline void remap_field_device(IntervalField2DDevice<T>& dst,
  * This is useful for accumulating contributions from multiple sources.
  */
 template <typename T>
-inline void accumulate_field_device(IntervalField2DDevice<T>& dst,
-                                    const IntervalField2DDevice<T>& src) {
-  if (dst.num_intervals == 0) {
+inline void accumulate_field_device(Field2DDevice<T>& dst,
+                                    const Field2DDevice<T>& src) {
+  if (dst.geometry.num_intervals == 0) {
     return;
   }
 
   // Build mapping
   const auto mapping = detail::build_remap_mapping(dst, src);
 
-  auto dst_intervals = dst.intervals;
+  auto dst_intervals = dst.geometry.intervals;
+  auto dst_offsets = dst.geometry.cell_offsets;
   auto dst_values = dst.values;
 
-  auto src_intervals = src.intervals;
+  auto src_intervals = src.geometry.intervals;
+  auto src_offsets = src.geometry.cell_offsets;
   auto src_values = src.values;
 
   auto dst_to_src_row = mapping.dst_interval_to_src_row;
@@ -280,10 +286,10 @@ inline void accumulate_field_device(IntervalField2DDevice<T>& dst,
 
   Kokkos::parallel_for(
       "subsetix_accumulate_field",
-      Kokkos::RangePolicy<ExecSpace>(0, dst.num_intervals),
+      Kokkos::RangePolicy<ExecSpace>(0, dst.geometry.num_intervals),
       KOKKOS_LAMBDA(const std::size_t di) {
         const auto dst_iv = dst_intervals(di);
-        const std::size_t dst_offset = dst_iv.value_offset;
+        const std::size_t dst_offset = dst_offsets(di);
         const Coord dst_begin = dst_iv.begin;
         const Coord dst_end = dst_iv.end;
 
@@ -310,7 +316,7 @@ inline void accumulate_field_device(IntervalField2DDevice<T>& dst,
 
             if (x >= src_iv.begin && x < src_iv.end) {
               // Found: accumulate value
-              const std::size_t src_idx = src_iv.value_offset +
+              const std::size_t src_idx = src_offsets(si) +
                                           static_cast<std::size_t>(x - src_iv.begin);
               dst_values(dst_idx) += src_values(src_idx);
               break;
