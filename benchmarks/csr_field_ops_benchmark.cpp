@@ -204,6 +204,69 @@ void bench_stencil(benchmark::State& state,
       (total_seconds / total_cells) * 1e9;
 }
 
+void bench_stencil_repeated(benchmark::State& state,
+                            const RectConfig& geom_cfg,
+                            const RectConfig& mask_cfg,
+                            int repeats) {
+  Field2DDevice<double> input =
+      make_field(geom_cfg, 0.0);
+  Field2DDevice<double> output =
+      make_field(geom_cfg, 0.0);
+  IntervalSet2DDevice mask = make_mask(mask_cfg);
+  const std::size_t cells = cells_in_rect(mask_cfg);
+
+  // Initialize input with a simple pattern on host for repeatability.
+  auto input_host = build_host_field_from_device(input);
+  for (std::size_t row = 0; row < input_host.row_keys.size();
+       ++row) {
+    const Coord y = input_host.row_keys[row].y;
+    const std::size_t begin = input_host.row_ptr[row];
+    const std::size_t end = input_host.row_ptr[row + 1];
+    for (std::size_t k = begin; k < end; ++k) {
+      const auto fi = input_host.intervals[k];
+      for (Coord x = fi.begin; x < fi.end; ++x) {
+        const std::size_t offset =
+            fi.value_offset +
+            static_cast<std::size_t>(x - fi.begin);
+        input_host.values[offset] =
+            static_cast<double>(x + 10 * y);
+      }
+    }
+  }
+  input = build_device_field_from_host(input_host);
+
+  double total_seconds = 0.0;
+
+  for (auto _ : state) {
+    // Ensure output starts from a clean buffer.
+    Kokkos::deep_copy(output.values, 0.0);
+
+    auto* src = &input;
+    auto* dst = &output;
+
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int r = 0; r < repeats; ++r) {
+      apply_stencil_on_set_device(*dst, *src, mask,
+                                  FivePointAverage{});
+      auto* tmp = src;
+      src = dst;
+      dst = tmp;
+    }
+    const auto t1 = std::chrono::steady_clock::now();
+    total_seconds +=
+        std::chrono::duration<double>(t1 - t0).count();
+
+    benchmark::DoNotOptimize(src->values.data());
+  }
+
+  const double total_cells =
+      static_cast<double>(cells) *
+      static_cast<double>(repeats) *
+      static_cast<double>(state.iterations());
+  state.counters["ns_per_cell"] =
+      (total_seconds / total_cells) * 1e9;
+}
+
 void bench_subview_stencil(benchmark::State& state,
                            const RectConfig& geom_cfg,
                            const RectConfig& mask_cfg,
@@ -264,6 +327,82 @@ void bench_subview_stencil(benchmark::State& state,
 
   const double total_cells =
       static_cast<double>(cells) *
+      static_cast<double>(state.iterations());
+  state.counters["ns_per_cell"] =
+      (total_seconds / total_cells) * 1e9;
+}
+
+void bench_subview_stencil_repeated(benchmark::State& state,
+                                    const RectConfig& geom_cfg,
+                                    const RectConfig& mask_cfg,
+                                    bool use_subset,
+                                    int repeats) {
+  Field2DDevice<double> input =
+      make_field(geom_cfg, 0.0);
+  Field2DDevice<double> output =
+      make_field(geom_cfg, 0.0);
+  IntervalSet2DDevice mask = make_mask(mask_cfg);
+  const std::size_t cells = cells_in_rect(mask_cfg);
+  if (cells == 0) {
+    state.SkipWithError("SubView stencil repeated mask has zero cells");
+    return;
+  }
+
+  auto input_host = build_host_field_from_device(input);
+  for (std::size_t row = 0; row < input_host.row_keys.size();
+       ++row) {
+    const Coord y = input_host.row_keys[row].y;
+    const std::size_t begin = input_host.row_ptr[row];
+    const std::size_t end = input_host.row_ptr[row + 1];
+    for (std::size_t k = begin; k < end; ++k) {
+      const auto fi = input_host.intervals[k];
+      for (Coord x = fi.begin; x < fi.end; ++x) {
+        const std::size_t offset =
+            fi.value_offset +
+            static_cast<std::size_t>(x - fi.begin);
+        input_host.values[offset] =
+            static_cast<double>(x + 10 * y);
+      }
+    }
+  }
+  input = build_device_field_from_host(input_host);
+
+  auto src = make_subview(input, mask, "subview_stencil_rep_src");
+  auto dst =
+      make_subview(output, mask, "subview_stencil_rep_dst");
+
+  CsrSetAlgebraContext ctx;
+  if (use_subset) {
+    subsetix::csr::detail::ensure_subview_subset(dst, &ctx);
+    subsetix::csr::detail::ensure_subview_subset(src, &ctx);
+  }
+
+  double total_seconds = 0.0;
+
+  for (auto _ : state) {
+    Kokkos::deep_copy(output.values, 0.0);
+
+    auto* src_view = &src;
+    auto* dst_view = &dst;
+
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int r = 0; r < repeats; ++r) {
+      apply_stencil_on_subview_device(*dst_view, *src_view,
+                                      FivePointAverage{});
+      auto* tmp = src_view;
+      src_view = dst_view;
+      dst_view = tmp;
+    }
+    const auto t1 = std::chrono::steady_clock::now();
+    total_seconds +=
+        std::chrono::duration<double>(t1 - t0).count();
+
+    benchmark::DoNotOptimize(src_view->parent.values.data());
+  }
+
+  const double total_cells =
+      static_cast<double>(cells) *
+      static_cast<double>(repeats) *
       static_cast<double>(state.iterations());
   state.counters["ns_per_cell"] =
       (total_seconds / total_cells) * 1e9;
@@ -674,6 +813,11 @@ void BM_FieldStencil_Large(benchmark::State& state) {
   bench_stencil(state, cfg, interior_rect(cfg));
 }
 
+void BM_FieldStencil10_Large(benchmark::State& state) {
+  const RectConfig cfg = make_rect(2048);
+  bench_stencil_repeated(state, cfg, interior_rect(cfg), 10);
+}
+
 // --- Restriction benchmarks ---
 
 void BM_FieldRestrict_Tiny(benchmark::State& state) {
@@ -806,6 +950,18 @@ void BM_FieldSubViewStencil_Medium(benchmark::State& state) {
 void BM_FieldSubViewStencil_Large(benchmark::State& state) {
   const RectConfig cfg = make_rect(2048);
   bench_subview_stencil(state, cfg, interior_rect(cfg));
+}
+
+void BM_FieldSubViewStencil10_Large(benchmark::State& state) {
+  const RectConfig cfg = make_rect(2048);
+  bench_subview_stencil_repeated(state, cfg, interior_rect(cfg),
+                                 false, 10);
+}
+
+void BM_FieldSubViewStencilSubset10_Large(benchmark::State& state) {
+  const RectConfig cfg = make_rect(2048);
+  bench_subview_stencil_repeated(state, cfg, interior_rect(cfg),
+                                 true, 10);
 }
 
 void BM_FieldSubViewStencilSubset_Tiny(benchmark::State& state) {
@@ -941,6 +1097,7 @@ BENCHMARK(BM_FieldStencil_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldStencil_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldStencil_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldStencil_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldStencil10_Large)->Unit(benchmark::kNanosecond);
 
 BENCHMARK(BM_FieldRestrict_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldRestrict_Small)->Unit(benchmark::kNanosecond);
@@ -970,6 +1127,8 @@ BENCHMARK(BM_FieldSubViewStencil_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencil_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencil_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencil_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewStencil10_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_FieldSubViewStencilSubset10_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencilSubset_Tiny)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencilSubset_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_FieldSubViewStencilSubset_Medium)->Unit(benchmark::kNanosecond);
