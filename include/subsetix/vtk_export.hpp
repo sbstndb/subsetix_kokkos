@@ -349,5 +349,153 @@ inline void write_multilevel_vtk(const MultilevelGeoHost& geo,
   }
 }
 
+/**
+ * @brief Export a MultilevelFieldHost to VTK with physical coordinates.
+ *
+ * Similar to write_multilevel_vtk but includes field values as CELL_DATA.
+ * Requires the corresponding MultilevelGeoHost for physical metadata.
+ */
+template <typename T>
+inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
+                                       const MultilevelGeoHost& geo,
+                                       const std::string& filename,
+                                       const std::string& scalar_name = "field") {
+  std::size_t num_cells = 0;
+
+  // 1. Count total cells across all active levels
+  for (int l = 0; l < field.num_active_levels; ++l) {
+    const auto& view = field.levels[l];
+    if (view.num_rows == 0) continue;
+
+    for (std::size_t i = 0; i < view.num_rows; ++i) {
+      const std::size_t begin = view.row_ptr(i);
+      const std::size_t end = view.row_ptr(i + 1);
+      for (std::size_t k = begin; k < end; ++k) {
+        const auto& iv = view.intervals(k);
+        const Coord len = iv.end - iv.begin;
+        if (len > 0) {
+          num_cells += static_cast<std::size_t>(len);
+        }
+      }
+    }
+  }
+
+  std::ofstream ofs(filename);
+  ofs << "# vtk DataFile Version 3.0\n";
+  ofs << "Subsetix Multilevel Field\n";
+  ofs << "ASCII\n";
+  ofs << "DATASET UNSTRUCTURED_GRID\n";
+  
+  if (num_cells == 0) {
+    ofs << "POINTS 0 float\n";
+    ofs << "CELLS 0 0\n";
+    ofs << "CELL_TYPES 0\n";
+    ofs << "CELL_DATA 0\n";
+    ofs << "SCALARS " << scalar_name << " float 1\n";
+    ofs << "LOOKUP_TABLE default\n";
+    return;
+  }
+
+  const std::size_t num_points = num_cells * 4;
+  ofs << "POINTS " << num_points << " float\n";
+
+  // 2. Emit Points with physical coordinates
+  for (int l = 0; l < field.num_active_levels; ++l) {
+    const auto& view = field.levels[l];
+    if (view.num_rows == 0) continue;
+
+    const double dx = geo.dx_at(l);
+    const double dy = geo.dy_at(l);
+    const double ox = geo.origin_x;
+    const double oy = geo.origin_y;
+
+    for (std::size_t i = 0; i < view.num_rows; ++i) {
+      const Coord y_idx = view.row_keys(i).y;
+      const double y0 = oy + static_cast<double>(y_idx) * dy;
+      const double y1 = oy + static_cast<double>(y_idx + 1) * dy;
+
+      const std::size_t begin = view.row_ptr(i);
+      const std::size_t end = view.row_ptr(i + 1);
+      for (std::size_t k = begin; k < end; ++k) {
+        const auto& iv = view.intervals(k);
+        for (Coord x_idx = iv.begin; x_idx < iv.end; ++x_idx) {
+          const double x0 = ox + static_cast<double>(x_idx) * dx;
+          const double x1 = ox + static_cast<double>(x_idx + 1) * dx;
+          
+          ofs << x0 << " " << y0 << " 0\n";
+          ofs << x1 << " " << y0 << " 0\n";
+          ofs << x1 << " " << y1 << " 0\n";
+          ofs << x0 << " " << y1 << " 0\n";
+        }
+      }
+    }
+  }
+
+  // 3. Emit Cells
+  ofs << "CELLS " << num_cells << " " << num_cells * 5 << "\n";
+  std::size_t pt_idx = 0;
+  for (std::size_t c = 0; c < num_cells; ++c) {
+    ofs << "4 " << pt_idx << " " << pt_idx + 1 << " " 
+        << pt_idx + 2 << " " << pt_idx + 3 << "\n";
+    pt_idx += 4;
+  }
+
+  // 4. Emit Cell Types
+  ofs << "CELL_TYPES " << num_cells << "\n";
+  for (std::size_t c = 0; c < num_cells; ++c) {
+    ofs << "9\n"; // VTK_QUAD
+  }
+
+  // 5. Emit Field Values
+  ofs << "CELL_DATA " << num_cells << "\n";
+  ofs << "SCALARS " << scalar_name << " float 1\n";
+  ofs << "LOOKUP_TABLE default\n";
+
+  for (int l = 0; l < field.num_active_levels; ++l) {
+    const auto& view = field.levels[l];
+    if (view.num_rows == 0) continue;
+
+    for (std::size_t i = 0; i < view.num_rows; ++i) {
+      const std::size_t begin = view.row_ptr(i);
+      const std::size_t end = view.row_ptr(i + 1);
+      for (std::size_t k = begin; k < end; ++k) {
+        const auto& iv = view.intervals(k);
+        const std::size_t offset = iv.value_offset;
+        for (Coord x_idx = iv.begin; x_idx < iv.end; ++x_idx) {
+          const std::size_t idx =
+              offset + static_cast<std::size_t>(x_idx - iv.begin);
+          float v = 0.0f;
+          // Access values from Host View (not std::vector)
+          if (idx < view.value_count) {
+            v = static_cast<float>(view.values(idx));
+          }
+          ofs << v << "\n";
+        }
+      }
+    }
+  }
+
+  // 6. Add Level as second scalar
+  ofs << "SCALARS Level int 1\n";
+  ofs << "LOOKUP_TABLE default\n";
+
+  for (int l = 0; l < field.num_active_levels; ++l) {
+    const auto& view = field.levels[l];
+    if (view.num_rows == 0) continue;
+
+    for (std::size_t i = 0; i < view.num_rows; ++i) {
+      const std::size_t begin = view.row_ptr(i);
+      const std::size_t end = view.row_ptr(i + 1);
+      for (std::size_t k = begin; k < end; ++k) {
+        const auto& iv = view.intervals(k);
+        const Coord len = iv.end - iv.begin;
+        for (Coord j = 0; j < len; ++j) {
+          ofs << l << "\n";
+        }
+      }
+    }
+  }
+}
+
 } // namespace vtk
 } // namespace subsetix

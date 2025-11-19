@@ -86,6 +86,7 @@ void run_demo() {
   
   std::cout << "Creating Level 0 (Base Disk)..." << std::endl;
   geo.levels[0] = make_disk_device(disk0);
+  std::cout << "L0 rows: " << geo.levels[0].num_rows << std::endl;
   
   // --- Level 1 ---
   // Refine L0 -> L1_full, then intersect with a smaller central disk
@@ -104,6 +105,7 @@ void run_demo() {
   // Allocate output with sufficient capacity (upper bound = l1_full)
   geo.levels[1] = allocate_interval_set_device(l1_full.num_rows, l1_full.num_intervals);
   set_intersection_device(l1_full, mask_l1, geo.levels[1], ctx);
+  std::cout << "L1 rows: " << geo.levels[1].num_rows << std::endl;
   
   // --- Level 2 ---
   // Refine L1 -> L2_full, then intersect with an even smaller central disk
@@ -122,6 +124,7 @@ void run_demo() {
   // Allocate output
   geo.levels[2] = allocate_interval_set_device(l2_full.num_rows, l2_full.num_intervals);
   set_intersection_device(l2_full, mask_l2, geo.levels[2], ctx);
+  std::cout << "L2 rows: " << geo.levels[2].num_rows << std::endl;
   
   // 2. Setup Fields
   MultilevelFieldDevice<float> field;
@@ -173,15 +176,15 @@ void run_demo() {
   std::cout << "Exporting to VTK..." << std::endl;
   
   auto h_geo = deep_copy_to_host(geo);
+  auto h_field = deep_copy_to_host(field);
+  
+  // Export geometry with Level scalar
   subsetix::vtk::write_multilevel_vtk(h_geo, "demo_multilevel_geo.vtk");
   
-  // Export separate fields
-  for(int l=0; l<3; ++l) {
-    auto h_field = build_host_field_from_device(field.levels[l]);
-    subsetix::vtk::write_legacy_quads(h_field, "demo_field_L" + std::to_string(l) + ".vtk", "Temperature");
-  }
+  // Export field with physical coordinates and Temperature scalar
+  subsetix::vtk::write_multilevel_field_vtk(h_field, h_geo, "demo_multilevel_field.vtk", "Temperature");
   
-  std::cout << "Done. Output files: demo_multilevel_geo.vtk, demo_field_L[0-2].vtk" << std::endl;
+  std::cout << "Done. Output files: demo_multilevel_geo.vtk, demo_multilevel_field.vtk" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
