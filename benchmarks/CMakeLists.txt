@@ -47,3 +47,13 @@ target_link_libraries(csr_threshold_benchmark
         subsetix_core
         benchmark::benchmark
 )
+
+add_executable(multilevel_overhead_benchmark
+    multilevel_overhead_benchmark.cpp
+)
+
+target_link_libraries(multilevel_overhead_benchmark
+    PRIVATE
+        subsetix_core
+        benchmark::benchmark
+)

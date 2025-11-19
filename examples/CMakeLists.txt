@@ -69,3 +69,12 @@ target_link_libraries(threshold_to_vtk
     PRIVATE
         subsetix_core
 )
+
+add_executable(multilevel_amr_demo
+    multilevel_amr_demo.cpp
+)
+
+target_link_libraries(multilevel_amr_demo
+    PRIVATE
+        subsetix_core
+)

@@ -6,6 +6,7 @@
 
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_field.hpp>
+#include <subsetix/multilevel.hpp>
 
 namespace subsetix {
 namespace vtk {
@@ -224,6 +225,125 @@ inline void write_legacy_quads(const IntervalField2DHost<T>& field,
           v = static_cast<float>(field.values[idx]);
         }
         ofs << v << "\n";
+      }
+    }
+  }
+}
+
+/**
+ * @brief Export a MultilevelGeoHost to VTK, respecting physical coordinates.
+ *
+ * Iterates through all active levels.
+ * For level L:
+ *   dx = root_dx / 2^L
+ *   x_phys = origin_x + x_idx * dx
+ *   y_phys = origin_y + y_idx * dy
+ *
+ * Adds a "Level" scalar field to visualize the hierarchy.
+ */
+inline void write_multilevel_vtk(const MultilevelGeoHost& geo,
+                                 const std::string& filename) {
+  std::size_t num_cells = 0;
+
+  // 1. Count total cells across all active levels
+  for (int l = 0; l < geo.num_active_levels; ++l) {
+    const auto& view = geo.levels[l];
+    if (view.num_rows == 0) continue;
+
+    for (std::size_t i = 0; i < view.num_rows; ++i) {
+      const std::size_t begin = view.row_ptr(i);
+      const std::size_t end = view.row_ptr(i + 1);
+      for (std::size_t k = begin; k < end; ++k) {
+        const auto& iv = view.intervals(k);
+        const Coord len = iv.end - iv.begin;
+        if (len > 0) {
+          num_cells += static_cast<std::size_t>(len);
+        }
+      }
+    }
+  }
+
+  std::ofstream ofs(filename);
+  ofs << "# vtk DataFile Version 3.0\n";
+  ofs << "Subsetix Multilevel Mesh\n";
+  ofs << "ASCII\n";
+  ofs << "DATASET UNSTRUCTURED_GRID\n";
+  
+  if (num_cells == 0) {
+    ofs << "POINTS 0 float\n";
+    ofs << "CELLS 0 0\n";
+    ofs << "CELL_TYPES 0\n";
+    return;
+  }
+
+  const std::size_t num_points = num_cells * 4;
+  ofs << "POINTS " << num_points << " float\n";
+
+  // 2. Emit Points
+  for (int l = 0; l < geo.num_active_levels; ++l) {
+    const auto& view = geo.levels[l];
+    if (view.num_rows == 0) continue;
+
+    const double dx = geo.dx_at(l);
+    const double dy = geo.dy_at(l);
+    const double ox = geo.origin_x;
+    const double oy = geo.origin_y;
+
+    for (std::size_t i = 0; i < view.num_rows; ++i) {
+      const Coord y_idx = view.row_keys(i).y;
+      const double y0 = oy + static_cast<double>(y_idx) * dy;
+      const double y1 = oy + static_cast<double>(y_idx + 1) * dy;
+
+      const std::size_t begin = view.row_ptr(i);
+      const std::size_t end = view.row_ptr(i + 1);
+      for (std::size_t k = begin; k < end; ++k) {
+        const auto& iv = view.intervals(k);
+        for (Coord x_idx = iv.begin; x_idx < iv.end; ++x_idx) {
+          const double x0 = ox + static_cast<double>(x_idx) * dx;
+          const double x1 = ox + static_cast<double>(x_idx + 1) * dx;
+          
+          ofs << x0 << " " << y0 << " 0\n";
+          ofs << x1 << " " << y0 << " 0\n";
+          ofs << x1 << " " << y1 << " 0\n";
+          ofs << x0 << " " << y1 << " 0\n";
+        }
+      }
+    }
+  }
+
+  // 3. Emit Cells
+  ofs << "CELLS " << num_cells << " " << num_cells * 5 << "\n";
+  std::size_t pt_idx = 0;
+  for (std::size_t c = 0; c < num_cells; ++c) {
+    ofs << "4 " << pt_idx << " " << pt_idx + 1 << " " 
+        << pt_idx + 2 << " " << pt_idx + 3 << "\n";
+    pt_idx += 4;
+  }
+
+  // 4. Emit Cell Types
+  ofs << "CELL_TYPES " << num_cells << "\n";
+  for (std::size_t c = 0; c < num_cells; ++c) {
+    ofs << "9\n"; // VTK_QUAD
+  }
+
+  // 5. Emit Level Scalar
+  ofs << "CELL_DATA " << num_cells << "\n";
+  ofs << "SCALARS Level int 1\n";
+  ofs << "LOOKUP_TABLE default\n";
+
+  for (int l = 0; l < geo.num_active_levels; ++l) {
+    const auto& view = geo.levels[l];
+    if (view.num_rows == 0) continue;
+
+    for (std::size_t i = 0; i < view.num_rows; ++i) {
+      const std::size_t begin = view.row_ptr(i);
+      const std::size_t end = view.row_ptr(i + 1);
+      for (std::size_t k = begin; k < end; ++k) {
+        const auto& iv = view.intervals(k);
+        const Coord len = iv.end - iv.begin;
+        for (Coord j = 0; j < len; ++j) {
+          ofs << l << "\n";
+        }
       }
     }
   }
