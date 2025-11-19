@@ -158,11 +158,12 @@ build_host_from_device(const IntervalSet2DDevice& dev) {
     return host;
   }
 
-  auto h_row_keys =
+  // Use copies of views to avoid size mismatch (capacity vs size)
+  auto h_row_keys_full =
       Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_keys);
-  auto h_row_ptr =
+  auto h_row_ptr_full =
       Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_ptr);
-  auto h_intervals =
+  auto h_intervals_full =
       Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.intervals);
 
   host.row_keys.resize(num_rows);
@@ -170,13 +171,13 @@ build_host_from_device(const IntervalSet2DDevice& dev) {
   host.intervals.resize(num_intervals);
 
   for (std::size_t i = 0; i < num_rows; ++i) {
-    host.row_keys[i] = h_row_keys(i);
+    host.row_keys[i] = h_row_keys_full(i);
   }
   for (std::size_t i = 0; i < num_rows + 1; ++i) {
-    host.row_ptr[i] = h_row_ptr(i);
+    host.row_ptr[i] = h_row_ptr_full(i);
   }
   for (std::size_t i = 0; i < num_intervals; ++i) {
-    host.intervals[i] = h_intervals(i);
+    host.intervals[i] = h_intervals_full(i);
   }
 
   return host;

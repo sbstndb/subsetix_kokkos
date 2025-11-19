@@ -213,31 +213,34 @@ build_host_field_from_device(const IntervalField2DDevice<T>& dev) {
     return host;
   }
 
-  auto h_row_keys =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_keys);
-  auto h_row_ptr =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_ptr);
-  auto h_intervals =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.intervals);
-  auto h_values =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.values);
+  // Create mirrors of the device views. Note that device views may have larger capacity
+  // than the actual size (num_rows, etc.). We must copy only the valid parts.
+  // Or copy everything and resize on host.
+  // Kokkos::create_mirror_view_and_copy copies the WHOLE view extent.
+  // If capacity >> size, this is wasteful and potentially wrong if we assume size == extent.
+  
+  auto h_row_keys_full = Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_keys);
+  auto h_row_ptr_full = Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_ptr);
+  auto h_intervals_full = Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.intervals);
+  auto h_values_full = Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.values);
 
   host.row_keys.resize(num_rows);
-  host.row_ptr.resize(h_row_ptr.extent(0));
+  host.row_ptr.resize(num_rows + 1);
   host.intervals.resize(num_intervals);
   host.values.resize(value_count);
 
+  // Copy only valid data
   for (std::size_t i = 0; i < num_rows; ++i) {
-    host.row_keys[i] = h_row_keys(i);
+    host.row_keys[i] = h_row_keys_full(i);
   }
-  for (std::size_t i = 0; i < host.row_ptr.size(); ++i) {
-    host.row_ptr[i] = h_row_ptr(i);
+  for (std::size_t i = 0; i < num_rows + 1; ++i) {
+    host.row_ptr[i] = h_row_ptr_full(i);
   }
   for (std::size_t i = 0; i < num_intervals; ++i) {
-    host.intervals[i] = h_intervals(i);
+    host.intervals[i] = h_intervals_full(i);
   }
   for (std::size_t i = 0; i < value_count; ++i) {
-    host.values[i] = h_values(i);
+    host.values[i] = h_values_full(i);
   }
 
   return host;
@@ -301,4 +304,3 @@ make_field_like_geometry(const IntervalSet2DHost& geom,
 
 } // namespace csr
 } // namespace subsetix
-
