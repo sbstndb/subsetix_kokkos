@@ -294,90 +294,12 @@ inline void restrict_field_on_set_device(
   ExecSpace().fence();
 }
 
-template <typename T>
-inline void prolong_field_on_set_device(
+template <typename T, typename Reconstructor>
+inline void prolong_field_generic_device(
     IntervalField2DDevice<T>& fine_field,
     const IntervalField2DDevice<T>& coarse_field,
-    const IntervalSet2DDevice& fine_mask) {
-  if (fine_mask.num_rows == 0 ||
-      fine_mask.num_intervals == 0) {
-    return;
-  }
-
-  const auto mapping =
-      detail::build_mask_field_mapping(fine_field, fine_mask);
-  auto interval_to_row = mapping.interval_to_row;
-  auto interval_to_field_interval =
-      mapping.interval_to_field_interval;
-  auto row_map = mapping.row_map;
-
-  auto mask_intervals = fine_mask.intervals;
-  auto fine_intervals = fine_field.intervals;
-  auto fine_values = fine_field.values;
-
-  const detail::AmrIntervalMapping amr_mapping =
-      detail::build_amr_interval_mapping(
-          coarse_field, fine_field);
-  auto fine_to_coarse =
-      amr_mapping.fine_to_coarse;
-  auto coarse_intervals = coarse_field.intervals;
-  auto coarse_values = coarse_field.values;
-
-  Kokkos::parallel_for(
-      "subsetix_prolong_field_on_set_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(fine_mask.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
-        const int row_idx = interval_to_row(interval_idx);
-        const int field_row = row_map(row_idx);
-        if (row_idx < 0 || field_row < 0) {
-          return;
-        }
-
-        const int fine_interval_idx =
-            interval_to_field_interval(interval_idx);
-        if (fine_interval_idx < 0) {
-          return;
-        }
-
-        const auto mask_iv = mask_intervals(interval_idx);
-        const auto fine_iv =
-            fine_intervals(fine_interval_idx);
-        const std::size_t base_offset = fine_iv.value_offset;
-        const Coord base_begin = fine_iv.begin;
-        const int coarse_interval_idx =
-            fine_to_coarse(fine_interval_idx);
-        const auto coarse_iv =
-            coarse_intervals(coarse_interval_idx);
-        const std::size_t coarse_base_offset =
-            coarse_iv.value_offset;
-        const Coord coarse_base_begin =
-            coarse_iv.begin;
-
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
-          const std::size_t linear_index =
-              base_offset +
-              static_cast<std::size_t>(x - base_begin);
-
-          const Coord coarse_x =
-              detail::floor_div2(x);
-          const std::size_t coarse_offset =
-              coarse_base_offset +
-              static_cast<std::size_t>(
-                  coarse_x - coarse_base_begin);
-          const T value =
-              coarse_values(coarse_offset);
-          fine_values(linear_index) = value;
-        }
-      });
-  ExecSpace().fence();
-}
-
-template <typename T>
-inline void prolong_field_prediction_device(
-    IntervalField2DDevice<T>& fine_field,
-    const IntervalField2DDevice<T>& coarse_field,
-    const IntervalSet2DDevice& fine_mask) {
+    const IntervalSet2DDevice& fine_mask,
+    Reconstructor reconstructor) {
   if (fine_mask.num_rows == 0 ||
       fine_mask.num_intervals == 0) {
     return;
@@ -403,14 +325,8 @@ inline void prolong_field_prediction_device(
   auto coarse_intervals = coarse_field.intervals;
   auto coarse_values = coarse_field.values;
 
-  const detail::VerticalIntervalMapping vertical =
-      detail::build_vertical_interval_mapping(
-          coarse_field);
-  auto up_interval = vertical.up_interval;
-  auto down_interval = vertical.down_interval;
-
   Kokkos::parallel_for(
-      "subsetix_prolong_field_prediction_device",
+      "subsetix_prolong_field_generic_device",
       Kokkos::RangePolicy<ExecSpace>(0,
                                      static_cast<int>(fine_mask.num_intervals)),
       KOKKOS_LAMBDA(const int interval_idx) {
@@ -439,8 +355,7 @@ inline void prolong_field_prediction_device(
             coarse_iv.value_offset;
         const Coord coarse_base_begin =
             coarse_iv.begin;
-
-        const Coord y = fine_row_keys(field_row).y;
+        const Coord fine_y = fine_row_keys(field_row).y;
 
         for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
           const std::size_t linear_index =
@@ -453,58 +368,109 @@ inline void prolong_field_prediction_device(
               coarse_base_offset +
               static_cast<std::size_t>(
                   coarse_x - coarse_base_begin);
-          const T u_center =
-              coarse_values(coarse_offset);
-
-          // Left neighbor
-          T u_left = u_center;
-          if (coarse_x > coarse_iv.begin) {
-            u_left = coarse_values(coarse_offset - 1);
-          }
-
-          // Right neighbor
-          T u_right = u_center;
-          if (coarse_x + 1 < coarse_iv.end) {
-            u_right = coarse_values(coarse_offset + 1);
-          }
-
-          // Up neighbor (y+1)
-          T u_up = u_center;
-          const int up_idx = up_interval(coarse_interval_idx);
-          if (up_idx >= 0) {
-            const auto iv_up = coarse_intervals(up_idx);
-            if (coarse_x >= iv_up.begin && coarse_x < iv_up.end) {
-              u_up = coarse_values(iv_up.value_offset +
-                                   static_cast<std::size_t>(coarse_x - iv_up.begin));
-            }
-          }
-
-          // Down neighbor (y-1)
-          T u_down = u_center;
-          const int down_idx = down_interval(coarse_interval_idx);
-          if (down_idx >= 0) {
-            const auto iv_down = coarse_intervals(down_idx);
-            if (coarse_x >= iv_down.begin && coarse_x < iv_down.end) {
-              u_down = coarse_values(iv_down.value_offset +
-                                     static_cast<std::size_t>(coarse_x - iv_down.begin));
-            }
-          }
-
-          const T grad_x =
-              static_cast<T>(0.125) * (u_right - u_left);
-          const T grad_y =
-              static_cast<T>(0.125) * (u_up - u_down);
-
-          const T sign_x =
-              (x % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
-          const T sign_y =
-              (y % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
-
-          fine_values(linear_index) =
-              u_center + sign_x * grad_x + sign_y * grad_y;
+          
+          const T value = reconstructor(x, fine_y, coarse_x, coarse_offset, coarse_interval_idx, coarse_intervals, coarse_values);
+          fine_values(linear_index) = value;
         }
       });
   ExecSpace().fence();
+}
+
+template <typename T>
+struct InjectionReconstructor {
+    KOKKOS_INLINE_FUNCTION
+    T operator()(Coord, Coord, Coord, std::size_t coarse_offset, int,
+                 typename IntervalField2DDevice<T>::IntervalView,
+                 typename IntervalField2DDevice<T>::ValueView coarse_values) const {
+        return coarse_values(coarse_offset);
+    }
+};
+
+template <typename T>
+struct LinearPredictionReconstructor {
+    typename IntervalField2DDevice<T>::IntervalView coarse_intervals_view; // captured separately if needed, but passed in operator
+    typename IntervalField2DDevice<T>::ValueView coarse_values_view; // captured separately
+    Kokkos::View<int*, DeviceMemorySpace> up_interval;
+    Kokkos::View<int*, DeviceMemorySpace> down_interval;
+
+    KOKKOS_INLINE_FUNCTION
+    T operator()(Coord fine_x, Coord fine_y, Coord coarse_x, std::size_t coarse_offset, int coarse_interval_idx,
+                 typename IntervalField2DDevice<T>::IntervalView coarse_intervals,
+                 typename IntervalField2DDevice<T>::ValueView coarse_values) const {
+        
+        const T u_center = coarse_values(coarse_offset);
+        const auto coarse_iv = coarse_intervals(coarse_interval_idx);
+
+        // Left neighbor
+        T u_left = u_center;
+        if (coarse_x > coarse_iv.begin) {
+          u_left = coarse_values(coarse_offset - 1);
+        }
+
+        // Right neighbor
+        T u_right = u_center;
+        if (coarse_x + 1 < coarse_iv.end) {
+          u_right = coarse_values(coarse_offset + 1);
+        }
+
+        // Up neighbor (y+1)
+        T u_up = u_center;
+        const int up_idx = up_interval(coarse_interval_idx);
+        if (up_idx >= 0) {
+          const auto iv_up = coarse_intervals(up_idx);
+          if (coarse_x >= iv_up.begin && coarse_x < iv_up.end) {
+            u_up = coarse_values(iv_up.value_offset +
+                                 static_cast<std::size_t>(coarse_x - iv_up.begin));
+          }
+        }
+
+        // Down neighbor (y-1)
+        T u_down = u_center;
+        const int down_idx = down_interval(coarse_interval_idx);
+        if (down_idx >= 0) {
+          const auto iv_down = coarse_intervals(down_idx);
+          if (coarse_x >= iv_down.begin && coarse_x < iv_down.end) {
+            u_down = coarse_values(iv_down.value_offset +
+                                   static_cast<std::size_t>(coarse_x - iv_down.begin));
+          }
+        }
+
+        const T grad_x =
+            static_cast<T>(0.125) * (u_right - u_left);
+        const T grad_y =
+            static_cast<T>(0.125) * (u_up - u_down);
+
+        const T sign_x =
+            (fine_x % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
+        const T sign_y =
+            (fine_y % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
+
+        return u_center + sign_x * grad_x + sign_y * grad_y;
+    }
+};
+
+template <typename T>
+inline void prolong_field_on_set_device(
+    IntervalField2DDevice<T>& fine_field,
+    const IntervalField2DDevice<T>& coarse_field,
+    const IntervalSet2DDevice& fine_mask) {
+    prolong_field_generic_device(fine_field, coarse_field, fine_mask, InjectionReconstructor<T>{});
+}
+
+template <typename T>
+inline void prolong_field_prediction_device(
+    IntervalField2DDevice<T>& fine_field,
+    const IntervalField2DDevice<T>& coarse_field,
+    const IntervalSet2DDevice& fine_mask) {
+  const detail::VerticalIntervalMapping vertical =
+      detail::build_vertical_interval_mapping(
+          coarse_field);
+  
+  LinearPredictionReconstructor<T> op;
+  op.up_interval = vertical.up_interval;
+  op.down_interval = vertical.down_interval;
+
+  prolong_field_generic_device(fine_field, coarse_field, fine_mask, op);
 }
 
 } // namespace csr
