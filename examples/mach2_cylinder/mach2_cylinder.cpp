@@ -87,6 +87,7 @@ struct RunConfig {
   bool enable_amr = true;
   double amr_fraction = 0.5; // fraction of domain length refined in each direction
   int amr_guard = 2;         // coarse-cell guard radius around the refined zone
+  int amr_remesh_stride = 0; // 0 => static AMR, >0 => remesh every N steps
 };
 
 template <typename T>
@@ -501,6 +502,16 @@ AmrLayout build_fine_geometry(const IntervalSet2DDevice& fluid_dev,
   project_level_down_device(layout.fine_active,
                             layout.projection_fine_on_coarse, ctx);
   subsetix::csr::compute_cell_offsets_device(layout.projection_fine_on_coarse);
+
+  // Clip projection to the coarse fluid domain to guard against masks that
+  // extend over physical boundaries during remesh.
+  IntervalSet2DDevice projection_clipped = subsetix::csr::allocate_interval_set_device(
+      layout.projection_fine_on_coarse.num_rows,
+      layout.projection_fine_on_coarse.num_intervals);
+  set_intersection_device(layout.projection_fine_on_coarse, fluid_dev,
+                          projection_clipped, ctx);
+  subsetix::csr::compute_cell_offsets_device(projection_clipped);
+  layout.projection_fine_on_coarse = projection_clipped;
 
   layout.has_fine = layout.fine_active.num_rows > 0 &&
                     layout.fine_active.num_intervals > 0;
@@ -917,6 +928,7 @@ RunConfig parse_args(int argc, char* argv[]) {
     else if (arg == "--amr") cfg.enable_amr = true;
     else if (arg == "--amr-fraction") read_double(cfg.amr_fraction);
     else if (arg == "--amr-guard") read_int(cfg.amr_guard);
+    else if (arg == "--amr-remesh-stride") read_int(cfg.amr_remesh_stride);
     else if (arg == "--pbm" && i + 1 < argc) {
       cfg.pbm_path = argv[++i];
     }
@@ -930,6 +942,9 @@ RunConfig parse_args(int argc, char* argv[]) {
   cfg.amr_fraction = std::clamp(cfg.amr_fraction, 0.05, 0.95);
   if (cfg.amr_guard < 1) {
     cfg.amr_guard = 1;
+  }
+  if (cfg.amr_remesh_stride < 0) {
+    cfg.amr_remesh_stride = 0;
   }
   return cfg;
 }
@@ -1254,22 +1269,23 @@ int main(int argc, char* argv[]) {
     const double dx_fine = 0.5 * dx;
     const double dy_fine = 0.5 * dy;
 
-    std::cout << "Mach 2 cylinder setup: "
-              << "nx=" << cfg.nx << " ny=" << cfg.ny
-              << " cx=" << cfg.cx << " cy=" << cfg.cy
-              << " r=" << cfg.radius
-              << " pbm=" << (obstacle_from_pbm ? cfg.pbm_path : "(disk)")
-              << " no-slip=" << (cfg.no_slip ? "yes" : "no")
-              << " amr=" << (has_fine ? "enabled" : "disabled")
-              << " output_dir=" << output_dir << "\n";
+  std::cout << "Mach 2 cylinder setup: "
+            << "nx=" << cfg.nx << " ny=" << cfg.ny
+            << " cx=" << cfg.cx << " cy=" << cfg.cy
+            << " r=" << cfg.radius
+            << " pbm=" << (obstacle_from_pbm ? cfg.pbm_path : "(disk)")
+            << " no-slip=" << (cfg.no_slip ? "yes" : "no")
+            << " amr=" << (cfg.enable_amr ? "yes" : "no")
+            << " remesh_stride=" << cfg.amr_remesh_stride
+            << " output_dir=" << output_dir << "\n";
 
     double total_mass0 = compute_total_mass(U);
 
-    while ((t < cfg.t_final) && (step < cfg.max_steps)) {
-      const FieldReadAccessor<Conserved> acc_coarse = make_accessor(U);
-      double dt = compute_dt(U, cfg.gamma, cfg.cfl, dx, dy);
+  while ((t < cfg.t_final) && (step < cfg.max_steps)) {
+    const FieldReadAccessor<Conserved> acc_coarse = make_accessor(U);
+    double dt = compute_dt(U, cfg.gamma, cfg.cfl, dx, dy);
 
-      FieldReadAccessor<Conserved> acc_fine;
+    FieldReadAccessor<Conserved> acc_fine;
       if (has_fine) {
         prolong_guard_from_coarse(U_fine, fine_guard, acc_coarse);
         acc_fine = make_accessor(U_fine);
@@ -1295,25 +1311,93 @@ int main(int argc, char* argv[]) {
                                         cfg.gamma, dt, dx, dy, cfg.no_slip};
       apply_stencil_on_set_device(U_next, U, fluid_dev, coarse_stencil);
 
-      std::swap(U.values, U_next.values);
-      if (has_fine) {
-        std::swap(U_fine.values, U_fine_next.values);
-      }
+    std::swap(U.values, U_next.values);
+    if (has_fine) {
+      std::swap(U_fine.values, U_fine_next.values);
+    }
 
-      if (has_fine) {
-        restrict_fine_to_coarse(U, U_fine, projection_fine_on_coarse);
-      }
+    if (has_fine) {
+      restrict_fine_to_coarse(U, U_fine, projection_fine_on_coarse);
+    }
 
-      t += dt;
-      ++step;
+    const bool do_remesh = cfg.enable_amr &&
+                           cfg.amr_remesh_stride > 0 &&
+                           (step % cfg.amr_remesh_stride == 0);
+    if (do_remesh) {
+      IntervalSet2DDevice coarse_mask_new =
+          build_refine_mask(U, fluid_dev, domain, cfg, ctx);
+      const AmrLayout amr_new = build_fine_geometry(
+          fluid_dev, coarse_mask_new, static_cast<Coord>(cfg.amr_guard), domain, ctx);
 
-      if (step % cfg.output_stride == 0 || step == cfg.max_steps ||
-          t >= cfg.t_final - 1e-12) {
+      Field2DDevice<Conserved> U_fine_new;
+      Field2DDevice<Conserved> U_fine_next_new;
+      Field2DDevice<Conserved> U_fine_active_new;
+      Field2DDevice<double> density_fine_new;
+      Field2DDevice<double> pressure_fine_new;
+      Field2DDevice<double> mach_fine_new;
+
+      if (amr_new.has_fine) {
+        U_fine_new = Field2DDevice<Conserved>(amr_new.fine_with_guard, "mach2_fine");
+        U_fine_next_new = Field2DDevice<Conserved>(amr_new.fine_with_guard,
+                                                   "mach2_fine_next");
+        U_fine_active_new = Field2DDevice<Conserved>(amr_new.fine_active,
+                                                     "mach2_fine_active");
+        density_fine_new = Field2DDevice<double>(amr_new.fine_active, "mach2_fine_density");
+        pressure_fine_new = Field2DDevice<double>(amr_new.fine_active, "mach2_fine_pressure");
+        mach_fine_new = Field2DDevice<double>(amr_new.fine_active, "mach2_fine_mach");
+
+        prolong_full(U_fine_new, U, ctx);
+        prolong_full(U_fine_next_new, U, ctx);
+
         if (has_fine) {
-          auto fine_src = make_subview(U_fine, fine_active, "fine_active_src");
-          auto fine_dst = make_subview(U_fine_active, fine_active,
-                                       "fine_active_dst");
-          copy_subview_device(fine_dst, fine_src, ctx);
+          const std::size_t overlap_rows_cap =
+              std::min(amr_new.fine_active.num_rows, fine_active.num_rows);
+          const std::size_t overlap_intervals_cap =
+              std::min(amr_new.fine_active.num_intervals, fine_active.num_intervals);
+          if (overlap_rows_cap > 0 && overlap_intervals_cap > 0) {
+            auto overlap = subsetix::csr::allocate_interval_set_device(
+                overlap_rows_cap, overlap_intervals_cap);
+            set_intersection_device(amr_new.fine_active, fine_active, overlap, ctx);
+            copy_overlap(U_fine_new, U_fine, overlap, ctx);
+          }
+        }
+      }
+
+      coarse_mask = amr_new.coarse_mask;
+      fine_active = amr_new.fine_active;
+      fine_with_guard = amr_new.fine_with_guard;
+      fine_guard = amr_new.fine_guard;
+      projection_fine_on_coarse = amr_new.projection_fine_on_coarse;
+      fine_domain = amr_new.fine_domain;
+      has_fine = amr_new.has_fine;
+
+      if (has_fine) {
+        U_fine = std::move(U_fine_new);
+        U_fine_next = std::move(U_fine_next_new);
+        U_fine_active = std::move(U_fine_active_new);
+        density_fine = std::move(density_fine_new);
+        pressure_fine = std::move(pressure_fine_new);
+        mach_fine = std::move(mach_fine_new);
+      } else {
+        U_fine = Field2DDevice<Conserved>();
+        U_fine_next = Field2DDevice<Conserved>();
+        U_fine_active = Field2DDevice<Conserved>();
+        density_fine = Field2DDevice<double>();
+        pressure_fine = Field2DDevice<double>();
+        mach_fine = Field2DDevice<double>();
+      }
+    }
+
+    t += dt;
+    ++step;
+
+    if (step % cfg.output_stride == 0 || step == cfg.max_steps ||
+        t >= cfg.t_final - 1e-12) {
+      if (has_fine) {
+        auto fine_src = make_subview(U_fine, fine_active, "fine_active_src");
+        auto fine_dst = make_subview(U_fine_active, fine_active,
+                                     "fine_active_dst");
+        copy_subview_device(fine_dst, fine_src, ctx);
         }
 
         write_step_outputs(fluid_dev,
