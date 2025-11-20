@@ -488,8 +488,15 @@ AmrLayout build_fine_geometry(const IntervalSet2DDevice& fluid_dev,
                              static_cast<Coord>(coarse_domain.y_max * 2)};
 
   const Coord guard_fine = static_cast<Coord>(2 * guard_coarse);
+  IntervalSet2DDevice fine_with_guard_raw;
   expand_device(layout.fine_active, guard_fine, guard_fine,
-                layout.fine_with_guard, ctx);
+                fine_with_guard_raw, ctx);
+  subsetix::csr::compute_cell_offsets_device(fine_with_guard_raw);
+
+  // Clip guard to the refined fluid to avoid sampling obstacle/void coarse cells.
+  layout.fine_with_guard = subsetix::csr::allocate_interval_set_device(
+      fine_full.num_rows, fine_full.num_intervals + fine_with_guard_raw.num_intervals);
+  set_intersection_device(fine_with_guard_raw, fine_full, layout.fine_with_guard, ctx);
   subsetix::csr::compute_cell_offsets_device(layout.fine_with_guard);
 
   layout.fine_guard = subsetix::csr::allocate_interval_set_device(
