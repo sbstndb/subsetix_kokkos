@@ -61,7 +61,7 @@ load_pbm(const std::filesystem::path& path) {
 } // namespace
 
 int main(int argc, char* argv[]) {
-  Kokkos::initialize(argc, argv);
+  Kokkos::ScopeGuard guard(argc, argv);
   {
     using subsetix::vtk::write_legacy_quads;
 
@@ -90,6 +90,5 @@ int main(int argc, char* argv[]) {
     auto geom_host = build_host_from_device(geom_dev);
     write_legacy_quads(geom_host, output_path("smiley.vtk"));
   }
-  Kokkos::finalize();
   return 0;
 }
