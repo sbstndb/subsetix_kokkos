@@ -77,7 +77,8 @@ fallback_smiley() {
       {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0}};
 
   Kokkos::View<std::uint8_t**, HostMemorySpace> mask(
-      "pbm_mask_fallback", height, width);
+      Kokkos::view_alloc(Kokkos::WithoutInitializing, "pbm_mask_fallback"),
+      height, width);
   for (std::size_t y = 0; y < height; ++y) {
     for (std::size_t x = 0; x < width; ++x) {
       mask(y, x) = data[y][x];
