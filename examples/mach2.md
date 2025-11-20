@@ -2,7 +2,7 @@
 
 ## Impl snapshot (current code)
 - New target `mach2_cylinder` (`examples/mach2_cylinder/mach2_cylinder.cpp`) wired in `examples/CMakeLists.txt`; CUDA preset builds and runs.
-- Geometry: box minus disk via `set_difference_device`; VTK dumps for `fluid_geometry.vtk` and `obstacle_geometry.vtk`.
+- Geometry: box minus obstacle; obstacle is either a centered PBM bitmap (`--pbm path`) or a disk via `make_disk_device`; VTK dumps for `fluid_geometry.vtk` and `obstacle_geometry.vtk`.
 - Scheme: first-order Godunov with Rusanov (HLL) flux, ideal gas EOS; slip walls by default, `--no-slip` zeroes (u,v) at walls/obstacle ghosts.
 - BCs: supersonic inlet (Mach 2 default), supersonic outflow (extrap), slip top/bottom, obstacle as pixel mask; steady CFL timestep with global reduce.
 - Outputs (every `--output-stride`): density, pressure, Mach; files named `step_<N>_{density,pressure,mach}.vtk` under `examples_output/mach2_cylinder`.
@@ -64,7 +64,7 @@
 - `--nx`, `--ny` (ints); `--radius`, `--cx`, `--cy` (ints, pixel space).
 - `--mach-inlet`, `--rho`, `--p`, `--gamma`.
 - `--cfl`, `--t-final`, `--max-steps`, `--output-stride`, `--output-dir`.
-- `--no-slip` toggle for obstacle walls (default slip).
+- `--no-slip` toggle for obstacle walls (default slip); `--pbm <file>` to use a centered PBM mask instead of the disk.
 
 ## Validation and Checks
 - Smoke runs: small grid (e.g., 128 × 64) for 200–500 steps to verify stable fields and zero mass flux across obstacle faces.

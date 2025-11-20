@@ -35,6 +35,7 @@ using subsetix::csr::IntervalSet2DDevice;
 using subsetix::csr::IntervalSet2DHost;
 using subsetix::csr::make_box_device;
 using subsetix::csr::make_disk_device;
+using subsetix::csr::make_bitmap_device;
 using subsetix::csr::set_difference_device;
 using subsetix::csr::detail::FieldReadAccessor;
 using subsetix::csr::detail::build_mask_interval_to_row_mapping;
@@ -70,6 +71,7 @@ struct RunConfig {
   int max_steps = 5000;
   int output_stride = 50;
   bool no_slip = false;
+  std::string pbm_path;
 };
 
 template <typename T>
@@ -439,6 +441,9 @@ RunConfig parse_args(int argc, char* argv[]) {
     else if (arg == "--max-steps") read_int(cfg.max_steps);
     else if (arg == "--output-stride") read_int(cfg.output_stride);
     else if (arg == "--no-slip") cfg.no_slip = true;
+    else if (arg == "--pbm" && i + 1 < argc) {
+      cfg.pbm_path = argv[++i];
+    }
   }
   if (cfg.cx < 0) {
     cfg.cx = cfg.nx / 4;
@@ -456,6 +461,101 @@ std::string vtk_filename(const std::filesystem::path& dir,
   oss << "step_" << std::setw(5) << std::setfill('0') << step << "_"
       << suffix << ".vtk";
   return subsetix_examples::output_file(dir, oss.str());
+}
+
+Kokkos::View<std::uint8_t**, subsetix::csr::HostMemorySpace>
+load_pbm(const std::filesystem::path& path) {
+  using subsetix::csr::HostMemorySpace;
+  std::ifstream in(path);
+  if (!in) {
+    return {};
+  }
+
+  std::string magic;
+  in >> magic;
+  if (magic != "P1") {
+    return {};
+  }
+
+  auto skip_comments = [&]() {
+    while (true) {
+      in >> std::ws;
+      if (in.peek() == '#') {
+        std::string tmp;
+        std::getline(in, tmp);
+      } else {
+        break;
+      }
+    }
+  };
+
+  skip_comments();
+
+  std::size_t width = 0;
+  std::size_t height = 0;
+  in >> width >> height;
+  if (width == 0 || height == 0) {
+    return {};
+  }
+
+  Kokkos::View<std::uint8_t**, HostMemorySpace> mask(
+      "pbm_mask_host", height, width);
+
+  for (std::size_t y = 0; y < height; ++y) {
+    for (std::size_t x = 0; x < width; ++x) {
+      skip_comments();
+      int bit = 0;
+      in >> bit;
+      mask(y, x) = static_cast<std::uint8_t>(bit ? 1 : 0);
+    }
+  }
+
+  return mask;
+}
+
+IntervalSet2DDevice make_pbm_obstacle(const RunConfig& cfg,
+                                      const Box2D& domain,
+                                      bool& ok) {
+  ok = false;
+  IntervalSet2DDevice obstacle;
+  auto h_mask = load_pbm(cfg.pbm_path);
+  if (h_mask.extent(0) == 0 || h_mask.extent(1) == 0) {
+    return obstacle;
+  }
+
+  // Flip Y so PBM top row maps to the highest Y visually.
+  Kokkos::View<std::uint8_t**,
+               subsetix::csr::HostMemorySpace> h_mask_flipped(
+      "pbm_mask_flipped", h_mask.extent(0), h_mask.extent(1));
+  for (std::size_t y = 0; y < h_mask.extent(0); ++y) {
+    const std::size_t src_y = h_mask.extent(0) - 1 - y;
+    for (std::size_t x = 0; x < h_mask.extent(1); ++x) {
+      h_mask_flipped(y, x) = h_mask(src_y, x);
+    }
+  }
+
+  const std::size_t width = h_mask_flipped.extent(1);
+  const std::size_t height = h_mask_flipped.extent(0);
+
+  if (width > static_cast<std::size_t>(domain.x_max - domain.x_min) ||
+      height > static_cast<std::size_t>(domain.y_max - domain.y_min)) {
+    return obstacle;
+  }
+
+  const Coord x_min = domain.x_min +
+                      static_cast<Coord>((static_cast<long long>(domain.x_max - domain.x_min) -
+                                          static_cast<long long>(width)) /
+                                         2);
+  const Coord y_min = domain.y_min +
+                      static_cast<Coord>((static_cast<long long>(domain.y_max - domain.y_min) -
+                                          static_cast<long long>(height)) /
+                                         2);
+
+  auto d_mask = Kokkos::create_mirror_view_and_copy(
+      subsetix::csr::DeviceMemorySpace{}, h_mask_flipped);
+  obstacle = make_bitmap_device(d_mask, x_min, y_min, 1);
+  ok = true;
+  return obstacle;
 }
 
 Conserved build_inflow_state(const RunConfig& cfg) {
@@ -508,7 +608,18 @@ int main(int argc, char* argv[]) {
     obstacle.radius = static_cast<Coord>(cfg.radius);
 
     auto domain_dev = make_box_device(domain);
-    auto obstacle_dev = make_disk_device(obstacle);
+    IntervalSet2DDevice obstacle_dev;
+    bool obstacle_from_pbm = false;
+    if (!cfg.pbm_path.empty()) {
+      obstacle_dev = make_pbm_obstacle(cfg, domain, obstacle_from_pbm);
+      if (!obstacle_from_pbm) {
+        std::cout << "Warning: failed to load PBM mask '" << cfg.pbm_path
+                  << "', falling back to disk obstacle.\n";
+      }
+    }
+    if (!obstacle_from_pbm) {
+      obstacle_dev = make_disk_device(obstacle);
+    }
 
     CsrSetAlgebraContext ctx;
     auto fluid_dev = subsetix::csr::allocate_interval_set_device(
@@ -563,6 +674,7 @@ int main(int argc, char* argv[]) {
               << "nx=" << cfg.nx << " ny=" << cfg.ny
               << " cx=" << cfg.cx << " cy=" << cfg.cy
               << " r=" << cfg.radius
+              << " pbm=" << (obstacle_from_pbm ? cfg.pbm_path : "(disk)")
               << " no-slip=" << (cfg.no_slip ? "yes" : "no")
               << " output_dir=" << output_dir << "\n";
 
