@@ -10,6 +10,7 @@
 #include <subsetix/csr_ops/field_stencil.hpp>
 #include <subsetix/csr_ops/field_subview.hpp>
 #include <subsetix/csr_ops/amr.hpp>
+#include <subsetix/csr_ops/threshold.hpp>
 #include <subsetix/csr_ops/morphology.hpp>
 #include <subsetix/detail/csr_utils.hpp>
 #include <subsetix/multilevel.hpp>
@@ -351,25 +352,133 @@ struct AmrLayout {
   bool has_fine = false;
 };
 
-AmrLayout remesh(const IntervalSet2DDevice& fluid_dev,
-                 const IntervalSet2DDevice& coarse_mask_in,
-                 Coord guard_coarse,
-                 const Box2D& coarse_domain,
-                 CsrSetAlgebraContext& ctx) {
+IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
+                                      const IntervalSet2DDevice& fluid_dev,
+                                      const Box2D& domain,
+                                      const RunConfig& cfg,
+                                      CsrSetAlgebraContext& ctx) {
+  IntervalSet2DDevice mask;
+  if (!cfg.enable_amr) {
+    return mask;
+  }
+
+  auto make_central_box_mask = [&]() {
+    const Coord refine_w = static_cast<Coord>(
+        std::max<int>(4, static_cast<int>(cfg.amr_fraction * cfg.nx)));
+    const Coord refine_h = static_cast<Coord>(
+        std::max<int>(4, static_cast<int>(cfg.amr_fraction * cfg.ny)));
+    const Coord refine_x0 =
+        domain.x_min + static_cast<Coord>((cfg.nx - refine_w) / 2);
+    const Coord refine_y0 =
+        domain.y_min + static_cast<Coord>((cfg.ny - refine_h) / 2);
+    const Box2D refine_box{
+        refine_x0, static_cast<Coord>(refine_x0 + refine_w),
+        refine_y0, static_cast<Coord>(refine_y0 + refine_h)};
+
+    const auto refine_box_dev = make_box_device(refine_box);
+    IntervalSet2DDevice coarse_mask =
+        subsetix::csr::allocate_interval_set_device(
+            fluid_dev.num_rows,
+            fluid_dev.num_intervals + refine_box_dev.num_intervals);
+    set_intersection_device(fluid_dev, refine_box_dev, coarse_mask, ctx);
+    subsetix::csr::compute_cell_offsets_device(coarse_mask);
+    return coarse_mask;
+  };
+
+  Field2DDevice<double> indicator(fluid_dev, "mach2_refine_indicator");
+  auto acc = make_accessor(U);
+  const double dx = 1.0;
+  const double dy = 1.0;
+  apply_on_set_device(indicator, indicator.geometry,
+                      KOKKOS_LAMBDA(Coord x, Coord y, double& value,
+                                    std::size_t /*linear_index*/) {
+                        Conserved neigh;
+                        const Conserved center = acc.value_at(x, y);
+                        const double rho_c = center.rho;
+
+                        double rho_xp = rho_c;
+                        double rho_xm = rho_c;
+                        double rho_yp = rho_c;
+                        double rho_ym = rho_c;
+
+                        if (acc.try_get(static_cast<Coord>(x + 1), y, neigh)) {
+                          rho_xp = neigh.rho;
+                        }
+                        if (acc.try_get(static_cast<Coord>(x - 1), y, neigh)) {
+                          rho_xm = neigh.rho;
+                        }
+                        if (acc.try_get(x, static_cast<Coord>(y + 1), neigh)) {
+                          rho_yp = neigh.rho;
+                        }
+                        if (acc.try_get(x, static_cast<Coord>(y - 1), neigh)) {
+                          rho_ym = neigh.rho;
+                        }
+
+                        const double gx = 0.5 * (rho_xp - rho_xm) / dx;
+                        const double gy = 0.5 * (rho_yp - rho_ym) / dy;
+                        value = std::fabs(gx) + std::fabs(gy);
+                      });
+
+  using ExecSpace = Kokkos::DefaultExecutionSpace;
+  auto indicator_values = indicator.values;
+  double max_grad = 0.0;
+  Kokkos::parallel_reduce(
+      "mach2_refine_indicator_max",
+      Kokkos::RangePolicy<ExecSpace>(
+          0, static_cast<int>(indicator.size())),
+      KOKKOS_LAMBDA(const int idx, double& lmax) {
+        const double v = indicator_values(idx);
+        if (v > lmax) {
+          lmax = v;
+        }
+      },
+      Kokkos::Max<double>(max_grad));
+
+  double threshold = max_grad * cfg.amr_fraction;
+  constexpr double min_thresh = 1e-10;
+  if (threshold < min_thresh) {
+    threshold = min_thresh;
+  }
+  mask = subsetix::csr::threshold_field(indicator, threshold);
+  subsetix::csr::compute_cell_offsets_device(mask);
+
+  if (mask.num_intervals == 0 || mask.num_rows == 0) {
+    mask = make_central_box_mask();
+  }
+
+  const Coord smooth = static_cast<Coord>(1);
+  if (smooth > 0 && mask.num_rows > 0 && mask.num_intervals > 0) {
+    IntervalSet2DDevice expanded;
+    expand_device(mask, smooth, smooth, expanded, ctx);
+    subsetix::csr::compute_cell_offsets_device(expanded);
+    mask = expanded;
+  }
+
+  return mask;
+}
+
+AmrLayout build_fine_geometry(const IntervalSet2DDevice& fluid_dev,
+                              const IntervalSet2DDevice& coarse_mask,
+                              Coord guard_coarse,
+                              const Box2D& coarse_domain,
+                              CsrSetAlgebraContext& ctx) {
   AmrLayout layout;
-  if (coarse_mask_in.num_intervals == 0 || coarse_mask_in.num_rows == 0) {
+  layout.coarse_mask = coarse_mask;
+  if (coarse_mask.num_intervals == 0 || coarse_mask.num_rows == 0) {
     return layout;
   }
 
-  layout.coarse_mask = subsetix::csr::allocate_interval_set_device(
-      fluid_dev.num_rows, fluid_dev.num_intervals + coarse_mask_in.num_intervals);
-  set_intersection_device(fluid_dev, coarse_mask_in, layout.coarse_mask, ctx);
-  subsetix::csr::compute_cell_offsets_device(layout.coarse_mask);
-  if (layout.coarse_mask.num_intervals == 0 || layout.coarse_mask.num_rows == 0) {
-    return layout;
-  }
+  IntervalSet2DDevice fine_full;
+  refine_level_up_device(fluid_dev, fine_full, ctx);
+  subsetix::csr::compute_cell_offsets_device(fine_full);
 
-  refine_level_up_device(layout.coarse_mask, layout.fine_active, ctx);
+  IntervalSet2DDevice fine_mask;
+  refine_level_up_device(coarse_mask, fine_mask, ctx);
+  subsetix::csr::compute_cell_offsets_device(fine_mask);
+
+  layout.fine_active = subsetix::csr::allocate_interval_set_device(
+      fine_full.num_rows, fine_full.num_intervals + fine_mask.num_intervals);
+  set_intersection_device(fine_full, fine_mask, layout.fine_active, ctx);
   subsetix::csr::compute_cell_offsets_device(layout.fine_active);
 
   layout.fine_domain = Box2D{static_cast<Coord>(coarse_domain.x_min * 2),
@@ -378,7 +487,8 @@ AmrLayout remesh(const IntervalSet2DDevice& fluid_dev,
                              static_cast<Coord>(coarse_domain.y_max * 2)};
 
   const Coord guard_fine = static_cast<Coord>(2 * guard_coarse);
-  expand_device(layout.fine_active, guard_fine, guard_fine, layout.fine_with_guard, ctx);
+  expand_device(layout.fine_active, guard_fine, guard_fine,
+                layout.fine_with_guard, ctx);
   subsetix::csr::compute_cell_offsets_device(layout.fine_with_guard);
 
   layout.fine_guard = subsetix::csr::allocate_interval_set_device(
@@ -388,7 +498,8 @@ AmrLayout remesh(const IntervalSet2DDevice& fluid_dev,
                         layout.fine_guard, ctx);
   subsetix::csr::compute_cell_offsets_device(layout.fine_guard);
 
-  project_level_down_device(layout.fine_active, layout.projection_fine_on_coarse, ctx);
+  project_level_down_device(layout.fine_active,
+                            layout.projection_fine_on_coarse, ctx);
   subsetix::csr::compute_cell_offsets_device(layout.projection_fine_on_coarse);
 
   layout.has_fine = layout.fine_active.num_rows > 0 &&
@@ -464,6 +575,33 @@ double compute_dt_on_set(const Field2DDevice<Conserved>& U,
     return cfl * std::min(dx, dy);
   }
   return cfl / max_rate;
+}
+
+void prolong_full(Field2DDevice<Conserved>& fine_field,
+                  const Field2DDevice<Conserved>& coarse_field,
+                  CsrSetAlgebraContext& ctx) {
+  (void)ctx;
+  const auto coarse_acc = make_accessor(coarse_field);
+  apply_on_set_device(
+      fine_field, fine_field.geometry,
+      KOKKOS_LAMBDA(Coord x, Coord y, Conserved& value,
+                    std::size_t /*linear_index*/) {
+        const Coord xc = subsetix::csr::detail::floor_div2(x);
+        const Coord yc = subsetix::csr::detail::floor_div2(y);
+        value = coarse_acc.value_at(xc, yc);
+      });
+}
+
+[[maybe_unused]] void copy_overlap(Field2DDevice<Conserved>& fine_dst,
+                                   Field2DDevice<Conserved>& fine_src,
+                                   const IntervalSet2DDevice& overlap,
+                                   CsrSetAlgebraContext& ctx) {
+  if (overlap.num_rows == 0 || overlap.num_intervals == 0) {
+    return;
+  }
+  auto sub_dst = make_subview(fine_dst, overlap, "mach2_overlap_dst");
+  auto sub_src = make_subview(fine_src, overlap, "mach2_overlap_src");
+  copy_subview_device(sub_dst, sub_src, ctx);
 }
 
 
@@ -1031,35 +1169,6 @@ int main(int argc, char* argv[]) {
     Box2D fine_domain{0, 0, 0, 0};
     bool has_fine = false;
 
-    if (cfg.enable_amr) {
-      const Coord refine_w = static_cast<Coord>(
-          std::max<int>(4, static_cast<int>(cfg.amr_fraction * cfg.nx)));
-      const Coord refine_h = static_cast<Coord>(
-          std::max<int>(4, static_cast<int>(cfg.amr_fraction * cfg.ny)));
-      const Coord refine_x0 = domain.x_min +
-                              static_cast<Coord>((cfg.nx - refine_w) / 2);
-      const Coord refine_y0 = domain.y_min +
-                              static_cast<Coord>((cfg.ny - refine_h) / 2);
-
-      const Box2D refine_box{
-          refine_x0, static_cast<Coord>(refine_x0 + refine_w),
-          refine_y0, static_cast<Coord>(refine_y0 + refine_h)};
-
-      const auto refine_box_dev = make_box_device(refine_box);
-      const AmrLayout amr = remesh(fluid_dev,
-                                   refine_box_dev,
-                                   static_cast<Coord>(cfg.amr_guard),
-                                   domain,
-                                   ctx);
-      coarse_mask = amr.coarse_mask;
-      fine_active = amr.fine_active;
-      fine_with_guard = amr.fine_with_guard;
-      fine_guard = amr.fine_guard;
-      projection_fine_on_coarse = amr.projection_fine_on_coarse;
-      fine_domain = amr.fine_domain;
-      has_fine = amr.has_fine;
-    }
-
     Field2DDevice<Conserved> U(fluid_dev, "mach2_state");
     Field2DDevice<Conserved> U_next(fluid_dev, "mach2_state_next");
     Field2DDevice<double> density(fluid_dev, "mach2_density");
@@ -1072,17 +1181,6 @@ int main(int argc, char* argv[]) {
     Field2DDevice<double> density_fine;
     Field2DDevice<double> pressure_fine;
     Field2DDevice<double> mach_fine;
-
-    if (has_fine) {
-      U_fine = Field2DDevice<Conserved>(fine_with_guard, "mach2_fine");
-      U_fine_next = Field2DDevice<Conserved>(fine_with_guard,
-                                             "mach2_fine_next");
-      U_fine_active = Field2DDevice<Conserved>(fine_active,
-                                               "mach2_fine_active");
-      density_fine = Field2DDevice<double>(fine_active, "mach2_fine_density");
-      pressure_fine = Field2DDevice<double>(fine_active, "mach2_fine_pressure");
-      mach_fine = Field2DDevice<double>(fine_active, "mach2_fine_mach");
-    }
 
     const Conserved inflow = build_inflow_state(cfg);
 
@@ -1098,44 +1196,57 @@ int main(int argc, char* argv[]) {
             values(idx) = inflow;
             values_next(idx) = inflow;
           });
+    }
 
+    if (cfg.enable_amr) {
+      coarse_mask =
+          build_refine_mask(U, fluid_dev, domain, cfg, ctx);
+      const AmrLayout amr = build_fine_geometry(
+          fluid_dev, coarse_mask, static_cast<Coord>(cfg.amr_guard), domain, ctx);
+      fine_active = amr.fine_active;
+      fine_with_guard = amr.fine_with_guard;
+      fine_guard = amr.fine_guard;
+      projection_fine_on_coarse = amr.projection_fine_on_coarse;
+      fine_domain = amr.fine_domain;
+      has_fine = amr.has_fine;
+    }
+
+    if (has_fine) {
+      U_fine = Field2DDevice<Conserved>(fine_with_guard, "mach2_fine");
+      U_fine_next = Field2DDevice<Conserved>(fine_with_guard,
+                                             "mach2_fine_next");
+      U_fine_active = Field2DDevice<Conserved>(fine_active,
+                                               "mach2_fine_active");
+      density_fine = Field2DDevice<double>(fine_active, "mach2_fine_density");
+      pressure_fine = Field2DDevice<double>(fine_active, "mach2_fine_pressure");
+      mach_fine = Field2DDevice<double>(fine_active, "mach2_fine_mach");
+
+      prolong_full(U_fine, U, ctx);
+      prolong_full(U_fine_next, U, ctx);
+    }
+
+    {
+      const IntervalSet2DHost fluid_host =
+          subsetix::csr::build_host_from_device(fluid_dev);
+      const IntervalSet2DHost obstacle_host =
+          subsetix::csr::build_host_from_device(obstacle_dev);
+      write_legacy_quads(fluid_host,
+                         subsetix_examples::output_file(output_dir, "fluid_geometry.vtk"));
+      write_legacy_quads(obstacle_host,
+                         subsetix_examples::output_file(output_dir, "obstacle_geometry.vtk"));
+      if (coarse_mask.num_intervals > 0) {
+        const IntervalSet2DHost coarse_mask_host =
+            subsetix::csr::build_host_from_device(coarse_mask);
+        write_legacy_quads(coarse_mask_host,
+                           subsetix_examples::output_file(output_dir, "coarse_refine_mask.vtk"));
+      }
       if (has_fine) {
-        auto fv = U_fine.values;
-        auto fv_next = U_fine_next.values;
-        Kokkos::parallel_for(
-            "mach2_cylinder_init_fine",
-            Kokkos::RangePolicy<ExecSpace>(
-                0, static_cast<int>(U_fine.size())),
-            KOKKOS_LAMBDA(const int idx) {
-              fv(idx) = inflow;
-              fv_next(idx) = inflow;
-            });
+        const IntervalSet2DHost fine_host =
+            subsetix::csr::build_host_from_device(fine_active);
+        write_legacy_quads(fine_host,
+                           subsetix_examples::output_file(output_dir, "fine_geometry.vtk"));
       }
     }
-
-      {
-        const IntervalSet2DHost fluid_host =
-            subsetix::csr::build_host_from_device(fluid_dev);
-        const IntervalSet2DHost obstacle_host =
-            subsetix::csr::build_host_from_device(obstacle_dev);
-        write_legacy_quads(fluid_host,
-                           subsetix_examples::output_file(output_dir, "fluid_geometry.vtk"));
-        write_legacy_quads(obstacle_host,
-                           subsetix_examples::output_file(output_dir, "obstacle_geometry.vtk"));
-        if (coarse_mask.num_intervals > 0) {
-          const IntervalSet2DHost coarse_mask_host =
-              subsetix::csr::build_host_from_device(coarse_mask);
-          write_legacy_quads(coarse_mask_host,
-                             subsetix_examples::output_file(output_dir, "coarse_refine_mask.vtk"));
-        }
-        if (has_fine) {
-          const IntervalSet2DHost fine_host =
-              subsetix::csr::build_host_from_device(fine_active);
-          write_legacy_quads(fine_host,
-                             subsetix_examples::output_file(output_dir, "fine_geometry.vtk"));
-      }
-    }
-
     double t = 0.0;
     int step = 0;
     const double dx = 1.0;
