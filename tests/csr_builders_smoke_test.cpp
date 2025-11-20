@@ -1,4 +1,5 @@
 ﻿#include <Kokkos_Core.hpp>
+#include <cstdint>
 #include <gtest/gtest.h>
 
 #include <subsetix/csr_interval_set.hpp>
@@ -195,4 +196,138 @@ TEST(CSRBuildersSmokeTest, CheckerboardBuilder) {
     EXPECT_EQ(written, count);
     (void)height;
   }
+}
+
+TEST(CSRBuildersSmokeTest, HollowBoxBuilder) {
+  HollowBox2D frame;
+  frame.outer = Box2D{0, 6, 0, 5};
+  frame.inner = Box2D{2, 4, 1, 4};
+
+  auto dev = make_hollow_box_device(frame);
+  auto host = build_host_from_device(dev);
+
+  ASSERT_TRUE(check_csr(host,
+                        frame.outer.x_min, frame.outer.x_max,
+                        frame.outer.y_min, frame.outer.y_max));
+
+  const std::size_t num_rows = host.row_keys.size();
+  ASSERT_EQ(num_rows, 5U);
+
+  for (std::size_t i = 0; i < num_rows; ++i) {
+    const Coord y = host.row_keys[i].y;
+    const std::size_t begin = host.row_ptr[i];
+    const std::size_t end = host.row_ptr[i + 1];
+    const std::size_t count = end - begin;
+
+    if (y < frame.inner.y_min || y >= frame.inner.y_max) {
+      ASSERT_EQ(count, 1U);
+      const auto& iv = host.intervals[begin];
+      EXPECT_EQ(iv.begin, frame.outer.x_min);
+      EXPECT_EQ(iv.end, frame.outer.x_max);
+      continue;
+    }
+
+    ASSERT_EQ(count, 2U);
+    const auto& left = host.intervals[begin];
+    const auto& right = host.intervals[begin + 1];
+    EXPECT_EQ(left.begin, frame.outer.x_min);
+    EXPECT_EQ(left.end, frame.inner.x_min);
+    EXPECT_EQ(right.begin, frame.inner.x_max);
+    EXPECT_EQ(right.end, frame.outer.x_max);
+  }
+}
+
+TEST(CSRBuildersSmokeTest, HollowDiskBuilder) {
+  HollowDisk2D disk;
+  disk.cx = 0;
+  disk.cy = 0;
+  disk.outer_radius = 2;
+  disk.inner_radius = 1;
+
+  auto dev = make_hollow_disk_device(disk);
+  auto host = build_host_from_device(dev);
+
+  ASSERT_TRUE(check_csr(host,
+                        disk.cx - disk.outer_radius,
+                        disk.cx + disk.outer_radius + 1,
+                        disk.cy - disk.outer_radius,
+                        disk.cy + disk.outer_radius + 1));
+
+  // Row y = 0 should have a hole: two disjoint intervals.
+  for (std::size_t i = 0; i < host.row_keys.size(); ++i) {
+    if (host.row_keys[i].y != 0) {
+      continue;
+    }
+    const std::size_t begin = host.row_ptr[i];
+    const std::size_t end = host.row_ptr[i + 1];
+    ASSERT_EQ(end - begin, 2U);
+    const auto& left = host.intervals[begin];
+    const auto& right = host.intervals[begin + 1];
+    const Coord expected_left_end =
+        disk.cx - disk.inner_radius;
+    const Coord expected_right_begin =
+        disk.cx + disk.inner_radius + 1;
+
+    EXPECT_LT(left.begin, disk.cx);
+    EXPECT_EQ(left.end, expected_left_end);
+    EXPECT_EQ(right.begin, expected_right_begin);
+    EXPECT_GT(right.end, expected_right_begin);
+  }
+}
+
+TEST(CSRBuildersSmokeTest, BitmapBuilder) {
+  const std::size_t height = 3;
+  const std::size_t width = 5;
+  Kokkos::View<std::uint8_t**, DeviceMemorySpace> d_mask(
+      "bitmap_dev", height, width);
+  auto h_mask = Kokkos::create_mirror_view(d_mask);
+
+  // Pattern:
+  // 1 1 0 0 0
+  // 0 1 1 0 1
+  // 0 0 0 0 0
+  h_mask(0, 0) = 1; h_mask(0, 1) = 1;
+  h_mask(0, 2) = 0; h_mask(0, 3) = 0; h_mask(0, 4) = 0;
+
+  h_mask(1, 0) = 0; h_mask(1, 1) = 1; h_mask(1, 2) = 1;
+  h_mask(1, 3) = 0; h_mask(1, 4) = 1;
+
+  for (std::size_t j = 0; j < width; ++j) {
+    h_mask(2, j) = 0;
+  }
+  Kokkos::deep_copy(d_mask, h_mask);
+
+  const Coord x_min = -2;
+  const Coord y_min = 5;
+  auto dev = make_bitmap_device(d_mask, x_min, y_min, 1);
+  auto host = build_host_from_device(dev);
+
+  ASSERT_TRUE(check_csr(host, x_min, x_min + static_cast<Coord>(width),
+                        y_min, y_min + static_cast<Coord>(height)));
+
+  ASSERT_EQ(host.row_keys.size(), height);
+  ASSERT_EQ(host.row_ptr.size(), height + 1);
+
+  // Row 0: one run [x_min, x_min+2)
+  {
+    const std::size_t begin = host.row_ptr[0];
+    const std::size_t end = host.row_ptr[1];
+    ASSERT_EQ(end - begin, 1U);
+    EXPECT_EQ(host.intervals[begin].begin, x_min);
+    EXPECT_EQ(host.intervals[begin].end, x_min + 2);
+  }
+
+  // Row 1: two runs [x_min+1, x_min+3) and [x_min+4, x_min+5)
+  {
+    const std::size_t begin = host.row_ptr[1];
+    const std::size_t end = host.row_ptr[2];
+    ASSERT_EQ(end - begin, 2U);
+    EXPECT_EQ(host.intervals[begin].begin, x_min + 1);
+    EXPECT_EQ(host.intervals[begin].end, x_min + 3);
+    EXPECT_EQ(host.intervals[begin + 1].begin, x_min + 4);
+    EXPECT_EQ(host.intervals[begin + 1].end, x_min + 5);
+  }
+
+  // Row 2: empty.
+  EXPECT_EQ(host.row_ptr[3] - host.row_ptr[2], 0U);
 }
