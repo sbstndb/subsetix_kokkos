@@ -114,3 +114,12 @@ target_link_libraries(amr_advection_2d
     PRIVATE
         subsetix_core
 )
+
+add_executable(mach2_cylinder
+    mach2_cylinder/mach2_cylinder.cpp
+)
+
+target_link_libraries(mach2_cylinder
+    PRIVATE
+        subsetix_core
+)
