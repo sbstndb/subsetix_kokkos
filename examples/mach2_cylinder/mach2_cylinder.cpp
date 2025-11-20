@@ -341,6 +341,76 @@ double compute_dt(const Field2DDevice<Conserved>& U,
   return cfl / max_rate;
 }
 
+double compute_dt_on_set(const Field2DDevice<Conserved>& U,
+                         const IntervalSet2DDevice& region,
+                         double gamma,
+                         double cfl,
+                         double dx,
+                         double dy) {
+  if (region.num_intervals == 0) {
+    return compute_dt(U, gamma, cfl, dx, dy);
+  }
+
+  const double inv_dx = 1.0 / dx;
+  const double inv_dy = 1.0 / dy;
+  double max_rate = 0.0;
+
+  const auto mapping = build_mask_field_mapping(U, region);
+  auto interval_to_row = mapping.interval_to_row;
+  auto interval_to_field_interval = mapping.interval_to_field_interval;
+  auto row_map = mapping.row_map;
+
+  auto mask_row_keys = region.row_keys;
+  auto mask_intervals = region.intervals;
+
+  auto field_intervals = U.geometry.intervals;
+  auto field_offsets = U.geometry.cell_offsets;
+  auto values = U.values;
+
+  Kokkos::parallel_reduce(
+      "mach2_cylinder_dt_on_set",
+      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+          0, static_cast<int>(region.num_intervals)),
+      KOKKOS_LAMBDA(const int interval_idx, double& lmax) {
+        const int row_idx = interval_to_row(interval_idx);
+        const int field_row = row_map(row_idx);
+        if (row_idx < 0 || field_row < 0) {
+          return;
+        }
+
+        const int field_interval_idx =
+            interval_to_field_interval(interval_idx);
+        if (field_interval_idx < 0) {
+          return;
+        }
+
+        const Interval mask_iv = mask_intervals(interval_idx);
+        const Interval iv = field_intervals(field_interval_idx);
+        const std::size_t base = field_offsets(field_interval_idx);
+        const Coord base_begin = iv.begin;
+
+        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+          const std::size_t idx =
+              base + static_cast<std::size_t>(x - base_begin);
+          const Conserved s = values(idx);
+          const Primitive q = cons_to_prim(s, gamma);
+          const double a = sound_speed(q, gamma);
+          const double rate = std::fabs(q.u) * inv_dx +
+                              std::fabs(q.v) * inv_dy +
+                              a * (inv_dx + inv_dy);
+          if (rate > lmax) {
+            lmax = rate;
+          }
+        }
+      },
+      Kokkos::Max<double>(max_rate));
+
+  if (max_rate <= 0.0) {
+    return cfl * std::min(dx, dy);
+  }
+  return cfl / max_rate;
+}
+
 
 void prolong_guard_from_coarse(Field2DDevice<Conserved>& fine_field,
                                const IntervalSet2DDevice& guard,
@@ -1045,7 +1115,8 @@ int main(int argc, char* argv[]) {
         prolong_guard_from_coarse(U_fine, fine_guard, acc_coarse);
         acc_fine = make_accessor(U_fine);
         const double dt_fine =
-            compute_dt(U_fine, cfg.gamma, cfg.cfl, dx_fine, dy_fine);
+            compute_dt_on_set(U_fine, fine_active, cfg.gamma, cfg.cfl,
+                              dx_fine, dy_fine);
         dt = std::min(dt, dt_fine);
       }
 
