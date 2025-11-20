@@ -118,17 +118,18 @@ struct Field2D {
 
   GeometryView geometry;
   ValueView values;
-  std::string label;
 
   Field2D() = default;
 
-  Field2D(const GeometryView& geom, std::string name = "subsetix_field")
-      : geometry(geom), label(std::move(name)) {
+  Field2D(const GeometryView& geom, const std::string& name = "subsetix_field")
+      : geometry(geom) {
     const std::size_t value_count = geometry.total_cells;
     if (value_count == 0) {
       values = ValueView();
     } else {
-      values = ValueView(label + "_values", value_count);
+      const std::string view_label =
+          name.empty() ? "subsetix_field_values" : name + "_values";
+      values = ValueView(view_label, value_count);
     }
   }
 
@@ -177,7 +178,6 @@ build_device_field_from_host(const IntervalField2DHost<T>& host,
   geom_host.rebuild_mapping();
 
   dev.geometry = build_device_from_host(geom_host);
-  dev.label = label;
 
   if (value_count > 0) {
     dev.values = typename Field2DDevice<T>::ValueView(
@@ -306,7 +306,6 @@ struct Field2DSubView {
   FieldView parent;
   GeometryView region;
   SubSetView subset;
-  std::string label;
 
   KOKKOS_INLINE_FUNCTION
   bool valid() const {
@@ -339,10 +338,10 @@ inline Field2DSubView<T, MemorySpace>
 make_subview(Field2D<T, MemorySpace>& field,
              const IntervalSet2DView<MemorySpace>& region,
              const std::string& label = {}) {
+  (void)label;
   Field2DSubView<T, MemorySpace> sub;
   sub.parent = field;
   sub.region = region;
-  sub.label = label.empty() ? field.label : label;
   return sub;
 }
 

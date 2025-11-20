@@ -6,7 +6,13 @@
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_ops/core.hpp>
 #include <subsetix/csr_ops/field_core.hpp>
+#include <subsetix/csr_ops/field_amr.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>
+#include <subsetix/csr_ops/field_subview.hpp>
+#include <subsetix/csr_ops/amr.hpp>
+#include <subsetix/csr_ops/morphology.hpp>
+#include <subsetix/detail/csr_utils.hpp>
+#include <subsetix/multilevel.hpp>
 #include <subsetix/vtk_export.hpp>
 
 #include <algorithm>
@@ -39,7 +45,12 @@ using subsetix::csr::make_bitmap_device;
 using subsetix::csr::set_difference_device;
 using subsetix::csr::detail::FieldReadAccessor;
 using subsetix::csr::detail::build_mask_interval_to_row_mapping;
+using subsetix::csr::detail::build_mask_field_mapping;
+using subsetix::csr::Interval;
+using subsetix::csr::copy_subview_device;
 using subsetix::vtk::write_legacy_quads;
+using subsetix::MultilevelGeoDevice;
+using subsetix::MultilevelFieldDevice;
 
 struct Conserved {
   double rho;
@@ -72,6 +83,10 @@ struct RunConfig {
   int output_stride = 50;
   bool no_slip = false;
   std::string pbm_path;
+
+  bool enable_amr = true;
+  double amr_fraction = 0.5; // fraction of domain length refined in each direction
+  int amr_guard = 2;         // coarse-cell guard radius around the refined zone
 };
 
 template <typename T>
@@ -247,6 +262,53 @@ Conserved sample_neighbor(const Conserved& center,
   return make_wall_ghost(center, nx, ny, gamma, no_slip);
 }
 
+KOKKOS_INLINE_FUNCTION
+Conserved sample_neighbor_with_coarse(
+    const Conserved& center,
+    Coord x,
+    Coord y,
+    int dx,
+    int dy,
+    const FieldReadAccessor<Conserved>& acc_fine,
+    const FieldReadAccessor<Conserved>* acc_coarse,
+    const Box2D& domain_fine,
+    const Conserved& inflow,
+    double gamma,
+    bool no_slip) {
+  const Coord xn = static_cast<Coord>(x + dx);
+  const Coord yn = static_cast<Coord>(y + dy);
+
+  Conserved neigh;
+  if (acc_fine.try_get(xn, yn, neigh)) {
+    return neigh;
+  }
+
+  const bool inside = in_domain(xn, yn, domain_fine);
+  if (inside && acc_coarse != nullptr) {
+    const Coord xc = subsetix::csr::detail::floor_div2(xn);
+    const Coord yc = subsetix::csr::detail::floor_div2(yn);
+    if (acc_coarse->try_get(xc, yc, neigh)) {
+      return neigh;
+    }
+  }
+
+  if (!inside) {
+    if (dx == -1 && dy == 0) {
+      return inflow;
+    }
+    if (dx == 1 && dy == 0) {
+      return center;
+    }
+    const double nx = (dy == 0) ? ((dx > 0) ? 1.0 : -1.0) : 0.0;
+    const double ny = (dx == 0) ? ((dy > 0) ? 1.0 : -1.0) : 0.0;
+    return make_wall_ghost(center, nx, ny, gamma, no_slip);
+  }
+
+  const double nx = static_cast<double>(-dx);
+  const double ny = static_cast<double>(-dy);
+  return make_wall_ghost(center, nx, ny, gamma, no_slip);
+}
+
 double compute_dt(const Field2DDevice<Conserved>& U,
                   double gamma,
                   double cfl,
@@ -278,6 +340,217 @@ double compute_dt(const Field2DDevice<Conserved>& U,
     return cfl * std::min(dx, dy);
   }
   return cfl / max_rate;
+}
+
+
+void prolong_guard_from_coarse(Field2DDevice<Conserved>& fine_field,
+                               const IntervalSet2DDevice& guard,
+                               const FieldReadAccessor<Conserved>& coarse_acc) {
+  if (guard.num_rows == 0 || guard.num_intervals == 0) {
+    return;
+  }
+
+  apply_on_set_device(fine_field, guard, KOKKOS_LAMBDA(
+                                             Coord x,
+                                             Coord y,
+                                             Conserved& value,
+                                             std::size_t /*linear_index*/) {
+    const Coord xc = subsetix::csr::detail::floor_div2(x);
+    const Coord yc = subsetix::csr::detail::floor_div2(y);
+    value = coarse_acc.value_at(xc, yc);
+  });
+}
+
+void restrict_fine_to_coarse(Field2DDevice<Conserved>& coarse_field,
+                             const Field2DDevice<Conserved>& fine_field,
+                             const IntervalSet2DDevice& coarse_region) {
+  if (coarse_region.num_rows == 0 || coarse_region.num_intervals == 0) {
+    return;
+  }
+
+  const auto mapping =
+      build_mask_field_mapping(coarse_field, coarse_region);
+  auto interval_to_row = mapping.interval_to_row;
+  auto interval_to_field_interval = mapping.interval_to_field_interval;
+  auto row_map = mapping.row_map;
+
+  auto mask_row_keys = coarse_region.row_keys;
+  auto mask_intervals = coarse_region.intervals;
+
+  auto coarse_intervals = coarse_field.geometry.intervals;
+  auto coarse_offsets = coarse_field.geometry.cell_offsets;
+  auto coarse_values = coarse_field.values;
+
+  const auto fine_acc = make_accessor(fine_field);
+
+  Kokkos::parallel_for(
+      "mach2_cylinder_restrict",
+      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+          0, static_cast<int>(coarse_region.num_intervals)),
+      KOKKOS_LAMBDA(const int interval_idx) {
+        const int row_idx = interval_to_row(interval_idx);
+        const int field_row = row_map(row_idx);
+        if (row_idx < 0 || field_row < 0) {
+          return;
+        }
+
+        const int coarse_interval_idx =
+            interval_to_field_interval(interval_idx);
+        if (coarse_interval_idx < 0) {
+          return;
+        }
+
+        const Interval mask_iv = mask_intervals(interval_idx);
+        const Interval civ = coarse_intervals(coarse_interval_idx);
+        const std::size_t base_offset = coarse_offsets(coarse_interval_idx);
+        const Coord base_begin = civ.begin;
+        const Coord y = mask_row_keys(row_idx).y;
+        const Coord y_f0 = static_cast<Coord>(2 * y);
+        const Coord y_f1 = static_cast<Coord>(2 * y + 1);
+
+        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+          const std::size_t c_idx =
+              base_offset + static_cast<std::size_t>(x - base_begin);
+          const Coord x_f0 = static_cast<Coord>(2 * x);
+          const Coord x_f1 = static_cast<Coord>(2 * x + 1);
+
+          const Conserved v00 = fine_acc.value_at(x_f0, y_f0);
+          const Conserved v01 = fine_acc.value_at(x_f1, y_f0);
+          const Conserved v10 = fine_acc.value_at(x_f0, y_f1);
+          const Conserved v11 = fine_acc.value_at(x_f1, y_f1);
+
+          Conserved avg;
+          avg.rho = 0.25 * (v00.rho + v01.rho + v10.rho + v11.rho);
+          avg.rhou = 0.25 * (v00.rhou + v01.rhou + v10.rhou + v11.rhou);
+          avg.rhov = 0.25 * (v00.rhov + v01.rhov + v10.rhov + v11.rhov);
+          avg.E = 0.25 * (v00.E + v01.E + v10.E + v11.E);
+
+          coarse_values(c_idx) = avg;
+        }
+      });
+  Kokkos::DefaultExecutionSpace().fence();
+}
+
+void update_solution_fine(const Field2DDevice<Conserved>& U_fine,
+                          Field2DDevice<Conserved>& U_fine_next,
+                          const IntervalSet2DDevice& active_region,
+                          FieldReadAccessor<Conserved> acc_fine,
+                          const FieldReadAccessor<Conserved>& acc_coarse,
+                          const Box2D& fine_domain,
+                          const Conserved& inflow,
+                          double gamma,
+                          double dt,
+                          double dx,
+                          double dy,
+                          bool no_slip) {
+  if (active_region.num_rows == 0 || active_region.num_intervals == 0) {
+    return;
+  }
+
+  const auto mapping =
+      build_mask_field_mapping(U_fine, active_region);
+  auto interval_to_row = mapping.interval_to_row;
+  auto interval_to_field_interval = mapping.interval_to_field_interval;
+  auto row_map = mapping.row_map;
+
+  auto mask_row_keys = active_region.row_keys;
+  auto mask_intervals = active_region.intervals;
+
+  auto field_intervals = U_fine.geometry.intervals;
+  auto field_offsets = U_fine.geometry.cell_offsets;
+  auto values_in = U_fine.values;
+  auto values_out = U_fine_next.values;
+
+  Kokkos::parallel_for(
+      "mach2_cylinder_update_fine",
+      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+          0, static_cast<int>(active_region.num_intervals)),
+      KOKKOS_LAMBDA(const int interval_idx) {
+        const int row_idx = interval_to_row(interval_idx);
+        const int field_row = row_map(row_idx);
+        if (row_idx < 0 || field_row < 0) {
+          return;
+        }
+
+        const int field_interval_idx =
+            interval_to_field_interval(interval_idx);
+        if (field_interval_idx < 0) {
+          return;
+        }
+
+        const Interval mask_iv = mask_intervals(interval_idx);
+        const Interval iv = field_intervals(field_interval_idx);
+        const std::size_t base = field_offsets(field_interval_idx);
+        const Coord y = mask_row_keys(row_idx).y;
+
+        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+          const std::size_t idx =
+              base + static_cast<std::size_t>(x - iv.begin);
+
+          const Conserved center = values_in(idx);
+          const Primitive q_center = cons_to_prim(center, gamma);
+
+          const Conserved left_state =
+              sample_neighbor_with_coarse(center, x, y, -1, 0,
+                                          acc_fine, &acc_coarse,
+                                          fine_domain, inflow,
+                                          gamma, no_slip);
+          const Conserved right_state =
+              sample_neighbor_with_coarse(center, x, y, +1, 0,
+                                          acc_fine, &acc_coarse,
+                                          fine_domain, inflow,
+                                          gamma, no_slip);
+          const Conserved down_state =
+              sample_neighbor_with_coarse(center, x, y, 0, -1,
+                                          acc_fine, &acc_coarse,
+                                          fine_domain, inflow,
+                                          gamma, no_slip);
+          const Conserved up_state =
+              sample_neighbor_with_coarse(center, x, y, 0, +1,
+                                          acc_fine, &acc_coarse,
+                                          fine_domain, inflow,
+                                          gamma, no_slip);
+
+          const Primitive q_left = cons_to_prim(left_state, gamma);
+          const Primitive q_right = cons_to_prim(right_state, gamma);
+          const Primitive q_down = cons_to_prim(down_state, gamma);
+          const Primitive q_up = cons_to_prim(up_state, gamma);
+
+          const Conserved flux_w =
+              rusanov_flux_x(left_state, center, q_left,
+                             q_center, gamma);
+          const Conserved flux_e =
+              rusanov_flux_x(center, right_state, q_center,
+                             q_right, gamma);
+          const Conserved flux_s =
+              rusanov_flux_y(down_state, center, q_down,
+                             q_center, gamma);
+          const Conserved flux_n =
+              rusanov_flux_y(center, up_state, q_center,
+                             q_up, gamma);
+
+          Conserved updated;
+          updated.rho =
+              center.rho -
+              (dt / dx) * (flux_e.rho - flux_w.rho) -
+              (dt / dy) * (flux_n.rho - flux_s.rho);
+          updated.rhou =
+              center.rhou -
+              (dt / dx) * (flux_e.rhou - flux_w.rhou) -
+              (dt / dy) * (flux_n.rhou - flux_s.rhou);
+          updated.rhov =
+              center.rhov -
+              (dt / dx) * (flux_e.rhov - flux_w.rhov) -
+              (dt / dy) * (flux_n.rhov - flux_s.rhov);
+          updated.E =
+              center.E -
+              (dt / dx) * (flux_e.E - flux_w.E) -
+              (dt / dy) * (flux_n.E - flux_s.E);
+
+          values_out(idx) = updated;
+        }
+      });
+  Kokkos::DefaultExecutionSpace().fence();
 }
 
 void update_solution(const Field2DDevice<Conserved>& U,
@@ -441,6 +714,10 @@ RunConfig parse_args(int argc, char* argv[]) {
     else if (arg == "--max-steps") read_int(cfg.max_steps);
     else if (arg == "--output-stride") read_int(cfg.output_stride);
     else if (arg == "--no-slip") cfg.no_slip = true;
+    else if (arg == "--no-amr") cfg.enable_amr = false;
+    else if (arg == "--amr") cfg.enable_amr = true;
+    else if (arg == "--amr-fraction") read_double(cfg.amr_fraction);
+    else if (arg == "--amr-guard") read_int(cfg.amr_guard);
     else if (arg == "--pbm" && i + 1 < argc) {
       cfg.pbm_path = argv[++i];
     }
@@ -450,6 +727,10 @@ RunConfig parse_args(int argc, char* argv[]) {
   }
   if (cfg.cy < 0) {
     cfg.cy = cfg.ny / 2;
+  }
+  cfg.amr_fraction = std::clamp(cfg.amr_fraction, 0.05, 0.95);
+  if (cfg.amr_guard < 1) {
+    cfg.amr_guard = 1;
   }
   return cfg;
 }
@@ -568,25 +849,72 @@ Conserved build_inflow_state(const RunConfig& cfg) {
   return prim_to_cons(q, cfg.gamma);
 }
 
-void write_step_outputs(const Field2DDevice<Conserved>& U,
-                        const IntervalSet2DDevice& fluid_geom,
+
+void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
                         Field2DDevice<double>& density,
                         Field2DDevice<double>& pressure,
                         Field2DDevice<double>& mach,
                         double gamma,
                         const std::filesystem::path& out_dir,
-                        int step) {
-  compute_diagnostics(U, density, pressure, mach, gamma);
+                        int step,
+                        const IntervalSet2DDevice* fine_geom = nullptr,
+                        Field2DDevice<double>* density_fine = nullptr,
+                        Field2DDevice<double>* pressure_fine = nullptr,
+                        Field2DDevice<double>* mach_fine = nullptr,
+                        const Field2DDevice<Conserved>* U_coarse = nullptr,
+                        const Field2DDevice<Conserved>* U_fine_active = nullptr) {
+  if (U_coarse) {
+    compute_diagnostics(*U_coarse, density, pressure, mach, gamma);
+  }
+  if (U_fine_active && density_fine && pressure_fine && mach_fine &&
+      U_fine_active->geometry.num_intervals > 0) {
+    compute_diagnostics(*U_fine_active, *density_fine, *pressure_fine,
+                        *mach_fine, gamma);
+  }
 
-  const auto rho_host = subsetix::csr::build_host_field_from_device(density);
-  const auto p_host = subsetix::csr::build_host_field_from_device(pressure);
-  const auto m_host = subsetix::csr::build_host_field_from_device(mach);
+  MultilevelGeoDevice geo;
+  geo.origin_x = 0.0;
+  geo.origin_y = 0.0;
+  geo.root_dx = 1.0;
+  geo.root_dy = 1.0;
+  geo.num_active_levels = 1;
+  geo.levels[0] = coarse_geom;
 
-  write_legacy_quads(rho_host, vtk_filename(out_dir, step, "density"), "rho");
-  write_legacy_quads(p_host, vtk_filename(out_dir, step, "pressure"), "p");
-  write_legacy_quads(m_host, vtk_filename(out_dir, step, "mach"), "mach");
+  MultilevelFieldDevice<double> f_density;
+  MultilevelFieldDevice<double> f_pressure;
+  MultilevelFieldDevice<double> f_mach;
+  f_density.num_active_levels = 1;
+  f_pressure.num_active_levels = 1;
+  f_mach.num_active_levels = 1;
+  f_density.levels[0] = density;
+  f_pressure.levels[0] = pressure;
+  f_mach.levels[0] = mach;
 
-  (void)fluid_geom;
+  const bool has_fine = (fine_geom && fine_geom->num_intervals > 0 &&
+                         density_fine && pressure_fine && mach_fine &&
+                         U_fine_active && U_fine_active->geometry.num_intervals > 0);
+  if (has_fine) {
+    geo.num_active_levels = 2;
+    geo.levels[1] = *fine_geom;
+    f_density.num_active_levels = 2;
+    f_pressure.num_active_levels = 2;
+    f_mach.num_active_levels = 2;
+    f_density.levels[1] = *density_fine;
+    f_pressure.levels[1] = *pressure_fine;
+    f_mach.levels[1] = *mach_fine;
+  }
+
+  const auto host_geo = subsetix::deep_copy_to_host(geo);
+  const auto host_rho = subsetix::deep_copy_to_host(f_density);
+  const auto host_p = subsetix::deep_copy_to_host(f_pressure);
+  const auto host_m = subsetix::deep_copy_to_host(f_mach);
+
+  subsetix::vtk::write_multilevel_field_vtk(
+      host_rho, host_geo, vtk_filename(out_dir, step, "density"), "rho");
+  subsetix::vtk::write_multilevel_field_vtk(
+      host_p, host_geo, vtk_filename(out_dir, step, "pressure"), "p");
+  subsetix::vtk::write_multilevel_field_vtk(
+      host_m, host_geo, vtk_filename(out_dir, step, "mach"), "mach");
 }
 
 } // namespace
@@ -630,15 +958,88 @@ int main(int argc, char* argv[]) {
 
     auto interval_to_row = build_mask_interval_to_row_mapping(fluid_dev);
 
+    IntervalSet2DDevice fine_active;
+    IntervalSet2DDevice fine_with_guard;
+    IntervalSet2DDevice fine_guard;
+    IntervalSet2DDevice projection_fine_on_coarse;
+    Box2D fine_domain{0, 0, 0, 0};
+    bool has_fine = false;
+
+    if (cfg.enable_amr) {
+      const Coord refine_w = static_cast<Coord>(
+          std::max<int>(4, static_cast<int>(cfg.amr_fraction * cfg.nx)));
+      const Coord refine_h = static_cast<Coord>(
+          std::max<int>(4, static_cast<int>(cfg.amr_fraction * cfg.ny)));
+      const Coord refine_x0 = domain.x_min +
+                              static_cast<Coord>((cfg.nx - refine_w) / 2);
+      const Coord refine_y0 = domain.y_min +
+                              static_cast<Coord>((cfg.ny - refine_h) / 2);
+
+      const Box2D refine_box{
+          refine_x0, static_cast<Coord>(refine_x0 + refine_w),
+          refine_y0, static_cast<Coord>(refine_y0 + refine_h)};
+
+      auto refine_box_dev = make_box_device(refine_box);
+      IntervalSet2DDevice refine_mask =
+          subsetix::csr::allocate_interval_set_device(
+              fluid_dev.num_rows,
+              fluid_dev.num_intervals + refine_box_dev.num_intervals);
+      set_intersection_device(fluid_dev, refine_box_dev, refine_mask, ctx);
+      subsetix::csr::compute_cell_offsets_device(refine_mask);
+
+      const Coord grow = static_cast<Coord>(cfg.amr_guard);
+      IntervalSet2DDevice refine_mask_grown;
+      expand_device(refine_mask, grow, grow, refine_mask_grown, ctx);
+      subsetix::csr::compute_cell_offsets_device(refine_mask_grown);
+
+      refine_level_up_device(refine_mask, fine_active, ctx);
+      subsetix::csr::compute_cell_offsets_device(fine_active);
+
+      refine_level_up_device(refine_mask_grown, fine_with_guard, ctx);
+      subsetix::csr::compute_cell_offsets_device(fine_with_guard);
+
+      fine_guard = subsetix::csr::allocate_interval_set_device(
+          fine_with_guard.num_rows,
+          fine_with_guard.num_intervals + fine_active.num_intervals);
+      set_difference_device(fine_with_guard, fine_active, fine_guard, ctx);
+      subsetix::csr::compute_cell_offsets_device(fine_guard);
+
+      project_level_down_device(fine_active, projection_fine_on_coarse, ctx);
+      subsetix::csr::compute_cell_offsets_device(projection_fine_on_coarse);
+
+      has_fine = fine_active.num_rows > 0 && fine_active.num_intervals > 0;
+      fine_domain = Box2D{static_cast<Coord>(domain.x_min * 2),
+                          static_cast<Coord>(domain.x_max * 2),
+                          static_cast<Coord>(domain.y_min * 2),
+                          static_cast<Coord>(domain.y_max * 2)};
+    }
+
     Field2DDevice<Conserved> U(fluid_dev, "mach2_state");
     Field2DDevice<Conserved> U_next(fluid_dev, "mach2_state_next");
     Field2DDevice<double> density(fluid_dev, "mach2_density");
     Field2DDevice<double> pressure(fluid_dev, "mach2_pressure");
     Field2DDevice<double> mach_field(fluid_dev, "mach2_mach");
 
+    Field2DDevice<Conserved> U_fine;
+    Field2DDevice<Conserved> U_fine_next;
+    Field2DDevice<Conserved> U_fine_active;
+    Field2DDevice<double> density_fine;
+    Field2DDevice<double> pressure_fine;
+    Field2DDevice<double> mach_fine;
+
+    if (has_fine) {
+      U_fine = Field2DDevice<Conserved>(fine_with_guard, "mach2_fine");
+      U_fine_next = Field2DDevice<Conserved>(fine_with_guard,
+                                             "mach2_fine_next");
+      U_fine_active = Field2DDevice<Conserved>(fine_active,
+                                               "mach2_fine_active");
+      density_fine = Field2DDevice<double>(fine_active, "mach2_fine_density");
+      pressure_fine = Field2DDevice<double>(fine_active, "mach2_fine_pressure");
+      mach_fine = Field2DDevice<double>(fine_active, "mach2_fine_mach");
+    }
+
     const Conserved inflow = build_inflow_state(cfg);
 
-    // Initialize with inflow everywhere in the fluid domain.
     {
       using ExecSpace = Kokkos::DefaultExecutionSpace;
       auto values = U.values;
@@ -651,9 +1052,21 @@ int main(int argc, char* argv[]) {
             values(idx) = inflow;
             values_next(idx) = inflow;
           });
+
+      if (has_fine) {
+        auto fv = U_fine.values;
+        auto fv_next = U_fine_next.values;
+        Kokkos::parallel_for(
+            "mach2_cylinder_init_fine",
+            Kokkos::RangePolicy<ExecSpace>(
+                0, static_cast<int>(U_fine.size())),
+            KOKKOS_LAMBDA(const int idx) {
+              fv(idx) = inflow;
+              fv_next(idx) = inflow;
+            });
+      }
     }
 
-    // Export initial geometries
     {
       const IntervalSet2DHost fluid_host =
           subsetix::csr::build_host_from_device(fluid_dev);
@@ -663,12 +1076,20 @@ int main(int argc, char* argv[]) {
                          subsetix_examples::output_file(output_dir, "fluid_geometry.vtk"));
       write_legacy_quads(obstacle_host,
                          subsetix_examples::output_file(output_dir, "obstacle_geometry.vtk"));
+      if (has_fine) {
+        const IntervalSet2DHost fine_host =
+            subsetix::csr::build_host_from_device(fine_active);
+        write_legacy_quads(fine_host,
+                           subsetix_examples::output_file(output_dir, "fine_geometry.vtk"));
+      }
     }
 
     double t = 0.0;
     int step = 0;
     const double dx = 1.0;
     const double dy = 1.0;
+    const double dx_fine = 0.5 * dx;
+    const double dy_fine = 0.5 * dy;
 
     std::cout << "Mach 2 cylinder setup: "
               << "nx=" << cfg.nx << " ny=" << cfg.ny
@@ -676,32 +1097,75 @@ int main(int argc, char* argv[]) {
               << " r=" << cfg.radius
               << " pbm=" << (obstacle_from_pbm ? cfg.pbm_path : "(disk)")
               << " no-slip=" << (cfg.no_slip ? "yes" : "no")
+              << " amr=" << (has_fine ? "enabled" : "disabled")
               << " output_dir=" << output_dir << "\n";
 
     double total_mass0 = compute_total_mass(U);
 
     while ((t < cfg.t_final) && (step < cfg.max_steps)) {
-      const FieldReadAccessor<Conserved> acc = make_accessor(U);
+      const FieldReadAccessor<Conserved> acc_coarse = make_accessor(U);
       double dt = compute_dt(U, cfg.gamma, cfg.cfl, dx, dy);
+
+      FieldReadAccessor<Conserved> acc_fine;
+      if (has_fine) {
+        prolong_guard_from_coarse(U_fine, fine_guard, acc_coarse);
+        acc_fine = make_accessor(U_fine);
+        const double dt_fine =
+            compute_dt(U_fine, cfg.gamma, cfg.cfl, dx_fine, dy_fine);
+        dt = std::min(dt, dt_fine);
+      }
+
       if (t + dt > cfg.t_final) {
         dt = cfg.t_final - t;
       }
 
-      update_solution(U, U_next, fluid_dev, domain, acc,
+      if (has_fine) {
+        update_solution_fine(U_fine, U_fine_next, fine_active,
+                             acc_fine, acc_coarse, fine_domain,
+                             inflow, cfg.gamma, dt, dx_fine, dy_fine,
+                             cfg.no_slip);
+      }
+
+      update_solution(U, U_next, fluid_dev, domain, acc_coarse,
                       interval_to_row, inflow, cfg.gamma,
                       dt, dx, dy, cfg.no_slip);
       Kokkos::DefaultExecutionSpace().fence();
 
-      // Swap
       std::swap(U.values, U_next.values);
+      if (has_fine) {
+        std::swap(U_fine.values, U_fine_next.values);
+      }
+
+      if (has_fine) {
+        restrict_fine_to_coarse(U, U_fine, projection_fine_on_coarse);
+      }
 
       t += dt;
       ++step;
 
       if (step % cfg.output_stride == 0 || step == cfg.max_steps ||
           t >= cfg.t_final - 1e-12) {
-        write_step_outputs(U, fluid_dev, density, pressure, mach_field,
-                           cfg.gamma, output_dir, step);
+        if (has_fine) {
+          auto fine_src = make_subview(U_fine, fine_active, "fine_active_src");
+          auto fine_dst = make_subview(U_fine_active, fine_active,
+                                       "fine_active_dst");
+          copy_subview_device(fine_dst, fine_src, ctx);
+        }
+
+        write_step_outputs(fluid_dev,
+                           density,
+                           pressure,
+                           mach_field,
+                           cfg.gamma,
+                           output_dir,
+                           step,
+                           has_fine ? &fine_active : nullptr,
+                           has_fine ? &density_fine : nullptr,
+                           has_fine ? &pressure_fine : nullptr,
+                           has_fine ? &mach_fine : nullptr,
+                           &U,
+                           has_fine ? &U_fine_active : nullptr);
+
         const double total_mass = compute_total_mass(U);
         std::cout << "step=" << step
                   << " t=" << t

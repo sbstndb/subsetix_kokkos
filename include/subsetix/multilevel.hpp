@@ -161,11 +161,9 @@ inline MultilevelFieldHost<T> deep_copy_to_host(const MultilevelFieldDevice<T>& 
 
     h_view.values =
         Kokkos::create_mirror_view_and_copy(csr::HostMemorySpace{}, d_view.values);
-    h_view.label = d_view.label;
   }
 
   return host_field;
 }
 
 } // namespace subsetix
-
