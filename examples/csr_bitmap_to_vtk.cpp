@@ -111,8 +111,18 @@ int main(int argc, char* argv[]) {
       h_mask = fallback_smiley();
     }
 
+    // Flip Y so that PBM top row maps to highest Y visually (avoid upside-down render).
+    Kokkos::View<std::uint8_t**, HostMemorySpace> h_mask_flipped(
+        "pbm_mask_flipped", h_mask.extent(0), h_mask.extent(1));
+    for (std::size_t y = 0; y < h_mask.extent(0); ++y) {
+      const std::size_t src_y = h_mask.extent(0) - 1 - y;
+      for (std::size_t x = 0; x < h_mask.extent(1); ++x) {
+        h_mask_flipped(y, x) = h_mask(src_y, x);
+      }
+    }
+
     auto d_mask = Kokkos::create_mirror_view_and_copy(
-        DeviceMemorySpace{}, h_mask);
+        DeviceMemorySpace{}, h_mask_flipped);
 
     auto geom_dev = make_bitmap_device(d_mask, 0, 0, 1);
     auto geom_host = build_host_from_device(geom_dev);
