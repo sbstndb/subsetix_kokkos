@@ -96,3 +96,12 @@ target_link_libraries(field_subview_overlap_stencil
     PRIVATE
         subsetix_core
 )
+
+add_executable(amr_advection_2d
+    amr_advection/amr_advection_2d.cpp
+)
+
+target_link_libraries(amr_advection_2d
+    PRIVATE
+        subsetix_core
+)
