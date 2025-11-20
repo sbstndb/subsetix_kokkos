@@ -44,7 +44,6 @@ using subsetix::csr::make_disk_device;
 using subsetix::csr::make_bitmap_device;
 using subsetix::csr::set_difference_device;
 using subsetix::csr::detail::FieldReadAccessor;
-using subsetix::csr::detail::build_mask_interval_to_row_mapping;
 using subsetix::csr::detail::build_mask_field_mapping;
 using subsetix::csr::Interval;
 using subsetix::csr::copy_subview_device;
@@ -431,219 +430,156 @@ void restrict_fine_to_coarse(Field2DDevice<Conserved>& coarse_field,
   Kokkos::DefaultExecutionSpace().fence();
 }
 
-void update_solution_fine(const Field2DDevice<Conserved>& U_fine,
-                          Field2DDevice<Conserved>& U_fine_next,
-                          const IntervalSet2DDevice& active_region,
-                          FieldReadAccessor<Conserved> acc_fine,
-                          const FieldReadAccessor<Conserved>& acc_coarse,
-                          const Box2D& fine_domain,
-                          const Conserved& inflow,
-                          double gamma,
-                          double dt,
-                          double dx,
-                          double dy,
-                          bool no_slip) {
-  if (active_region.num_rows == 0 || active_region.num_intervals == 0) {
-    return;
+struct CoarseEulerStencil {
+  FieldReadAccessor<Conserved> acc;
+  Box2D domain;
+  Conserved inflow;
+  double gamma;
+  double dt;
+  double dx;
+  double dy;
+  bool no_slip = false;
+
+  KOKKOS_INLINE_FUNCTION
+  Conserved operator()(Coord x, Coord y,
+                       std::size_t linear_index,
+                       int field_interval_idx,
+                       const subsetix::csr::detail::FieldStencilContext<Conserved>& ctx) const {
+    (void)field_interval_idx;
+    const Conserved center = ctx.center(linear_index);
+    const Primitive q_center = cons_to_prim(center, gamma);
+
+    const Conserved left_state =
+        sample_neighbor(center, x, y, -1, 0, acc, domain,
+                        inflow, gamma, no_slip);
+    const Conserved right_state =
+        sample_neighbor(center, x, y, +1, 0, acc, domain,
+                        inflow, gamma, no_slip);
+    const Conserved down_state =
+        sample_neighbor(center, x, y, 0, -1, acc, domain,
+                        inflow, gamma, no_slip);
+    const Conserved up_state =
+        sample_neighbor(center, x, y, 0, +1, acc, domain,
+                        inflow, gamma, no_slip);
+
+    const Primitive q_left = cons_to_prim(left_state, gamma);
+    const Primitive q_right = cons_to_prim(right_state, gamma);
+    const Primitive q_down = cons_to_prim(down_state, gamma);
+    const Primitive q_up = cons_to_prim(up_state, gamma);
+
+    const Conserved flux_w =
+        rusanov_flux_x(left_state, center, q_left,
+                       q_center, gamma);
+    const Conserved flux_e =
+        rusanov_flux_x(center, right_state, q_center,
+                       q_right, gamma);
+    const Conserved flux_s =
+        rusanov_flux_y(down_state, center, q_down,
+                       q_center, gamma);
+    const Conserved flux_n =
+        rusanov_flux_y(center, up_state, q_center,
+                       q_up, gamma);
+
+    Conserved updated;
+    updated.rho =
+        center.rho -
+        (dt / dx) * (flux_e.rho - flux_w.rho) -
+        (dt / dy) * (flux_n.rho - flux_s.rho);
+    updated.rhou =
+        center.rhou -
+        (dt / dx) * (flux_e.rhou - flux_w.rhou) -
+        (dt / dy) * (flux_n.rhou - flux_s.rhou);
+    updated.rhov =
+        center.rhov -
+        (dt / dx) * (flux_e.rhov - flux_w.rhov) -
+        (dt / dy) * (flux_n.rhov - flux_s.rhov);
+    updated.E =
+        center.E -
+        (dt / dx) * (flux_e.E - flux_w.E) -
+        (dt / dy) * (flux_n.E - flux_s.E);
+    return updated;
   }
+};
 
-  const auto mapping =
-      build_mask_field_mapping(U_fine, active_region);
-  auto interval_to_row = mapping.interval_to_row;
-  auto interval_to_field_interval = mapping.interval_to_field_interval;
-  auto row_map = mapping.row_map;
+struct FineEulerStencil {
+  FieldReadAccessor<Conserved> acc_fine;
+  FieldReadAccessor<Conserved> acc_coarse;
+  Box2D fine_domain;
+  Conserved inflow;
+  double gamma;
+  double dt;
+  double dx;
+  double dy;
+  bool no_slip = false;
 
-  auto mask_row_keys = active_region.row_keys;
-  auto mask_intervals = active_region.intervals;
+  KOKKOS_INLINE_FUNCTION
+  Conserved operator()(Coord x, Coord y,
+                       std::size_t linear_index,
+                       int field_interval_idx,
+                       const subsetix::csr::detail::FieldStencilContext<Conserved>& ctx) const {
+    (void)field_interval_idx;
+    const Conserved center = ctx.center(linear_index);
+    const Primitive q_center = cons_to_prim(center, gamma);
 
-  auto field_intervals = U_fine.geometry.intervals;
-  auto field_offsets = U_fine.geometry.cell_offsets;
-  auto values_in = U_fine.values;
-  auto values_out = U_fine_next.values;
+    const Conserved left_state =
+        sample_neighbor_with_coarse(center, x, y, -1, 0,
+                                    acc_fine, &acc_coarse,
+                                    fine_domain, inflow,
+                                    gamma, no_slip);
+    const Conserved right_state =
+        sample_neighbor_with_coarse(center, x, y, +1, 0,
+                                    acc_fine, &acc_coarse,
+                                    fine_domain, inflow,
+                                    gamma, no_slip);
+    const Conserved down_state =
+        sample_neighbor_with_coarse(center, x, y, 0, -1,
+                                    acc_fine, &acc_coarse,
+                                    fine_domain, inflow,
+                                    gamma, no_slip);
+    const Conserved up_state =
+        sample_neighbor_with_coarse(center, x, y, 0, +1,
+                                    acc_fine, &acc_coarse,
+                                    fine_domain, inflow,
+                                    gamma, no_slip);
 
-  Kokkos::parallel_for(
-      "mach2_cylinder_update_fine",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
-          0, static_cast<int>(active_region.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
-        const int row_idx = interval_to_row(interval_idx);
-        const int field_row = row_map(row_idx);
-        if (row_idx < 0 || field_row < 0) {
-          return;
-        }
+    const Primitive q_left = cons_to_prim(left_state, gamma);
+    const Primitive q_right = cons_to_prim(right_state, gamma);
+    const Primitive q_down = cons_to_prim(down_state, gamma);
+    const Primitive q_up = cons_to_prim(up_state, gamma);
 
-        const int field_interval_idx =
-            interval_to_field_interval(interval_idx);
-        if (field_interval_idx < 0) {
-          return;
-        }
+    const Conserved flux_w =
+        rusanov_flux_x(left_state, center, q_left,
+                       q_center, gamma);
+    const Conserved flux_e =
+        rusanov_flux_x(center, right_state, q_center,
+                       q_right, gamma);
+    const Conserved flux_s =
+        rusanov_flux_y(down_state, center, q_down,
+                       q_center, gamma);
+    const Conserved flux_n =
+        rusanov_flux_y(center, up_state, q_center,
+                       q_up, gamma);
 
-        const Interval mask_iv = mask_intervals(interval_idx);
-        const Interval iv = field_intervals(field_interval_idx);
-        const std::size_t base = field_offsets(field_interval_idx);
-        const Coord y = mask_row_keys(row_idx).y;
-
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
-          const std::size_t idx =
-              base + static_cast<std::size_t>(x - iv.begin);
-
-          const Conserved center = values_in(idx);
-          const Primitive q_center = cons_to_prim(center, gamma);
-
-          const Conserved left_state =
-              sample_neighbor_with_coarse(center, x, y, -1, 0,
-                                          acc_fine, &acc_coarse,
-                                          fine_domain, inflow,
-                                          gamma, no_slip);
-          const Conserved right_state =
-              sample_neighbor_with_coarse(center, x, y, +1, 0,
-                                          acc_fine, &acc_coarse,
-                                          fine_domain, inflow,
-                                          gamma, no_slip);
-          const Conserved down_state =
-              sample_neighbor_with_coarse(center, x, y, 0, -1,
-                                          acc_fine, &acc_coarse,
-                                          fine_domain, inflow,
-                                          gamma, no_slip);
-          const Conserved up_state =
-              sample_neighbor_with_coarse(center, x, y, 0, +1,
-                                          acc_fine, &acc_coarse,
-                                          fine_domain, inflow,
-                                          gamma, no_slip);
-
-          const Primitive q_left = cons_to_prim(left_state, gamma);
-          const Primitive q_right = cons_to_prim(right_state, gamma);
-          const Primitive q_down = cons_to_prim(down_state, gamma);
-          const Primitive q_up = cons_to_prim(up_state, gamma);
-
-          const Conserved flux_w =
-              rusanov_flux_x(left_state, center, q_left,
-                             q_center, gamma);
-          const Conserved flux_e =
-              rusanov_flux_x(center, right_state, q_center,
-                             q_right, gamma);
-          const Conserved flux_s =
-              rusanov_flux_y(down_state, center, q_down,
-                             q_center, gamma);
-          const Conserved flux_n =
-              rusanov_flux_y(center, up_state, q_center,
-                             q_up, gamma);
-
-          Conserved updated;
-          updated.rho =
-              center.rho -
-              (dt / dx) * (flux_e.rho - flux_w.rho) -
-              (dt / dy) * (flux_n.rho - flux_s.rho);
-          updated.rhou =
-              center.rhou -
-              (dt / dx) * (flux_e.rhou - flux_w.rhou) -
-              (dt / dy) * (flux_n.rhou - flux_s.rhou);
-          updated.rhov =
-              center.rhov -
-              (dt / dx) * (flux_e.rhov - flux_w.rhov) -
-              (dt / dy) * (flux_n.rhov - flux_s.rhov);
-          updated.E =
-              center.E -
-              (dt / dx) * (flux_e.E - flux_w.E) -
-              (dt / dy) * (flux_n.E - flux_s.E);
-
-          values_out(idx) = updated;
-        }
-      });
-  Kokkos::DefaultExecutionSpace().fence();
-}
-
-void update_solution(const Field2DDevice<Conserved>& U,
-                     Field2DDevice<Conserved>& U_next,
-                     const IntervalSet2DDevice& geom,
-                     const Box2D& domain,
-                     FieldReadAccessor<Conserved> acc,
-                     const Kokkos::View<int*, subsetix::csr::DeviceMemorySpace>& interval_to_row,
-                     const Conserved& inflow,
-                     double gamma,
-                     double dt,
-                     double dx,
-                     double dy,
-                     bool no_slip) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
-
-  auto row_keys = geom.row_keys;
-  auto intervals = geom.intervals;
-  auto offsets = geom.cell_offsets;
-
-  auto values_in = U.values;
-  auto values_out = U_next.values;
-
-  Kokkos::parallel_for(
-      "mach2_cylinder_update",
-      Kokkos::RangePolicy<ExecSpace>(
-          0, static_cast<int>(geom.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
-        const int row_idx = interval_to_row(interval_idx);
-        const Coord y = row_keys(row_idx).y;
-        const auto iv = intervals(interval_idx);
-        const std::size_t base = offsets(interval_idx);
-
-        for (Coord x = iv.begin; x < iv.end; ++x) {
-          const std::size_t idx =
-              base + static_cast<std::size_t>(x - iv.begin);
-
-          const Conserved center = values_in(idx);
-          const Primitive q_center = cons_to_prim(center, gamma);
-
-          const Conserved left_state =
-              sample_neighbor(center, x, y, -1, 0, acc, domain,
-                              inflow, gamma, no_slip);
-          const Conserved right_state =
-              sample_neighbor(center, x, y, +1, 0, acc, domain,
-                              inflow, gamma, no_slip);
-          const Conserved down_state =
-              sample_neighbor(center, x, y, 0, -1, acc, domain,
-                              inflow, gamma, no_slip);
-          const Conserved up_state =
-              sample_neighbor(center, x, y, 0, +1, acc, domain,
-                              inflow, gamma, no_slip);
-
-          const Primitive q_left = cons_to_prim(left_state, gamma);
-          const Primitive q_right = cons_to_prim(right_state, gamma);
-          const Primitive q_down = cons_to_prim(down_state, gamma);
-          const Primitive q_up = cons_to_prim(up_state, gamma);
-
-          const Conserved flux_w =
-              rusanov_flux_x(left_state, center, q_left,
-                             q_center, gamma);
-          const Conserved flux_e =
-              rusanov_flux_x(center, right_state, q_center,
-                             q_right, gamma);
-          const Conserved flux_s =
-              rusanov_flux_y(down_state, center, q_down,
-                             q_center, gamma);
-          const Conserved flux_n =
-              rusanov_flux_y(center, up_state, q_center,
-                             q_up, gamma);
-
-          Conserved updated;
-          updated.rho =
-              center.rho -
-              (dt / dx) * (flux_e.rho - flux_w.rho) -
-              (dt / dy) * (flux_n.rho - flux_s.rho);
-          updated.rhou =
-              center.rhou -
-              (dt / dx) * (flux_e.rhou - flux_w.rhou) -
-              (dt / dy) * (flux_n.rhou - flux_s.rhou);
-          updated.rhov =
-              center.rhov -
-              (dt / dx) * (flux_e.rhov - flux_w.rhov) -
-              (dt / dy) * (flux_n.rhov - flux_s.rhov);
-          updated.E =
-              center.E -
-              (dt / dx) * (flux_e.E - flux_w.E) -
-              (dt / dy) * (flux_n.E - flux_s.E);
-
-          values_out(idx) = updated;
-        }
-      });
-}
+    Conserved updated;
+    updated.rho =
+        center.rho -
+        (dt / dx) * (flux_e.rho - flux_w.rho) -
+        (dt / dy) * (flux_n.rho - flux_s.rho);
+    updated.rhou =
+        center.rhou -
+        (dt / dx) * (flux_e.rhou - flux_w.rhou) -
+        (dt / dy) * (flux_n.rhou - flux_s.rhou);
+    updated.rhov =
+        center.rhov -
+        (dt / dx) * (flux_e.rhov - flux_w.rhov) -
+        (dt / dy) * (flux_n.rhov - flux_s.rhov);
+    updated.E =
+        center.E -
+        (dt / dx) * (flux_e.E - flux_w.E) -
+        (dt / dy) * (flux_n.E - flux_s.E);
+    return updated;
+  }
+};
 
 void compute_diagnostics(const Field2DDevice<Conserved>& U,
                          Field2DDevice<double>& density,
@@ -956,8 +892,6 @@ int main(int argc, char* argv[]) {
     set_difference_device(domain_dev, obstacle_dev, fluid_dev, ctx);
     subsetix::csr::compute_cell_offsets_device(fluid_dev);
 
-    auto interval_to_row = build_mask_interval_to_row_mapping(fluid_dev);
-
     IntervalSet2DDevice fine_active;
     IntervalSet2DDevice fine_with_guard;
     IntervalSet2DDevice fine_guard;
@@ -1120,16 +1054,16 @@ int main(int argc, char* argv[]) {
       }
 
       if (has_fine) {
-        update_solution_fine(U_fine, U_fine_next, fine_active,
-                             acc_fine, acc_coarse, fine_domain,
-                             inflow, cfg.gamma, dt, dx_fine, dy_fine,
-                             cfg.no_slip);
+        FineEulerStencil fine_stencil{acc_fine, acc_coarse, fine_domain,
+                                      inflow, cfg.gamma, dt, dx_fine, dy_fine,
+                                      cfg.no_slip};
+        apply_stencil_on_set_device(U_fine_next, U_fine, fine_active,
+                                    fine_stencil);
       }
 
-      update_solution(U, U_next, fluid_dev, domain, acc_coarse,
-                      interval_to_row, inflow, cfg.gamma,
-                      dt, dx, dy, cfg.no_slip);
-      Kokkos::DefaultExecutionSpace().fence();
+      CoarseEulerStencil coarse_stencil{acc_coarse, domain, inflow,
+                                        cfg.gamma, dt, dx, dy, cfg.no_slip};
+      apply_stencil_on_set_device(U_next, U, fluid_dev, coarse_stencil);
 
       std::swap(U.values, U_next.values);
       if (has_fine) {
