@@ -3,8 +3,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstddef>
-#include <vector>
 #include <cmath>
+#include <string>
+#include <vector>
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Random.hpp>
@@ -266,10 +267,22 @@ struct Box2D {
   Coord y_max = 0; // half-open: [y_min, y_max)
 };
 
+struct HollowBox2D {
+  Box2D outer;
+  Box2D inner; // must be inside outer; empty frame if not.
+};
+
 struct Disk2D {
   Coord cx = 0;
   Coord cy = 0;
   Coord radius = 0; // radius in cell units (integer)
+};
+
+struct HollowDisk2D {
+  Coord cx = 0;
+  Coord cy = 0;
+  Coord outer_radius = 0;
+  Coord inner_radius = 0; // hole radius; if <= 0 behaves like a solid disk.
 };
 
 struct Domain2D {
@@ -280,6 +293,102 @@ struct Domain2D {
 };
 
 using ExecSpace = Kokkos::DefaultExecutionSpace;
+
+template <class ComputeRowFunctor, class FillRowFunctor>
+inline IntervalSet2DDevice
+build_interval_set_from_rows(std::size_t num_rows,
+                             const std::string& label_prefix,
+                             ComputeRowFunctor compute_row,
+                             FillRowFunctor fill_row) {
+  IntervalSet2DDevice dev;
+
+  if (num_rows == 0) {
+    return dev;
+  }
+
+  dev.num_rows = num_rows;
+
+  const auto make_label = [&](const char* suffix) {
+    return label_prefix + suffix;
+  };
+
+  typename IntervalSet2DDevice::RowKeyView row_keys(
+      make_label("_row_keys"), num_rows);
+  typename IntervalSet2DDevice::IndexView row_ptr(
+      make_label("_row_ptr"), num_rows + 1);
+  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
+      make_label("_row_counts"), num_rows);
+
+  Kokkos::parallel_for(
+      make_label("_rows"),
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        RowKey2D key{};
+        std::size_t count = 0;
+        compute_row(i, key, count);
+        row_keys(i) = key;
+        row_counts(i) = count;
+      });
+
+  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
+      make_label("_total_intervals"));
+
+  Kokkos::parallel_scan(
+      make_label("_scan"),
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
+      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update,
+                    const bool final_pass) {
+        const std::size_t c = row_counts(i);
+        if (final_pass) {
+          row_ptr(i) = update;
+          if (i + 1 == num_rows) {
+            const std::size_t end = update + c;
+            row_ptr(num_rows) = end;
+            total_intervals() = end;
+          }
+        }
+        update += c;
+      });
+
+  ExecSpace().fence();
+
+  std::size_t num_intervals_host = 0;
+  Kokkos::deep_copy(num_intervals_host, total_intervals);
+
+  dev.num_intervals = num_intervals_host;
+
+  if (num_intervals_host == 0) {
+    dev.row_keys = row_keys;
+    dev.row_ptr = row_ptr;
+    dev.intervals = typename IntervalSet2DDevice::IntervalView();
+    return dev;
+  }
+
+  typename IntervalSet2DDevice::IntervalView intervals(
+      make_label("_intervals"), num_intervals_host);
+
+  Kokkos::parallel_for(
+      make_label("_fill"),
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const std::size_t count = row_counts(i);
+        if (count == 0) {
+          return;
+        }
+
+        const std::size_t offset = row_ptr(i);
+        fill_row(i, count, offset, intervals);
+      });
+
+  ExecSpace().fence();
+
+  dev.row_keys = row_keys;
+  dev.row_ptr = row_ptr;
+  dev.intervals = intervals;
+  compute_cell_offsets_device(dev);
+
+  return dev;
+}
 
 /**
  * @brief Build a filled axis-aligned rectangle on device.
@@ -329,6 +438,104 @@ make_box_device(const Box2D& box) {
   return dev;
 }
 
+inline IntervalSet2DDevice
+make_hollow_box_device(const HollowBox2D& frame) {
+  IntervalSet2DDevice dev;
+
+  const Box2D& outer = frame.outer;
+  const Box2D& inner = frame.inner;
+
+  if (outer.x_min >= outer.x_max || outer.y_min >= outer.y_max) {
+    return dev;
+  }
+
+  // Inner box must be strictly inside to produce a frame; otherwise fall back to solid box.
+  const bool inner_valid =
+      (inner.x_min > outer.x_min && inner.x_max < outer.x_max &&
+       inner.y_min > outer.y_min && inner.y_max < outer.y_max &&
+       inner.x_min < inner.x_max && inner.y_min < inner.y_max);
+
+  if (!inner_valid) {
+    return make_box_device(outer);
+  }
+
+  const std::size_t num_rows =
+      static_cast<std::size_t>(outer.y_max - outer.y_min);
+
+  const Coord x_min = outer.x_min;
+  const Coord x_max = outer.x_max;
+  const Coord y_min = outer.y_min;
+  const Coord inner_x_min = inner.x_min;
+  const Coord inner_x_max = inner.x_max;
+  const Coord inner_y_min = inner.y_min;
+  const Coord inner_y_max = inner.y_max;
+  const std::string prefix = "subsetix_csr_hollow_box";
+
+  Kokkos::View<Coord*, DeviceMemorySpace> left_begin(
+      (prefix + "_left_begin"), num_rows);
+  Kokkos::View<Coord*, DeviceMemorySpace> left_end(
+      (prefix + "_left_end"), num_rows);
+  Kokkos::View<Coord*, DeviceMemorySpace> right_begin(
+      (prefix + "_right_begin"), num_rows);
+  Kokkos::View<Coord*, DeviceMemorySpace> right_end(
+      (prefix + "_right_end"), num_rows);
+
+  auto compute_row = [=] KOKKOS_FUNCTION(const std::size_t i,
+                                         RowKey2D& key,
+                                         std::size_t& count) {
+    const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
+    key = RowKey2D{y};
+
+    const bool in_vertical_hole = (y >= inner_y_min && y < inner_y_max);
+
+    if (!in_vertical_hole) {
+      left_begin(i) = x_min;
+      left_end(i) = x_max;
+      count = 1;
+      return;
+    }
+
+    std::size_t local_count = 0;
+    if (x_min < inner_x_min) {
+      left_begin(i) = x_min;
+      left_end(i) = inner_x_min;
+      ++local_count;
+    }
+    if (inner_x_max < x_max) {
+      right_begin(i) = inner_x_max;
+      right_end(i) = x_max;
+      ++local_count;
+    }
+
+    count = local_count;
+  };
+
+  auto fill_row = [=] KOKKOS_FUNCTION(
+                       const std::size_t i,
+                       const std::size_t count,
+                       const std::size_t offset,
+                       IntervalSet2DDevice::IntervalView intervals) {
+    if (count == 0) {
+      return;
+    }
+
+    std::size_t idx = 0;
+    const bool has_left = (left_end(i) > left_begin(i));
+    if (has_left) {
+      intervals(offset + idx) = Interval{left_begin(i), left_end(i)};
+      ++idx;
+    }
+
+    const bool has_right = (count > idx);
+    if (has_right) {
+      intervals(offset + idx) = Interval{right_begin(i), right_end(i)};
+    }
+  };
+
+  return build_interval_set_from_rows(
+      num_rows, prefix, compute_row, fill_row);
+}
+
 /**
  * @brief Build a discrete disk (filled circle) on device.
  *
@@ -348,16 +555,6 @@ make_disk_device(const Disk2D& disk) {
   const std::size_t num_rows =
       static_cast<std::size_t>(y_max - y_min);
 
-  dev.num_rows = num_rows;
-
-  typename IntervalSet2DDevice::RowKeyView row_keys(
-      "subsetix_csr_disk_row_keys", num_rows);
-  typename IntervalSet2DDevice::IndexView row_ptr(
-      "subsetix_csr_disk_row_ptr", num_rows + 1);
-
-  // Per-row markers and temporary per-row interval bounds.
-  Kokkos::View<int*, DeviceMemorySpace> has_interval(
-      "subsetix_csr_disk_has_interval", num_rows);
   Kokkos::View<Coord*, DeviceMemorySpace> x_begin(
       "subsetix_csr_disk_x_begin", num_rows);
   Kokkos::View<Coord*, DeviceMemorySpace> x_end(
@@ -366,93 +563,153 @@ make_disk_device(const Disk2D& disk) {
   const Coord cx = disk.cx;
   const Coord cy = disk.cy;
   const Coord radius = disk.radius;
+  const std::string prefix = "subsetix_csr_disk";
 
-  // 1) Decide for each row whether it intersects the disk.
-  Kokkos::parallel_for(
-      "subsetix_csr_disk_rows",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
-        row_keys(i) = RowKey2D{y};
+  auto compute_row = [=] KOKKOS_FUNCTION(const std::size_t i,
+                                         RowKey2D& key,
+                                         std::size_t& count) {
+    const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
+    key = RowKey2D{y};
 
-        const Coord dy = y - cy;
-        const long long d2 =
-            static_cast<long long>(dy) * static_cast<long long>(dy);
-        const long long r2 =
-            static_cast<long long>(radius) * static_cast<long long>(radius);
+    const Coord dy = y - cy;
+    const long long d2 =
+        static_cast<long long>(dy) * static_cast<long long>(dy);
+    const long long r2 =
+        static_cast<long long>(radius) * static_cast<long long>(radius);
 
-        if (d2 > r2) {
-          has_interval(i) = 0;
-          return;
-        }
+    if (d2 > r2) {
+      count = 0;
+      return;
+    }
 
-        has_interval(i) = 1;
-        const double dx = std::sqrt(static_cast<double>(r2 - d2));
-        const Coord half_width = static_cast<Coord>(dx);
-        const Coord xb = cx - half_width;
-        const Coord xe = cx + half_width + 1;
-        x_begin(i) = xb;
-        x_end(i) = xe;
-      });
+    const double dx = std::sqrt(static_cast<double>(r2 - d2));
+    const Coord half_width = static_cast<Coord>(dx);
+    x_begin(i) = cx - half_width;
+    x_end(i) = cx + half_width + 1;
+    count = 1;
+  };
 
-  // 2) Exclusive scan over rows to build row_ptr and get total intervals.
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_disk_total_intervals");
+  auto fill_row = [=] KOKKOS_FUNCTION(
+                       const std::size_t i,
+                       const std::size_t count,
+                       const std::size_t offset,
+                       IntervalSet2DDevice::IntervalView intervals) {
+    (void)count;
+    intervals(offset) = Interval{x_begin(i), x_end(i)};
+  };
 
-  Kokkos::parallel_scan(
-      "subsetix_csr_disk_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c =
-            static_cast<std::size_t>(has_interval(i) ? 1 : 0);
-        if (final_pass) {
-          row_ptr(i) = update;
-          if (i + 1 == num_rows) {
-            row_ptr(num_rows) = update + c;
-            total_intervals() = update + c;
-          }
-        }
-        update += c;
-      });
+  return build_interval_set_from_rows(
+      num_rows, prefix, compute_row, fill_row);
+}
 
-  ExecSpace().fence();
+inline IntervalSet2DDevice
+make_hollow_disk_device(const HollowDisk2D& disk) {
+  IntervalSet2DDevice dev;
 
-  std::size_t num_intervals_host = 0;
-  Kokkos::deep_copy(num_intervals_host, total_intervals);
-
-  dev.num_intervals = num_intervals_host;
-
-  if (num_intervals_host == 0) {
-    dev.row_keys = row_keys;
-    dev.row_ptr = row_ptr;
-    dev.intervals = typename IntervalSet2DDevice::IntervalView();
+  if (disk.outer_radius <= 0) {
     return dev;
   }
 
-  typename IntervalSet2DDevice::IntervalView intervals(
-      "subsetix_csr_disk_intervals", num_intervals_host);
+  const Coord inner_radius = (disk.inner_radius < 0) ? 0 : disk.inner_radius;
+  if (inner_radius >= disk.outer_radius) {
+    return dev;
+  }
 
-  // 3) Fill intervals at the offsets determined by row_ptr.
-  Kokkos::parallel_for(
-      "subsetix_csr_disk_fill",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        if (!has_interval(i)) {
-          return;
-        }
-        const std::size_t offset = row_ptr(i);
-        intervals(offset) = Interval{x_begin(i), x_end(i)};
-      });
+  const Coord y_min = disk.cy - disk.outer_radius;
+  const Coord y_max = disk.cy + disk.outer_radius + 1;
+  const std::size_t num_rows =
+      static_cast<std::size_t>(y_max - y_min);
 
-  ExecSpace().fence();
+  Kokkos::View<Coord*, DeviceMemorySpace> left_begin(
+      "subsetix_csr_hollow_disk_left_begin", num_rows);
+  Kokkos::View<Coord*, DeviceMemorySpace> left_end(
+      "subsetix_csr_hollow_disk_left_end", num_rows);
+  Kokkos::View<Coord*, DeviceMemorySpace> right_begin(
+      "subsetix_csr_hollow_disk_right_begin", num_rows);
+  Kokkos::View<Coord*, DeviceMemorySpace> right_end(
+      "subsetix_csr_hollow_disk_right_end", num_rows);
 
-  dev.row_keys = row_keys;
-  dev.row_ptr = row_ptr;
-  dev.intervals = intervals;
-  compute_cell_offsets_device(dev);
+  const Coord cx = disk.cx;
+  const Coord cy = disk.cy;
+  const Coord outer_radius = disk.outer_radius;
+  const std::string prefix = "subsetix_csr_hollow_disk";
 
-  return dev;
+  auto compute_row = [=] KOKKOS_FUNCTION(const std::size_t i,
+                                         RowKey2D& key,
+                                         std::size_t& count) {
+    const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
+    key = RowKey2D{y};
+
+    const Coord dy = y - cy;
+    const long long dy2 =
+        static_cast<long long>(dy) * static_cast<long long>(dy);
+    const long long outer2 =
+        static_cast<long long>(outer_radius) * static_cast<long long>(outer_radius);
+
+    if (dy2 > outer2) {
+      count = 0;
+      return;
+    }
+
+    const long long inner2 =
+        static_cast<long long>(inner_radius) * static_cast<long long>(inner_radius);
+
+    const Coord outer_half =
+        static_cast<Coord>(std::sqrt(static_cast<double>(outer2 - dy2)));
+    const Coord outer_x0 = cx - outer_half;
+    const Coord outer_x1 = cx + outer_half + 1;
+
+    if (inner_radius == 0 || dy2 >= inner2) {
+      left_begin(i) = outer_x0;
+      left_end(i) = outer_x1;
+      count = 1;
+      return;
+    }
+
+    const Coord inner_half =
+        static_cast<Coord>(std::sqrt(static_cast<double>(inner2 - dy2)));
+    const Coord inner_x0 = cx - inner_half;
+    const Coord inner_x1 = cx + inner_half + 1;
+
+    std::size_t local_count = 0;
+    if (outer_x0 < inner_x0) {
+      left_begin(i) = outer_x0;
+      left_end(i) = inner_x0;
+      ++local_count;
+    }
+    if (inner_x1 < outer_x1) {
+      right_begin(i) = inner_x1;
+      right_end(i) = outer_x1;
+      ++local_count;
+    }
+
+    count = local_count;
+  };
+
+  auto fill_row = [=] KOKKOS_FUNCTION(
+                       const std::size_t i,
+                       const std::size_t count,
+                       const std::size_t offset,
+                       IntervalSet2DDevice::IntervalView intervals) {
+    if (count == 0) {
+      return;
+    }
+
+    std::size_t idx = 0;
+    const bool has_left = (left_end(i) > left_begin(i));
+    if (has_left) {
+      intervals(offset + idx) = Interval{left_begin(i), left_end(i)};
+      ++idx;
+    }
+
+    const bool has_right = (count > idx);
+    if (has_right) {
+      intervals(offset + idx) = Interval{right_begin(i), right_end(i)};
+    }
+  };
+
+  return build_interval_set_from_rows(
+      num_rows, prefix, compute_row, fill_row);
 }
 
 /**
@@ -483,15 +740,6 @@ make_random_device(const Domain2D& domain,
   const std::size_t num_rows =
       static_cast<std::size_t>(domain.y_max - domain.y_min);
 
-  dev.num_rows = num_rows;
-
-  typename IntervalSet2DDevice::RowKeyView row_keys(
-      "subsetix_csr_rand_row_keys", num_rows);
-  typename IntervalSet2DDevice::IndexView row_ptr(
-      "subsetix_csr_rand_row_ptr", num_rows + 1);
-
-  Kokkos::View<int*, DeviceMemorySpace> has_interval(
-      "subsetix_csr_rand_has_interval", num_rows);
   Kokkos::View<Coord*, DeviceMemorySpace> x_begin(
       "subsetix_csr_rand_x_begin", num_rows);
   Kokkos::View<Coord*, DeviceMemorySpace> x_end(
@@ -503,98 +751,49 @@ make_random_device(const Domain2D& domain,
   const Coord x_max = domain.x_max;
   const Coord y_min = domain.y_min;
   const Coord width = x_max - x_min;
+  const std::string prefix = "subsetix_csr_rand";
 
-  // 1) Generate per-row random intervals (or emptiness) on device.
-  Kokkos::parallel_for(
-      "subsetix_csr_rand_rows",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
-        row_keys(i) = RowKey2D{y};
+  auto compute_row = [=] KOKKOS_FUNCTION(const std::size_t i,
+                                         RowKey2D& key,
+                                         std::size_t& count) {
+    const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
+    key = RowKey2D{y};
 
-        auto state = pool.get_state();
-        const double p = state.drand();
+    auto state = pool.get_state();
+    const double p = state.drand();
 
-        if (p < fill_probability) {
-          has_interval(i) = 1;
-          // Choose a random width in [1, width].
-          const Coord w = static_cast<Coord>(
-              1 + (state.urand() % static_cast<unsigned int>(width)));
-          const Coord max_start = width - w;
-          const Coord offset =
-              (max_start > 0)
-                  ? static_cast<Coord>(state.urand() %
-                                       (static_cast<unsigned int>(max_start) +
-                                        1U))
-                  : 0;
-          const Coord xb = x_min + offset;
-          const Coord xe = xb + w;
-          x_begin(i) = xb;
-          x_end(i) = xe;
-        } else {
-          has_interval(i) = 0;
-        }
+    if (p < fill_probability) {
+      count = 1;
+      const Coord w = static_cast<Coord>(
+          1 + (state.urand() % static_cast<unsigned int>(width)));
+      const Coord max_start = width - w;
+      const Coord offset =
+          (max_start > 0)
+              ? static_cast<Coord>(state.urand() %
+                                   (static_cast<unsigned int>(max_start) +
+                                    1U))
+              : 0;
+      const Coord xb = x_min + offset;
+      x_begin(i) = xb;
+      x_end(i) = xb + w;
+    } else {
+      count = 0;
+    }
 
-        pool.free_state(state);
-      });
+    pool.free_state(state);
+  };
 
-  // 2) Exclusive scan to build row_ptr and total number of intervals.
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_rand_total_intervals");
+  auto fill_row = [=] KOKKOS_FUNCTION(
+                       const std::size_t i,
+                       const std::size_t count,
+                       const std::size_t offset,
+                       IntervalSet2DDevice::IntervalView intervals) {
+    (void)count;
+    intervals(offset) = Interval{x_begin(i), x_end(i)};
+  };
 
-  Kokkos::parallel_scan(
-      "subsetix_csr_rand_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c =
-            static_cast<std::size_t>(has_interval(i) ? 1 : 0);
-        if (final_pass) {
-          row_ptr(i) = update;
-          if (i + 1 == num_rows) {
-            row_ptr(num_rows) = update + c;
-            total_intervals() = update + c;
-          }
-        }
-        update += c;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_intervals_host = 0;
-  Kokkos::deep_copy(num_intervals_host, total_intervals);
-
-  dev.num_intervals = num_intervals_host;
-
-  if (num_intervals_host == 0) {
-    dev.row_keys = row_keys;
-    dev.row_ptr = row_ptr;
-    dev.intervals = typename IntervalSet2DDevice::IntervalView();
-    return dev;
-  }
-
-  typename IntervalSet2DDevice::IntervalView intervals(
-      "subsetix_csr_rand_intervals", num_intervals_host);
-
-  Kokkos::parallel_for(
-      "subsetix_csr_rand_fill",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        if (!has_interval(i)) {
-          return;
-        }
-        const std::size_t offset = row_ptr(i);
-        intervals(offset) = Interval{x_begin(i), x_end(i)};
-      });
-
-  ExecSpace().fence();
-
-  dev.row_keys = row_keys;
-  dev.row_ptr = row_ptr;
-  dev.intervals = intervals;
-  compute_cell_offsets_device(dev);
-
-  return dev;
+  return build_interval_set_from_rows(
+      num_rows, prefix, compute_row, fill_row);
 }
 
 /**
@@ -620,136 +819,77 @@ make_checkerboard_device(const Domain2D& domain, Coord cell_size) {
   const std::size_t num_rows =
       static_cast<std::size_t>(domain.y_max - domain.y_min);
 
-  dev.num_rows = num_rows;
-
-  typename IntervalSet2DDevice::RowKeyView row_keys(
-      "subsetix_csr_chk_row_keys", num_rows);
-  typename IntervalSet2DDevice::IndexView row_ptr(
-      "subsetix_csr_chk_row_ptr", num_rows + 1);
-
-  Kokkos::View<std::size_t*, DeviceMemorySpace> row_counts(
-      "subsetix_csr_chk_row_counts", num_rows);
-
   const Coord x_min = domain.x_min;
   const Coord x_max = domain.x_max;
   const Coord y_min = domain.y_min;
   const Coord width = x_max - x_min;
+  const std::string prefix = "subsetix_csr_chk";
 
-  // 1) Compute per-row counts and row keys.
-  Kokkos::parallel_for(
-      "subsetix_csr_chk_rows",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
-        row_keys(i) = RowKey2D{y};
+  auto compute_row = [=] KOKKOS_FUNCTION(const std::size_t i,
+                                         RowKey2D& key,
+                                         std::size_t& count) {
+    const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
+    key = RowKey2D{y};
 
-        const Coord local_y = static_cast<Coord>(y - y_min);
-        const std::size_t block_y =
-            static_cast<std::size_t>(local_y / cell_size);
+    const Coord local_y = static_cast<Coord>(y - y_min);
+    const std::size_t block_y =
+        static_cast<std::size_t>(local_y / cell_size);
 
-        std::size_t count = 0;
-        if (width > 0) {
-          const std::size_t num_blocks_x =
-              static_cast<std::size_t>(
-                  (static_cast<long long>(width) + cell_size - 1) /
-                  cell_size);
-          for (std::size_t bx = 0; bx < num_blocks_x; ++bx) {
-            const bool filled = (((bx + block_y) & 1U) == 0U);
-            if (filled) {
-              ++count;
-            }
-          }
+    count = 0;
+    if (width > 0) {
+      const std::size_t num_blocks_x =
+          static_cast<std::size_t>(
+              (static_cast<long long>(width) + cell_size - 1) /
+              cell_size);
+      for (std::size_t bx = 0; bx < num_blocks_x; ++bx) {
+        const bool filled = (((bx + block_y) & 1U) == 0U);
+        if (filled) {
+          ++count;
         }
+      }
+    }
+  };
 
-        row_counts(i) = count;
-      });
+  auto fill_row = [=] KOKKOS_FUNCTION(
+                       const std::size_t i,
+                       const std::size_t count,
+                       const std::size_t offset,
+                       IntervalSet2DDevice::IntervalView intervals) {
+    if (count == 0) {
+      return;
+    }
 
-  // 2) Exclusive scan on row_counts to build row_ptr and total intervals.
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      "subsetix_csr_chk_total_intervals");
+    const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
+    const Coord local_y = static_cast<Coord>(y - y_min);
+    const std::size_t block_y =
+        static_cast<std::size_t>(local_y / cell_size);
 
-  Kokkos::parallel_scan(
-      "subsetix_csr_chk_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c = row_counts(i);
-        if (final_pass) {
-          row_ptr(i) = update;
-          if (i + 1 == num_rows) {
-            row_ptr(num_rows) = update + c;
-            total_intervals() = update + c;
-          }
+    std::size_t write_idx = 0;
+    if (width > 0) {
+      const std::size_t num_blocks_x =
+          static_cast<std::size_t>(
+              (static_cast<long long>(width) + cell_size - 1) /
+              cell_size);
+      for (std::size_t bx = 0; bx < num_blocks_x; ++bx) {
+        const bool filled = (((bx + block_y) & 1U) == 0U);
+        if (!filled) {
+          continue;
         }
-        update += c;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_intervals_host = 0;
-  Kokkos::deep_copy(num_intervals_host, total_intervals);
-
-  dev.num_intervals = num_intervals_host;
-
-  if (num_intervals_host == 0) {
-    dev.row_keys = row_keys;
-    dev.row_ptr = row_ptr;
-    dev.intervals = typename IntervalSet2DDevice::IntervalView();
-    return dev;
-  }
-
-  typename IntervalSet2DDevice::IntervalView intervals(
-      "subsetix_csr_chk_intervals", num_intervals_host);
-
-  // 3) Fill intervals on each row using the offsets defined by row_ptr.
-  Kokkos::parallel_for(
-      "subsetix_csr_chk_fill",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const std::size_t count = row_counts(i);
-        if (count == 0) {
-          return;
+        const Coord x0 = static_cast<Coord>(x_min + bx * cell_size);
+        if (x0 >= x_max) {
+          continue;
         }
+        const Coord x1_candidate =
+            static_cast<Coord>(x0 + cell_size);
+        const Coord x1 = (x1_candidate > x_max) ? x_max : x1_candidate;
+        intervals(offset + write_idx) = Interval{x0, x1};
+        ++write_idx;
+      }
+    }
+  };
 
-        const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
-        const std::size_t offset = row_ptr(i);
-
-        const Coord local_y = static_cast<Coord>(y - y_min);
-        const std::size_t block_y =
-            static_cast<std::size_t>(local_y / cell_size);
-
-        std::size_t write_idx = 0;
-        if (width > 0) {
-          const std::size_t num_blocks_x =
-              static_cast<std::size_t>(
-                  (static_cast<long long>(width) + cell_size - 1) /
-                  cell_size);
-          for (std::size_t bx = 0; bx < num_blocks_x; ++bx) {
-            const bool filled = (((bx + block_y) & 1U) == 0U);
-            if (!filled) {
-              continue;
-            }
-            const Coord x0 = static_cast<Coord>(x_min + bx * cell_size);
-            if (x0 >= x_max) {
-              continue;
-            }
-            const Coord x1_candidate =
-                static_cast<Coord>(x0 + cell_size);
-            const Coord x1 = (x1_candidate > x_max) ? x_max : x1_candidate;
-            intervals(offset + write_idx) = Interval{x0, x1};
-            ++write_idx;
-          }
-        }
-      });
-
-  ExecSpace().fence();
-
-  dev.row_keys = row_keys;
-  dev.row_ptr = row_ptr;
-  dev.intervals = intervals;
-  compute_cell_offsets_device(dev);
-
-  return dev;
+  return build_interval_set_from_rows(
+      num_rows, prefix, compute_row, fill_row);
 }
 
 } // namespace csr
