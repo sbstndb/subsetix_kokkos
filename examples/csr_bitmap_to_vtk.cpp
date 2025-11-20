@@ -58,6 +58,34 @@ load_pbm(const std::filesystem::path& path) {
   return mask;
 }
 
+Kokkos::View<std::uint8_t**, HostMemorySpace>
+fallback_smiley() {
+  constexpr std::size_t width = 16;
+  constexpr std::size_t height = 12;
+  const std::uint8_t data[height][width] = {
+      {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0},
+      {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+      {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
+      {0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0},
+      {0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0},
+      {1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1},
+      {1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1},
+      {0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0},
+      {0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0},
+      {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
+      {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+      {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0}};
+
+  Kokkos::View<std::uint8_t**, HostMemorySpace> mask(
+      "pbm_mask_fallback", height, width);
+  for (std::size_t y = 0; y < height; ++y) {
+    for (std::size_t x = 0; x < width; ++x) {
+      mask(y, x) = data[y][x];
+    }
+  }
+  return mask;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -79,7 +107,7 @@ int main(int argc, char* argv[]) {
 
     auto h_mask = load_pbm(asset_path);
     if (h_mask.extent(0) == 0 || h_mask.extent(1) == 0) {
-      return 1;
+      h_mask = fallback_smiley();
     }
 
     Kokkos::View<std::uint8_t**, DeviceMemorySpace> d_mask(
