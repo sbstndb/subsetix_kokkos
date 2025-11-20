@@ -1353,7 +1353,7 @@ int main(int argc, char* argv[]) {
           const std::size_t overlap_rows_cap =
               std::min(amr_new.fine_active.num_rows, fine_active.num_rows);
           const std::size_t overlap_intervals_cap =
-              std::min(amr_new.fine_active.num_intervals, fine_active.num_intervals);
+              amr_new.fine_active.num_intervals + fine_active.num_intervals;
           if (overlap_rows_cap > 0 && overlap_intervals_cap > 0) {
             auto overlap = subsetix::csr::allocate_interval_set_device(
                 overlap_rows_cap, overlap_intervals_cap);
