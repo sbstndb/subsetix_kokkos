@@ -796,6 +796,82 @@ make_random_device(const Domain2D& domain,
       num_rows, prefix, compute_row, fill_row);
 }
 
+template <class MaskView>
+inline IntervalSet2DDevice
+make_bitmap_device(const MaskView& mask,
+                   Coord x_min,
+                   Coord y_min,
+                   std::uint8_t on_value = 1) {
+  using MaskSpace = typename MaskView::memory_space;
+  static_assert(Kokkos::SpaceAccessibility<ExecSpace, MaskSpace>::accessible,
+                "Mask view must be accessible from the default execution space");
+
+  IntervalSet2DDevice dev;
+
+  const std::size_t height = mask.extent(0);
+  const std::size_t width = mask.extent(1);
+  if (height == 0 || width == 0) {
+    return dev;
+  }
+
+  const std::size_t run_capacity = height * width;
+  const std::string prefix = "subsetix_csr_bitmap";
+
+  Kokkos::View<Coord*, DeviceMemorySpace> run_begin(
+      (prefix + "_begin"), run_capacity);
+  Kokkos::View<Coord*, DeviceMemorySpace> run_end(
+      (prefix + "_end"), run_capacity);
+
+  auto compute_row = [=] KOKKOS_FUNCTION(const std::size_t i,
+                                         RowKey2D& key,
+                                         std::size_t& count) {
+    key = RowKey2D{static_cast<Coord>(y_min + static_cast<Coord>(i))};
+    std::size_t base = i * width;
+    std::size_t runs = 0;
+    bool in_run = false;
+    Coord start = 0;
+
+    for (std::size_t j = 0; j < width; ++j) {
+      const bool filled = (mask(i, j) == on_value);
+      if (filled && !in_run) {
+        in_run = true;
+        start = static_cast<Coord>(x_min + static_cast<Coord>(j));
+      } else if (!filled && in_run) {
+        run_begin(base + runs) = start;
+        run_end(base + runs) =
+            static_cast<Coord>(x_min + static_cast<Coord>(j));
+        ++runs;
+        in_run = false;
+      }
+    }
+    if (in_run) {
+      run_begin(base + runs) = start;
+      run_end(base + runs) =
+          static_cast<Coord>(x_min + static_cast<Coord>(width));
+      ++runs;
+    }
+    count = runs;
+  };
+
+  auto fill_row = [=] KOKKOS_FUNCTION(
+                       const std::size_t i,
+                       const std::size_t count,
+                       const std::size_t offset,
+                       IntervalSet2DDevice::IntervalView intervals) {
+    if (count == 0) {
+      return;
+    }
+    const std::size_t base = i * width;
+    for (std::size_t k = 0; k < count; ++k) {
+      intervals(offset + k) =
+          Interval{run_begin(base + k), run_end(base + k)};
+    }
+  };
+
+  return build_interval_set_from_rows(
+      height, prefix, compute_row, fill_row);
+}
+
 /**
  * @brief Build a checkerboard pattern on a rectangular domain.
  *
