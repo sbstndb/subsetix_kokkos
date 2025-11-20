@@ -111,9 +111,8 @@ int main(int argc, char* argv[]) {
       h_mask = fallback_smiley();
     }
 
-    Kokkos::View<std::uint8_t**, DeviceMemorySpace> d_mask(
-        "pbm_mask_dev", h_mask.extent(0), h_mask.extent(1));
-    Kokkos::deep_copy(d_mask, h_mask);
+    auto d_mask = Kokkos::create_mirror_view_and_copy(
+        DeviceMemorySpace{}, h_mask);
 
     auto geom_dev = make_bitmap_device(d_mask, 0, 0, 1);
     auto geom_host = build_host_from_device(geom_dev);
