@@ -103,11 +103,11 @@ int main(int argc, char* argv[]) {
     };
 
     const std::filesystem::path asset_path =
-        std::filesystem::path(__FILE__).parent_path() / "assets" /
-        "smiley.pbm";
+        std::filesystem::path(__FILE__).parent_path() / "output.pbm";
 
     auto h_mask = load_pbm(asset_path);
     if (h_mask.extent(0) == 0 || h_mask.extent(1) == 0) {
+      // Fallback to embedded smiley if the user-supplied PBM is missing.
       h_mask = fallback_smiley();
     }
 
