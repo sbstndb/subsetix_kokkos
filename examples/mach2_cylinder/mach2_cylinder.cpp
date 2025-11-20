@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -51,6 +52,8 @@ using subsetix::csr::copy_subview_device;
 using subsetix::vtk::write_legacy_quads;
 using subsetix::MultilevelGeoDevice;
 using subsetix::MultilevelFieldDevice;
+
+using Clock = std::chrono::steady_clock;
 
 struct Conserved {
   double rho;
@@ -1292,31 +1295,51 @@ int main(int argc, char* argv[]) {
     const FieldReadAccessor<Conserved> acc_coarse = make_accessor(U);
     double dt = compute_dt(U, cfg.gamma, cfg.cfl, dx, dy);
 
+    const auto t_step_begin = Clock::now();
+    double time_prolong_ms = 0.0;
+    double time_fine_ms = 0.0;
+    double time_coarse_ms = 0.0;
+    double time_restrict_ms = 0.0;
+    double time_remesh_ms = 0.0;
+    double time_output_ms = 0.0;
+
     FieldReadAccessor<Conserved> acc_fine;
-      if (has_fine) {
-        prolong_guard_from_coarse(U_fine, fine_guard, acc_coarse);
-        acc_fine = make_accessor(U_fine);
-        const double dt_fine =
-            compute_dt_on_set(U_fine, fine_active, cfg.gamma, cfg.cfl,
-                              dx_fine, dy_fine);
-        dt = std::min(dt, dt_fine);
-      }
+    if (has_fine) {
+      const auto t0 = Clock::now();
+      prolong_guard_from_coarse(U_fine, fine_guard, acc_coarse);
+      const auto t1 = Clock::now();
+      time_prolong_ms +=
+          std::chrono::duration<double, std::milli>(t1 - t0).count();
+      acc_fine = make_accessor(U_fine);
+      const double dt_fine =
+          compute_dt_on_set(U_fine, fine_active, cfg.gamma, cfg.cfl,
+                            dx_fine, dy_fine);
+      dt = std::min(dt, dt_fine);
+    }
 
       if (t + dt > cfg.t_final) {
         dt = cfg.t_final - t;
       }
 
-      if (has_fine) {
-        FineEulerStencil fine_stencil{acc_fine, acc_coarse, fine_domain,
-                                      inflow, cfg.gamma, dt, dx_fine, dy_fine,
-                                      cfg.no_slip};
-        apply_stencil_on_set_device(U_fine_next, U_fine, fine_active,
-                                    fine_stencil);
-      }
+    if (has_fine) {
+      const auto t0 = Clock::now();
+      FineEulerStencil fine_stencil{acc_fine, acc_coarse, fine_domain,
+                                    inflow, cfg.gamma, dt, dx_fine, dy_fine,
+                                    cfg.no_slip};
+      apply_stencil_on_set_device(U_fine_next, U_fine, fine_active,
+                                  fine_stencil);
+      const auto t1 = Clock::now();
+      time_fine_ms +=
+          std::chrono::duration<double, std::milli>(t1 - t0).count();
+    }
 
-      CoarseEulerStencil coarse_stencil{acc_coarse, domain, inflow,
-                                        cfg.gamma, dt, dx, dy, cfg.no_slip};
-      apply_stencil_on_set_device(U_next, U, fluid_dev, coarse_stencil);
+    const auto t0_coarse = Clock::now();
+    CoarseEulerStencil coarse_stencil{acc_coarse, domain, inflow,
+                                      cfg.gamma, dt, dx, dy, cfg.no_slip};
+    apply_stencil_on_set_device(U_next, U, fluid_dev, coarse_stencil);
+    const auto t1_coarse = Clock::now();
+    time_coarse_ms +=
+        std::chrono::duration<double, std::milli>(t1_coarse - t0_coarse).count();
 
     std::swap(U.values, U_next.values);
     if (has_fine) {
@@ -1324,7 +1347,11 @@ int main(int argc, char* argv[]) {
     }
 
     if (has_fine) {
+      const auto t0 = Clock::now();
       restrict_fine_to_coarse(U, U_fine, projection_fine_on_coarse);
+      const auto t1 = Clock::now();
+      time_restrict_ms +=
+          std::chrono::duration<double, std::milli>(t1 - t0).count();
     }
 
     const bool do_remesh = cfg.enable_amr &&
@@ -1336,6 +1363,7 @@ int main(int argc, char* argv[]) {
       const AmrLayout amr_new = build_fine_geometry(
           fluid_dev, coarse_mask_new, static_cast<Coord>(cfg.amr_guard), domain, ctx);
 
+      const auto t_remesh_begin = Clock::now();
       Field2DDevice<Conserved> U_fine_new;
       Field2DDevice<Conserved> U_fine_next_new;
       Field2DDevice<Conserved> U_fine_active_new;
@@ -1393,6 +1421,10 @@ int main(int argc, char* argv[]) {
         pressure_fine = Field2DDevice<double>();
         mach_fine = Field2DDevice<double>();
       }
+      const auto t_remesh_end = Clock::now();
+      time_remesh_ms += std::chrono::duration<double, std::milli>(
+                            t_remesh_end - t_remesh_begin)
+                            .count();
     }
 
     t += dt;
@@ -1405,30 +1437,47 @@ int main(int argc, char* argv[]) {
         auto fine_dst = make_subview(U_fine_active, fine_active,
                                      "fine_active_dst");
         copy_subview_device(fine_dst, fine_src, ctx);
-        }
-
-        write_step_outputs(fluid_dev,
-                           density,
-                           pressure,
-                           mach_field,
-                           cfg.gamma,
-                           output_dir,
-                           step,
-                           has_fine ? &fine_active : nullptr,
-                           has_fine ? &density_fine : nullptr,
-                           has_fine ? &pressure_fine : nullptr,
-                           has_fine ? &mach_fine : nullptr,
-                           &U,
-                           has_fine ? &U_fine_active : nullptr);
-
-        const double total_mass = compute_total_mass(U);
-        std::cout << "step=" << step
-                  << " t=" << t
-                  << " dt=" << dt
-                  << " mass=" << total_mass
-                  << " mass_drift=" << (total_mass - total_mass0)
-                  << "\n";
       }
+
+      const auto t_out_begin = Clock::now();
+      write_step_outputs(fluid_dev,
+                         density,
+                         pressure,
+                         mach_field,
+                         cfg.gamma,
+                         output_dir,
+                         step,
+                         has_fine ? &fine_active : nullptr,
+                         has_fine ? &density_fine : nullptr,
+                         has_fine ? &pressure_fine : nullptr,
+                         has_fine ? &mach_fine : nullptr,
+                         &U,
+                         has_fine ? &U_fine_active : nullptr);
+      const auto t_out_end = Clock::now();
+      time_output_ms += std::chrono::duration<double, std::milli>(
+                            t_out_end - t_out_begin)
+                            .count();
+
+      const double total_mass = compute_total_mass(U);
+      const auto t_step_end = Clock::now();
+      const double time_step_ms = std::chrono::duration<double, std::milli>(
+                                      t_step_end - t_step_begin)
+                                      .count();
+      std::cout << "step=" << step
+                << " t=" << t
+                << " dt=" << dt
+                << " mass=" << total_mass
+                << " mass_drift=" << (total_mass - total_mass0)
+                << " timings_ms:"
+                << " prolong=" << time_prolong_ms
+                << " fine=" << time_fine_ms
+                << " coarse=" << time_coarse_ms
+                << " restrict=" << time_restrict_ms
+                << " remesh=" << time_remesh_ms
+                << " output=" << time_output_ms
+                << " total=" << time_step_ms
+                << "\n";
+    }
     }
   }
   return 0;
