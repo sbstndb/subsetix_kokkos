@@ -3,6 +3,11 @@
 #include <cstddef>
 #include <fstream>
 #include <string>
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <type_traits>
 
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_field.hpp>
@@ -15,6 +20,38 @@ using subsetix::csr::Coord;
 using subsetix::csr::IntervalSet2DHost;
 using subsetix::csr::FieldInterval;
 using subsetix::csr::IntervalField2DHost;
+
+namespace detail {
+
+template <typename T>
+inline T byte_swap(T value) {
+  static_assert(std::is_trivially_copyable<T>::value,
+                "byte_swap requires trivially copyable type");
+  std::array<unsigned char, sizeof(T)> bytes{};
+  std::memcpy(bytes.data(), &value, sizeof(T));
+  std::reverse(bytes.begin(), bytes.end());
+  T out{};
+  std::memcpy(&out, bytes.data(), sizeof(T));
+  return out;
+}
+
+template <typename T>
+inline T to_big_endian(T value) {
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+  return value;
+#else
+  return byte_swap(value);
+#endif
+}
+
+template <typename T>
+inline void write_binary(std::ofstream& ofs, T value) {
+  const T be = to_big_endian(value);
+  ofs.write(reinterpret_cast<const char*>(&be), sizeof(T));
+}
+
+} // namespace detail
 
 /**
  * @brief Export a CSR 2D interval set to a legacy VTK unstructured grid (.vtk).
@@ -359,7 +396,8 @@ template <typename T>
 inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
                                        const MultilevelGeoHost& geo,
                                        const std::string& filename,
-                                       const std::string& scalar_name = "field") {
+                                       const std::string& scalar_name = "field",
+                                       bool binary = false) {
   std::size_t num_cells = 0;
 
   // 1. Count total cells across all active levels
@@ -380,10 +418,11 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
     }
   }
 
-  std::ofstream ofs(filename);
+  std::ofstream ofs(filename,
+                    binary ? std::ios::binary : std::ios::out);
   ofs << "# vtk DataFile Version 3.0\n";
   ofs << "Subsetix Multilevel Field\n";
-  ofs << "ASCII\n";
+  ofs << (binary ? "BINARY\n" : "ASCII\n");
   ofs << "DATASET UNSTRUCTURED_GRID\n";
   
   if (num_cells == 0) {
@@ -392,6 +431,8 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
     ofs << "CELL_TYPES 0\n";
     ofs << "CELL_DATA 0\n";
     ofs << "SCALARS " << scalar_name << " float 1\n";
+    ofs << "LOOKUP_TABLE default\n";
+    ofs << "SCALARS Level int 1\n";
     ofs << "LOOKUP_TABLE default\n";
     return;
   }
@@ -421,29 +462,66 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
         for (Coord x_idx = iv.begin; x_idx < iv.end; ++x_idx) {
           const double x0 = ox + static_cast<double>(x_idx) * dx;
           const double x1 = ox + static_cast<double>(x_idx + 1) * dx;
-          
-          ofs << x0 << " " << y0 << " 0\n";
-          ofs << x1 << " " << y0 << " 0\n";
-          ofs << x1 << " " << y1 << " 0\n";
-          ofs << x0 << " " << y1 << " 0\n";
+
+          if (binary) {
+            detail::write_binary(ofs, static_cast<float>(x0));
+            detail::write_binary(ofs, static_cast<float>(y0));
+            detail::write_binary(ofs, 0.0f);
+            detail::write_binary(ofs, static_cast<float>(x1));
+            detail::write_binary(ofs, static_cast<float>(y0));
+            detail::write_binary(ofs, 0.0f);
+            detail::write_binary(ofs, static_cast<float>(x1));
+            detail::write_binary(ofs, static_cast<float>(y1));
+            detail::write_binary(ofs, 0.0f);
+            detail::write_binary(ofs, static_cast<float>(x0));
+            detail::write_binary(ofs, static_cast<float>(y1));
+            detail::write_binary(ofs, 0.0f);
+          } else {
+            ofs << x0 << " " << y0 << " 0\n";
+            ofs << x1 << " " << y0 << " 0\n";
+            ofs << x1 << " " << y1 << " 0\n";
+            ofs << x0 << " " << y1 << " 0\n";
+          }
         }
       }
     }
+  }
+  if (binary) {
+    ofs << "\n";
   }
 
   // 3. Emit Cells
   ofs << "CELLS " << num_cells << " " << num_cells * 5 << "\n";
   std::size_t pt_idx = 0;
-  for (std::size_t c = 0; c < num_cells; ++c) {
-    ofs << "4 " << pt_idx << " " << pt_idx + 1 << " " 
-        << pt_idx + 2 << " " << pt_idx + 3 << "\n";
-    pt_idx += 4;
+  if (binary) {
+    for (std::size_t c = 0; c < num_cells; ++c) {
+      detail::write_binary(ofs, static_cast<std::uint32_t>(4));
+      detail::write_binary(ofs, static_cast<std::uint32_t>(pt_idx));
+      detail::write_binary(ofs, static_cast<std::uint32_t>(pt_idx + 1));
+      detail::write_binary(ofs, static_cast<std::uint32_t>(pt_idx + 2));
+      detail::write_binary(ofs, static_cast<std::uint32_t>(pt_idx + 3));
+      pt_idx += 4;
+    }
+    ofs << "\n";
+  } else {
+    for (std::size_t c = 0; c < num_cells; ++c) {
+      ofs << "4 " << pt_idx << " " << pt_idx + 1 << " " 
+          << pt_idx + 2 << " " << pt_idx + 3 << "\n";
+      pt_idx += 4;
+    }
   }
 
   // 4. Emit Cell Types
   ofs << "CELL_TYPES " << num_cells << "\n";
-  for (std::size_t c = 0; c < num_cells; ++c) {
-    ofs << "9\n"; // VTK_QUAD
+  if (binary) {
+    for (std::size_t c = 0; c < num_cells; ++c) {
+      detail::write_binary(ofs, static_cast<std::uint32_t>(9)); // VTK_QUAD
+    }
+    ofs << "\n";
+  } else {
+    for (std::size_t c = 0; c < num_cells; ++c) {
+      ofs << "9\n"; // VTK_QUAD
+    }
   }
 
   // 5. Emit Field Values
@@ -469,10 +547,17 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
           if (idx < view.values.extent(0)) {
             v = static_cast<float>(view.values(idx));
           }
-          ofs << v << "\n";
+          if (binary) {
+            detail::write_binary(ofs, v);
+          } else {
+            ofs << v << "\n";
+          }
         }
       }
     }
+  }
+  if (binary) {
+    ofs << "\n";
   }
 
   // 6. Add Level as second scalar
@@ -490,10 +575,17 @@ inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field,
         const auto& iv = view.geometry.intervals(k);
         const Coord len = iv.end - iv.begin;
         for (Coord j = 0; j < len; ++j) {
-          ofs << l << "\n";
+          if (binary) {
+            detail::write_binary(ofs, static_cast<std::uint32_t>(l));
+          } else {
+            ofs << l << "\n";
+          }
         }
       }
     }
+  }
+  if (binary) {
+    ofs << "\n";
   }
 }
 
