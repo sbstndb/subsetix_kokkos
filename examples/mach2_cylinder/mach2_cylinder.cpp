@@ -33,6 +33,8 @@
 
 namespace {
 
+using Real = float;
+
 using subsetix::csr::Box2D;
 using subsetix::csr::Coord;
 using subsetix::csr::CsrSetAlgebraContext;
@@ -56,17 +58,17 @@ using subsetix::MultilevelFieldDevice;
 using Clock = std::chrono::steady_clock;
 
 struct Conserved {
-  double rho;
-  double rhou;
-  double rhov;
-  double E;
+  Real rho;
+  Real rhou;
+  Real rhov;
+  Real E;
 };
 
 struct Primitive {
-  double rho;
-  double u;
-  double v;
-  double p;
+  Real rho;
+  Real u;
+  Real v;
+  Real p;
 };
 
 struct RunConfig {
@@ -76,12 +78,12 @@ struct RunConfig {
   int cy = -1; // set later from ny if still negative
   int radius = 20;
 
-  double mach_inlet = 2.0;
-  double rho = 1.0;
-  double p = 1.0;
-  double gamma = 1.4;
-  double cfl = 0.45;
-  double t_final = 0.01;
+  Real mach_inlet = static_cast<Real>(2.0);
+  Real rho = static_cast<Real>(1.0);
+  Real p = static_cast<Real>(1.0);
+  Real gamma = static_cast<Real>(1.4);
+  Real cfl = static_cast<Real>(0.45);
+  Real t_final = static_cast<Real>(0.01);
   int max_steps = 5000;
   int output_stride = 50;
   bool no_slip = false;
@@ -89,7 +91,7 @@ struct RunConfig {
   std::string pbm_path;
 
   bool enable_amr = true;
-  double amr_fraction = 0.5; // fraction of domain length refined in each direction
+  Real amr_fraction = static_cast<Real>(0.5); // fraction of domain length refined in each direction
   int amr_guard = 2;         // coarse-cell guard radius around the refined zone
   int amr_remesh_stride = 0; // 0 => static AMR, >0 => remesh every N steps
 };
@@ -108,33 +110,33 @@ make_accessor(const Field2DDevice<T>& field) {
 }
 
 KOKKOS_INLINE_FUNCTION
-Primitive cons_to_prim(const Conserved& U, double gamma) {
-  constexpr double eps = 1e-12;
+Primitive cons_to_prim(const Conserved& U, Real gamma) {
+  constexpr Real eps = static_cast<Real>(1e-12);
   Primitive q;
   q.rho = U.rho;
-  const double inv_rho = 1.0 / (U.rho + eps);
+  const Real inv_rho = static_cast<Real>(1.0) / (U.rho + eps);
   q.u = U.rhou * inv_rho;
   q.v = U.rhov * inv_rho;
-  const double kinetic = 0.5 * (q.u * q.u + q.v * q.v);
-  const double pressure = (gamma - 1.0) * (U.E - U.rho * kinetic);
+  const Real kinetic = static_cast<Real>(0.5) * (q.u * q.u + q.v * q.v);
+  const Real pressure = (gamma - static_cast<Real>(1.0)) * (U.E - U.rho * kinetic);
   q.p = (pressure > eps) ? pressure : eps;
   return q;
 }
 
 KOKKOS_INLINE_FUNCTION
-Conserved prim_to_cons(const Primitive& q, double gamma) {
+Conserved prim_to_cons(const Primitive& q, Real gamma) {
   Conserved U;
-  const double kinetic = 0.5 * q.rho * (q.u * q.u + q.v * q.v);
+  const Real kinetic = static_cast<Real>(0.5) * q.rho * (q.u * q.u + q.v * q.v);
   U.rho = q.rho;
   U.rhou = q.rho * q.u;
   U.rhov = q.rho * q.v;
-  U.E = q.p / (gamma - 1.0) + kinetic;
+  U.E = q.p / (gamma - static_cast<Real>(1.0)) + kinetic;
   return U;
 }
 
 KOKKOS_INLINE_FUNCTION
-double sound_speed(const Primitive& q, double gamma) {
-  constexpr double eps = 1e-12;
+Real sound_speed(const Primitive& q, Real gamma) {
+  constexpr Real eps = static_cast<Real>(1e-12);
   return std::sqrt(gamma * q.p / (q.rho + eps));
 }
 
@@ -163,11 +165,11 @@ Conserved rusanov_flux_x(const Conserved& UL,
                          const Conserved& UR,
                          const Primitive& qL,
                          const Primitive& qR,
-                         double gamma) {
-  const double aL = sound_speed(qL, gamma);
-  const double aR = sound_speed(qR, gamma);
-  const double smax = std::fmax(std::fabs(qL.u) + aL,
-                                std::fabs(qR.u) + aR);
+                         Real gamma) {
+  const Real aL = sound_speed(qL, gamma);
+  const Real aR = sound_speed(qR, gamma);
+  const Real smax = std::fmax(std::fabs(qL.u) + aL,
+                              std::fabs(qR.u) + aR);
 
   const Conserved FL = flux_x(UL, qL);
   const Conserved FR = flux_x(UR, qR);
@@ -185,11 +187,11 @@ Conserved rusanov_flux_y(const Conserved& UL,
                          const Conserved& UR,
                          const Primitive& qL,
                          const Primitive& qR,
-                         double gamma) {
-  const double aL = sound_speed(qL, gamma);
-  const double aR = sound_speed(qR, gamma);
-  const double smax = std::fmax(std::fabs(qL.v) + aL,
-                                std::fabs(qR.v) + aR);
+                         Real gamma) {
+  const Real aL = sound_speed(qL, gamma);
+  const Real aR = sound_speed(qR, gamma);
+  const Real smax = std::fmax(std::fabs(qL.v) + aL,
+                              std::fabs(qR.v) + aR);
 
   const Conserved FL = flux_y(UL, qL);
   const Conserved FR = flux_y(UR, qR);
@@ -210,12 +212,12 @@ bool in_domain(Coord x, Coord y, const Box2D& domain) {
 
 KOKKOS_INLINE_FUNCTION
 Conserved make_wall_ghost(const Conserved& interior,
-                          double nx,
-                          double ny,
-                          double gamma,
+                          Real nx,
+                          Real ny,
+                          Real gamma,
                           bool no_slip) {
   Primitive q = cons_to_prim(interior, gamma);
-  const double un = q.u * nx + q.v * ny;
+  const Real un = q.u * nx + q.v * ny;
   if (no_slip) {
     q.u = 0.0;
     q.v = 0.0;
@@ -235,7 +237,7 @@ Conserved sample_neighbor(const Conserved& center,
                           const FieldReadAccessor<Conserved>& acc,
                           const Box2D& domain,
                           const Conserved& inflow,
-                          double gamma,
+                          Real gamma,
                           bool no_slip) {
   const Coord xn = static_cast<Coord>(x + dx);
   const Coord yn = static_cast<Coord>(y + dy);
@@ -256,14 +258,16 @@ Conserved sample_neighbor(const Conserved& center,
       return center;
     }
     // Top/bottom walls
-    const double nx = 0.0;
-    const double ny = (dy > 0) ? 1.0 : -1.0;
+    const Real nx = static_cast<Real>(0.0);
+    const Real ny = (dy > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
     return make_wall_ghost(center, nx, ny, gamma, no_slip);
   }
 
   // Inside rectangular domain -> obstacle
-  const double nx = (dx != 0) ? ((dx > 0) ? 1.0 : -1.0) : 0.0;
-  const double ny = (dy != 0) ? ((dy > 0) ? 1.0 : -1.0) : 0.0;
+  const Real nx = (dx != 0) ? ((dx > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0))
+                            : static_cast<Real>(0.0);
+  const Real ny = (dy != 0) ? ((dy > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0))
+                            : static_cast<Real>(0.0);
   return make_wall_ghost(center, nx, ny, gamma, no_slip);
 }
 
@@ -278,7 +282,7 @@ Conserved sample_neighbor_with_coarse(
     const FieldReadAccessor<Conserved>* acc_coarse,
     const Box2D& domain_fine,
     const Conserved& inflow,
-    double gamma,
+    Real gamma,
     bool no_slip) {
   const Coord xn = static_cast<Coord>(x + dx);
   const Coord yn = static_cast<Coord>(y + dy);
@@ -304,44 +308,46 @@ Conserved sample_neighbor_with_coarse(
     if (dx == 1 && dy == 0) {
       return center;
     }
-    const double nx = (dy == 0) ? ((dx > 0) ? 1.0 : -1.0) : 0.0;
-    const double ny = (dx == 0) ? ((dy > 0) ? 1.0 : -1.0) : 0.0;
+    const Real nx = (dy == 0) ? ((dx > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0))
+                              : static_cast<Real>(0.0);
+    const Real ny = (dx == 0) ? ((dy > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0))
+                              : static_cast<Real>(0.0);
     return make_wall_ghost(center, nx, ny, gamma, no_slip);
   }
 
-  const double nx = static_cast<double>(-dx);
-  const double ny = static_cast<double>(-dy);
+  const Real nx = static_cast<Real>(-dx);
+  const Real ny = static_cast<Real>(-dy);
   return make_wall_ghost(center, nx, ny, gamma, no_slip);
 }
 
-double compute_dt(const Field2DDevice<Conserved>& U,
-                  double gamma,
-                  double cfl,
-                  double dx,
-                  double dy) {
+Real compute_dt(const Field2DDevice<Conserved>& U,
+                Real gamma,
+                Real cfl,
+                Real dx,
+                Real dy) {
   using ExecSpace = Kokkos::DefaultExecutionSpace;
-  const double inv_dx = 1.0 / dx;
-  const double inv_dy = 1.0 / dy;
-  double max_rate = 0.0;
+  const Real inv_dx = static_cast<Real>(1.0) / dx;
+  const Real inv_dy = static_cast<Real>(1.0) / dy;
+  Real max_rate = static_cast<Real>(0.0);
 
   Kokkos::parallel_reduce(
       "mach2_cylinder_dt",
       Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(U.size())),
-      KOKKOS_LAMBDA(const int idx, double& lmax) {
+      KOKKOS_LAMBDA(const int idx, Real& lmax) {
         const Conserved s = U.values(idx);
         const Primitive q = cons_to_prim(s, gamma);
-        const double a = sound_speed(q, gamma);
-        const double rate = std::fabs(q.u) * inv_dx +
-                            std::fabs(q.v) * inv_dy +
-                            a * (inv_dx + inv_dy);
+        const Real a = sound_speed(q, gamma);
+        const Real rate = std::fabs(q.u) * inv_dx +
+                          std::fabs(q.v) * inv_dy +
+                          a * (inv_dx + inv_dy);
         if (rate > lmax) {
           lmax = rate;
         }
       },
-      Kokkos::Max<double>(max_rate));
+      Kokkos::Max<Real>(max_rate));
 
-  if (max_rate <= 0.0) {
+  if (max_rate <= static_cast<Real>(0.0)) {
     return cfl * std::min(dx, dy);
   }
   return cfl / max_rate;
@@ -390,21 +396,21 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
     return coarse_mask;
   };
 
-  Field2DDevice<double> indicator(fluid_dev, "mach2_refine_indicator");
+  Field2DDevice<Real> indicator(fluid_dev, "mach2_refine_indicator");
   auto acc = make_accessor(U);
-  const double dx = 1.0;
-  const double dy = 1.0;
+  const Real dx = static_cast<Real>(1.0);
+  const Real dy = static_cast<Real>(1.0);
   apply_on_set_device(indicator, indicator.geometry,
-                      KOKKOS_LAMBDA(Coord x, Coord y, double& value,
+                      KOKKOS_LAMBDA(Coord x, Coord y, Real& value,
                                     std::size_t /*linear_index*/) {
                         Conserved neigh;
                         const Conserved center = acc.value_at(x, y);
-                        const double rho_c = center.rho;
+                        const Real rho_c = center.rho;
 
-                        double rho_xp = rho_c;
-                        double rho_xm = rho_c;
-                        double rho_yp = rho_c;
-                        double rho_ym = rho_c;
+                        Real rho_xp = rho_c;
+                        Real rho_xm = rho_c;
+                        Real rho_yp = rho_c;
+                        Real rho_ym = rho_c;
 
                         if (acc.try_get(static_cast<Coord>(x + 1), y, neigh)) {
                           rho_xp = neigh.rho;
@@ -419,28 +425,28 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
                           rho_ym = neigh.rho;
                         }
 
-                        const double gx = 0.5 * (rho_xp - rho_xm) / dx;
-                        const double gy = 0.5 * (rho_yp - rho_ym) / dy;
+                        const Real gx = static_cast<Real>(0.5) * (rho_xp - rho_xm) / dx;
+                        const Real gy = static_cast<Real>(0.5) * (rho_yp - rho_ym) / dy;
                         value = std::fabs(gx) + std::fabs(gy);
                       });
 
   using ExecSpace = Kokkos::DefaultExecutionSpace;
   auto indicator_values = indicator.values;
-  double max_grad = 0.0;
+  Real max_grad = static_cast<Real>(0.0);
   Kokkos::parallel_reduce(
       "mach2_refine_indicator_max",
       Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(indicator.size())),
-      KOKKOS_LAMBDA(const int idx, double& lmax) {
-        const double v = indicator_values(idx);
+      KOKKOS_LAMBDA(const int idx, Real& lmax) {
+        const Real v = indicator_values(idx);
         if (v > lmax) {
           lmax = v;
         }
       },
-      Kokkos::Max<double>(max_grad));
+      Kokkos::Max<Real>(max_grad));
 
-  double threshold = max_grad * cfg.amr_fraction;
-  constexpr double min_thresh = 1e-10;
+  Real threshold = max_grad * cfg.amr_fraction;
+  constexpr Real min_thresh = static_cast<Real>(1e-10);
   if (threshold < min_thresh) {
     threshold = min_thresh;
   }
@@ -529,19 +535,19 @@ AmrLayout build_fine_geometry(const IntervalSet2DDevice& fluid_dev,
   return layout;
 }
 
-double compute_dt_on_set(const Field2DDevice<Conserved>& U,
-                         const IntervalSet2DDevice& region,
-                         double gamma,
-                         double cfl,
-                         double dx,
-                         double dy) {
+Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
+                       const IntervalSet2DDevice& region,
+                       Real gamma,
+                       Real cfl,
+                       Real dx,
+                       Real dy) {
   if (region.num_intervals == 0) {
     return compute_dt(U, gamma, cfl, dx, dy);
   }
 
-  const double inv_dx = 1.0 / dx;
-  const double inv_dy = 1.0 / dy;
-  double max_rate = 0.0;
+  const Real inv_dx = static_cast<Real>(1.0) / dx;
+  const Real inv_dy = static_cast<Real>(1.0) / dy;
+  Real max_rate = static_cast<Real>(0.0);
 
   const auto mapping = build_mask_field_mapping(U, region);
   auto interval_to_row = mapping.interval_to_row;
@@ -559,7 +565,7 @@ double compute_dt_on_set(const Field2DDevice<Conserved>& U,
       "mach2_cylinder_dt_on_set",
       Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
           0, static_cast<int>(region.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx, double& lmax) {
+      KOKKOS_LAMBDA(const int interval_idx, Real& lmax) {
         const int row_idx = interval_to_row(interval_idx);
         const int field_row = row_map(row_idx);
         if (row_idx < 0 || field_row < 0) {
@@ -582,18 +588,18 @@ double compute_dt_on_set(const Field2DDevice<Conserved>& U,
               base + static_cast<std::size_t>(x - base_begin);
           const Conserved s = values(idx);
           const Primitive q = cons_to_prim(s, gamma);
-          const double a = sound_speed(q, gamma);
-          const double rate = std::fabs(q.u) * inv_dx +
-                              std::fabs(q.v) * inv_dy +
-                              a * (inv_dx + inv_dy);
+          const Real a = sound_speed(q, gamma);
+          const Real rate = std::fabs(q.u) * inv_dx +
+                            std::fabs(q.v) * inv_dy +
+                            a * (inv_dx + inv_dy);
           if (rate > lmax) {
             lmax = rate;
           }
         }
       },
-      Kokkos::Max<double>(max_rate));
+      Kokkos::Max<Real>(max_rate));
 
-  if (max_rate <= 0.0) {
+  if (max_rate <= static_cast<Real>(0.0)) {
     return cfl * std::min(dx, dy);
   }
   return cfl / max_rate;
@@ -719,10 +725,10 @@ struct CoarseEulerStencil {
   FieldReadAccessor<Conserved> acc;
   Box2D domain;
   Conserved inflow;
-  double gamma;
-  double dt;
-  double dx;
-  double dy;
+  Real gamma;
+  Real dt;
+  Real dx;
+  Real dy;
   bool no_slip = false;
 
   KOKKOS_INLINE_FUNCTION
@@ -791,10 +797,10 @@ struct FineEulerStencil {
   FieldReadAccessor<Conserved> acc_coarse;
   Box2D fine_domain;
   Conserved inflow;
-  double gamma;
-  double dt;
-  double dx;
-  double dy;
+  Real gamma;
+  Real dt;
+  Real dx;
+  Real dy;
   bool no_slip = false;
 
   KOKKOS_INLINE_FUNCTION
@@ -867,10 +873,10 @@ struct FineEulerStencil {
 };
 
 void compute_diagnostics(const Field2DDevice<Conserved>& U,
-                         Field2DDevice<double>& density,
-                         Field2DDevice<double>& pressure,
-                         Field2DDevice<double>& mach,
-                         double gamma) {
+                         Field2DDevice<Real>& density,
+                         Field2DDevice<Real>& pressure,
+                         Field2DDevice<Real>& mach,
+                         Real gamma) {
   using ExecSpace = Kokkos::DefaultExecutionSpace;
   auto values = U.values;
   auto rho_out = density.values;
@@ -884,22 +890,22 @@ void compute_diagnostics(const Field2DDevice<Conserved>& U,
       KOKKOS_LAMBDA(const int idx) {
         const Conserved s = values(idx);
         const Primitive q = cons_to_prim(s, gamma);
-        const double a = sound_speed(q, gamma);
-        const double vel = std::sqrt(q.u * q.u + q.v * q.v);
+        const Real a = sound_speed(q, gamma);
+        const Real vel = std::sqrt(q.u * q.u + q.v * q.v);
         rho_out(idx) = q.rho;
         p_out(idx) = q.p;
-        mach_out(idx) = (a > 1e-12) ? (vel / a) : 0.0;
+        mach_out(idx) = (a > static_cast<Real>(1e-12)) ? (vel / a) : static_cast<Real>(0.0);
       });
 }
 
-double compute_total_mass(const Field2DDevice<Conserved>& U) {
+Real compute_total_mass(const Field2DDevice<Conserved>& U) {
   using ExecSpace = Kokkos::DefaultExecutionSpace;
-  double total = 0.0;
+  Real total = static_cast<Real>(0.0);
   Kokkos::parallel_reduce(
       "mach2_cylinder_mass",
       Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(U.size())),
-      KOKKOS_LAMBDA(const int idx, double& sum) {
+      KOKKOS_LAMBDA(const int idx, Real& sum) {
         sum += U.values(idx).rho;
       },
       total);
@@ -915,9 +921,9 @@ RunConfig parse_args(int argc, char* argv[]) {
         out = std::stoi(argv[++i]);
       }
     };
-    auto read_double = [&](double& out) {
+    auto read_double = [&](Real& out) {
       if (i + 1 < argc) {
-        out = std::stod(argv[++i]);
+        out = static_cast<Real>(std::stod(argv[++i]));
       }
     };
 
@@ -951,7 +957,9 @@ RunConfig parse_args(int argc, char* argv[]) {
   if (cfg.cy < 0) {
     cfg.cy = cfg.ny / 2;
   }
-  cfg.amr_fraction = std::clamp(cfg.amr_fraction, 0.05, 0.95);
+  cfg.amr_fraction = std::clamp(cfg.amr_fraction,
+                                static_cast<Real>(0.05),
+                                static_cast<Real>(0.95));
   if (cfg.amr_guard < 1) {
     cfg.amr_guard = 1;
   }
@@ -1069,7 +1077,7 @@ Conserved build_inflow_state(const RunConfig& cfg) {
   Primitive q;
   q.rho = cfg.rho;
   q.p = cfg.p;
-  const double a = std::sqrt(cfg.gamma * q.p / q.rho);
+  const Real a = std::sqrt(cfg.gamma * q.p / q.rho);
   q.u = cfg.mach_inlet * a;
   q.v = 0.0;
   return prim_to_cons(q, cfg.gamma);
@@ -1077,16 +1085,16 @@ Conserved build_inflow_state(const RunConfig& cfg) {
 
 
 void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
-                        Field2DDevice<double>& density,
-                        Field2DDevice<double>& pressure,
-                        Field2DDevice<double>& mach,
-                        double gamma,
+                        Field2DDevice<Real>& density,
+                        Field2DDevice<Real>& pressure,
+                        Field2DDevice<Real>& mach,
+                        Real gamma,
                         const std::filesystem::path& out_dir,
                         int step,
                         const IntervalSet2DDevice* fine_geom = nullptr,
-                        Field2DDevice<double>* density_fine = nullptr,
-                        Field2DDevice<double>* pressure_fine = nullptr,
-                        Field2DDevice<double>* mach_fine = nullptr,
+                        Field2DDevice<Real>* density_fine = nullptr,
+                        Field2DDevice<Real>* pressure_fine = nullptr,
+                        Field2DDevice<Real>* mach_fine = nullptr,
                         const Field2DDevice<Conserved>* U_coarse = nullptr,
                         const Field2DDevice<Conserved>* U_fine_active = nullptr) {
   if (U_coarse) {
@@ -1106,9 +1114,9 @@ void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
   geo.num_active_levels = 1;
   geo.levels[0] = coarse_geom;
 
-  MultilevelFieldDevice<double> f_density;
-  MultilevelFieldDevice<double> f_pressure;
-  MultilevelFieldDevice<double> f_mach;
+  MultilevelFieldDevice<Real> f_density;
+  MultilevelFieldDevice<Real> f_pressure;
+  MultilevelFieldDevice<Real> f_mach;
   f_density.num_active_levels = 1;
   f_pressure.num_active_levels = 1;
   f_mach.num_active_levels = 1;
@@ -1200,16 +1208,16 @@ int main(int argc, char* argv[]) {
 
     Field2DDevice<Conserved> U(fluid_dev, "mach2_state");
     Field2DDevice<Conserved> U_next(fluid_dev, "mach2_state_next");
-    Field2DDevice<double> density(fluid_dev, "mach2_density");
-    Field2DDevice<double> pressure(fluid_dev, "mach2_pressure");
-    Field2DDevice<double> mach_field(fluid_dev, "mach2_mach");
+    Field2DDevice<Real> density(fluid_dev, "mach2_density");
+    Field2DDevice<Real> pressure(fluid_dev, "mach2_pressure");
+    Field2DDevice<Real> mach_field(fluid_dev, "mach2_mach");
 
     Field2DDevice<Conserved> U_fine;
     Field2DDevice<Conserved> U_fine_next;
     Field2DDevice<Conserved> U_fine_active;
-    Field2DDevice<double> density_fine;
-    Field2DDevice<double> pressure_fine;
-    Field2DDevice<double> mach_fine;
+    Field2DDevice<Real> density_fine;
+    Field2DDevice<Real> pressure_fine;
+    Field2DDevice<Real> mach_fine;
 
     const Conserved inflow = build_inflow_state(cfg);
 
@@ -1246,9 +1254,9 @@ int main(int argc, char* argv[]) {
                                              "mach2_fine_next");
       U_fine_active = Field2DDevice<Conserved>(fine_active,
                                                "mach2_fine_active");
-      density_fine = Field2DDevice<double>(fine_active, "mach2_fine_density");
-      pressure_fine = Field2DDevice<double>(fine_active, "mach2_fine_pressure");
-      mach_fine = Field2DDevice<double>(fine_active, "mach2_fine_mach");
+      density_fine = Field2DDevice<Real>(fine_active, "mach2_fine_density");
+      pressure_fine = Field2DDevice<Real>(fine_active, "mach2_fine_pressure");
+      mach_fine = Field2DDevice<Real>(fine_active, "mach2_fine_mach");
 
       prolong_full(U_fine, U, ctx);
       prolong_full(U_fine_next, U, ctx);
@@ -1276,12 +1284,12 @@ int main(int argc, char* argv[]) {
                            subsetix_examples::output_file(output_dir, "fine_geometry.vtk"));
       }
     } // initial outputs
-    double t = 0.0;
+    Real t = static_cast<Real>(0.0);
     int step = 0;
-    const double dx = 1.0;
-    const double dy = 1.0;
-    const double dx_fine = 0.5 * dx;
-    const double dy_fine = 0.5 * dy;
+    const Real dx = static_cast<Real>(1.0);
+    const Real dy = static_cast<Real>(1.0);
+    const Real dx_fine = static_cast<Real>(0.5) * dx;
+    const Real dy_fine = static_cast<Real>(0.5) * dy;
 
   std::cout << "Mach 2 cylinder setup: "
             << "nx=" << cfg.nx << " ny=" << cfg.ny
@@ -1293,11 +1301,11 @@ int main(int argc, char* argv[]) {
             << " remesh_stride=" << cfg.amr_remesh_stride
             << " output_dir=" << (cfg.enable_output ? output_dir.string() : "(disabled)") << "\n";
 
-    double total_mass0 = compute_total_mass(U);
+    Real total_mass0 = compute_total_mass(U);
 
   while ((t < cfg.t_final) && (step < cfg.max_steps)) {
     const FieldReadAccessor<Conserved> acc_coarse = make_accessor(U);
-    double dt = compute_dt(U, cfg.gamma, cfg.cfl, dx, dy);
+    Real dt = compute_dt(U, cfg.gamma, cfg.cfl, dx, dy);
 
     const auto t_step_begin = Clock::now();
     double time_prolong_ms = 0.0;
@@ -1315,7 +1323,7 @@ int main(int argc, char* argv[]) {
       time_prolong_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
       acc_fine = make_accessor(U_fine);
-      const double dt_fine =
+      const Real dt_fine =
           compute_dt_on_set(U_fine, fine_active, cfg.gamma, cfg.cfl,
                             dx_fine, dy_fine);
       dt = std::min(dt, dt_fine);
@@ -1371,9 +1379,9 @@ int main(int argc, char* argv[]) {
       Field2DDevice<Conserved> U_fine_new;
       Field2DDevice<Conserved> U_fine_next_new;
       Field2DDevice<Conserved> U_fine_active_new;
-      Field2DDevice<double> density_fine_new;
-      Field2DDevice<double> pressure_fine_new;
-      Field2DDevice<double> mach_fine_new;
+      Field2DDevice<Real> density_fine_new;
+      Field2DDevice<Real> pressure_fine_new;
+      Field2DDevice<Real> mach_fine_new;
 
       if (amr_new.has_fine) {
         U_fine_new = Field2DDevice<Conserved>(amr_new.fine_with_guard, "mach2_fine");
@@ -1381,9 +1389,9 @@ int main(int argc, char* argv[]) {
                                                    "mach2_fine_next");
         U_fine_active_new = Field2DDevice<Conserved>(amr_new.fine_active,
                                                      "mach2_fine_active");
-        density_fine_new = Field2DDevice<double>(amr_new.fine_active, "mach2_fine_density");
-        pressure_fine_new = Field2DDevice<double>(amr_new.fine_active, "mach2_fine_pressure");
-        mach_fine_new = Field2DDevice<double>(amr_new.fine_active, "mach2_fine_mach");
+        density_fine_new = Field2DDevice<Real>(amr_new.fine_active, "mach2_fine_density");
+        pressure_fine_new = Field2DDevice<Real>(amr_new.fine_active, "mach2_fine_pressure");
+        mach_fine_new = Field2DDevice<Real>(amr_new.fine_active, "mach2_fine_mach");
 
         prolong_full(U_fine_new, U, ctx);
         prolong_full(U_fine_next_new, U, ctx);
@@ -1421,9 +1429,9 @@ int main(int argc, char* argv[]) {
         U_fine = Field2DDevice<Conserved>();
         U_fine_next = Field2DDevice<Conserved>();
         U_fine_active = Field2DDevice<Conserved>();
-        density_fine = Field2DDevice<double>();
-        pressure_fine = Field2DDevice<double>();
-        mach_fine = Field2DDevice<double>();
+        density_fine = Field2DDevice<Real>();
+        pressure_fine = Field2DDevice<Real>();
+        mach_fine = Field2DDevice<Real>();
       }
       const auto t_remesh_end = Clock::now();
       time_remesh_ms += std::chrono::duration<double, std::milli>(
@@ -1464,7 +1472,7 @@ int main(int argc, char* argv[]) {
                               .count();
       }
 
-      const double total_mass = compute_total_mass(U);
+      const Real total_mass = compute_total_mass(U);
       const auto t_step_end = Clock::now();
       const double time_step_ms = std::chrono::duration<double, std::milli>(
                                       t_step_end - t_step_begin)
