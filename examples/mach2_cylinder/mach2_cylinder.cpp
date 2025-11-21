@@ -1140,15 +1140,9 @@ void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
 
   const auto host_geo = subsetix::deep_copy_to_host(geo);
   const auto host_rho = subsetix::deep_copy_to_host(f_density);
-  const auto host_p = subsetix::deep_copy_to_host(f_pressure);
-  const auto host_m = subsetix::deep_copy_to_host(f_mach);
 
   subsetix::vtk::write_multilevel_field_vtk(
       host_rho, host_geo, vtk_filename(out_dir, step, "density"), "rho", true);
-  subsetix::vtk::write_multilevel_field_vtk(
-      host_p, host_geo, vtk_filename(out_dir, step, "pressure"), "p", true);
-  subsetix::vtk::write_multilevel_field_vtk(
-      host_m, host_geo, vtk_filename(out_dir, step, "mach"), "mach", true);
 }
 
 } // namespace
