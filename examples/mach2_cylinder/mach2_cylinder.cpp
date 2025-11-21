@@ -57,6 +57,7 @@ using subsetix::MultilevelGeoDevice;
 using subsetix::MultilevelFieldDevice;
 
 using Clock = std::chrono::steady_clock;
+constexpr int MAX_AMR_LEVELS = 4; // level 0 + up to 3 refined levels
 
 struct Conserved {
   Real rho;
@@ -87,6 +88,7 @@ struct RunConfig {
   Real t_final = static_cast<Real>(0.01);
   int max_steps = 5000;
   int output_stride = 50;
+  int max_amr_levels = 4; // includes the coarse level
   bool no_slip = false;
   bool enable_output = true;
   std::string pbm_path;
@@ -1007,6 +1009,7 @@ RunConfig parse_args(int argc, char* argv[]) {
     else if (arg == "--amr") cfg.enable_amr = true;
     else if (arg == "--amr-fraction") read_double(cfg.amr_fraction);
     else if (arg == "--amr-guard") read_int(cfg.amr_guard);
+    else if (arg == "--amr-levels") read_int(cfg.max_amr_levels);
     else if (arg == "--amr-remesh-stride") read_int(cfg.amr_remesh_stride);
     else if (arg == "--pbm" && i + 1 < argc) {
       cfg.pbm_path = argv[++i];
@@ -1027,6 +1030,7 @@ RunConfig parse_args(int argc, char* argv[]) {
   if (cfg.amr_remesh_stride < 0) {
     cfg.amr_remesh_stride = 0;
   }
+  cfg.max_amr_levels = std::clamp(cfg.max_amr_levels, 1, MAX_AMR_LEVELS);
   return cfg;
 }
 
@@ -1197,8 +1201,9 @@ void write_multilevel_outputs(
 int main(int argc, char* argv[]) {
   Kokkos::ScopeGuard guard(argc, argv);
   {
-    constexpr int MAX_AMR_LEVELS = 4; // level 0 is coarse, up to level 3 fine
     const RunConfig cfg = parse_args(argc, argv);
+    const int LEVEL_LIMIT = std::max(
+        0, std::min(cfg.max_amr_levels, MAX_AMR_LEVELS) - 1);
     std::filesystem::path output_dir;
     if (cfg.enable_output) {
       output_dir = subsetix_examples::make_example_output_dir("mach2_cylinder",
@@ -1343,7 +1348,7 @@ int main(int argc, char* argv[]) {
     };
 
     // Initial hierarchy build up to MAX_AMR_LEVELS-1
-    for (int lvl = 1; lvl < MAX_AMR_LEVELS; ++lvl) {
+    for (int lvl = 1; lvl <= LEVEL_LIMIT; ++lvl) {
       if (!has_level[lvl - 1]) {
         break;
       }
@@ -1366,7 +1371,7 @@ int main(int argc, char* argv[]) {
                          subsetix_examples::output_file(output_dir, "fluid_geometry.vtk"));
       write_legacy_quads(obstacle_host,
                          subsetix_examples::output_file(output_dir, "obstacle_geometry.vtk"));
-      for (int lvl = 1; lvl < MAX_AMR_LEVELS; ++lvl) {
+      for (int lvl = 1; lvl <= LEVEL_LIMIT; ++lvl) {
         if (!has_level[lvl]) {
           break;
         }
@@ -1511,7 +1516,7 @@ int main(int argc, char* argv[]) {
       const auto t_remesh_begin = Clock::now();
       auto prev_active = active_set;
       auto prev_U = U_levels;
-      for (int lvl = 1; lvl < MAX_AMR_LEVELS; ++lvl) {
+      for (int lvl = 1; lvl <= LEVEL_LIMIT; ++lvl) {
         if (!has_level[lvl - 1]) {
           has_level[lvl] = false;
           continue;
