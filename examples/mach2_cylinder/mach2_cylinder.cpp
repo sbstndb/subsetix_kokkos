@@ -99,6 +99,17 @@ struct RunConfig {
   int amr_remesh_stride = 0; // 0 => static AMR, >0 => remesh every N steps
 };
 
+struct RemeshTiming {
+  double masks = 0.0;
+  double mask_indicator = 0.0;
+  double mask_reduce = 0.0;
+  double mask_expand = 0.0;
+  double mask_constrain = 0.0;
+  double geom = 0.0;
+  double prolong = 0.0;
+  double overlap = 0.0;
+};
+
 template <typename T>
 FieldReadAccessor<T>
 make_accessor(const Field2DDevice<T>& field) {
@@ -371,11 +382,14 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
                                       const IntervalSet2DDevice& fluid_dev,
                                       const Box2D& domain,
                                       const RunConfig& cfg,
-                                      CsrSetAlgebraContext& ctx) {
+                                      CsrSetAlgebraContext& ctx,
+                                      RemeshTiming* timers = nullptr) {
   IntervalSet2DDevice mask;
   if (!cfg.enable_amr) {
     return mask;
   }
+
+  const auto t_masks_begin = Clock::now();
 
   auto make_central_box_mask = [&]() {
     const Coord span_x = domain.x_max - domain.x_min;
@@ -406,6 +420,9 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
   auto acc = make_accessor(U);
   const Real dx = static_cast<Real>(1.0);
   const Real dy = static_cast<Real>(1.0);
+  const Real inv_dx = static_cast<Real>(1.0) / dx;
+  const Real inv_dy = static_cast<Real>(1.0) / dy;
+  const auto t_indicator_begin = Clock::now();
   apply_on_set_device(indicator, indicator.geometry,
                       KOKKOS_LAMBDA(Coord x, Coord y, Real& value,
                                     std::size_t /*linear_index*/) {
@@ -431,14 +448,22 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
                           rho_ym = neigh.rho;
                         }
 
-                        const Real gx = static_cast<Real>(0.5) * (rho_xp - rho_xm) / dx;
-                        const Real gy = static_cast<Real>(0.5) * (rho_yp - rho_ym) / dy;
+                        const Real gx = static_cast<Real>(0.5) * (rho_xp - rho_xm) * inv_dx;
+                        const Real gy = static_cast<Real>(0.5) * (rho_yp - rho_ym) * inv_dy;
                         value = std::fabs(gx) + std::fabs(gy);
                       });
+  Kokkos::DefaultExecutionSpace().fence();
+  const auto t_indicator_end = Clock::now();
+  if (timers) {
+    timers->mask_indicator += std::chrono::duration<double, std::milli>(
+                                  t_indicator_end - t_indicator_begin)
+                                  .count();
+  }
 
   using ExecSpace = Kokkos::DefaultExecutionSpace;
   auto indicator_values = indicator.values;
   Real max_grad = static_cast<Real>(0.0);
+  const auto t_reduce_begin = Clock::now();
   Kokkos::parallel_reduce(
       "mach2_refine_indicator_max",
       Kokkos::RangePolicy<ExecSpace>(
@@ -450,6 +475,12 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
         }
       },
       Kokkos::Max<Real>(max_grad));
+  const auto t_reduce_end = Clock::now();
+  if (timers) {
+    timers->mask_reduce += std::chrono::duration<double, std::milli>(
+                               t_reduce_end - t_reduce_begin)
+                               .count();
+  }
 
   Real threshold = max_grad * cfg.amr_fraction;
   constexpr Real min_thresh = static_cast<Real>(1e-10);
@@ -466,9 +497,24 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
   const Coord smooth = static_cast<Coord>(1);
   if (smooth > 0 && mask.num_rows > 0 && mask.num_intervals > 0) {
     IntervalSet2DDevice expanded;
+    const auto t_expand_begin = Clock::now();
     expand_device(mask, smooth, smooth, expanded, ctx);
     subsetix::csr::compute_cell_offsets_device(expanded);
+    Kokkos::DefaultExecutionSpace().fence();
+    const auto t_expand_end = Clock::now();
+    if (timers) {
+      timers->mask_expand += std::chrono::duration<double, std::milli>(
+                                 t_expand_end - t_expand_begin)
+                                 .count();
+    }
     mask = expanded;
+  }
+
+  const auto t_masks_end = Clock::now();
+  if (timers) {
+    timers->masks += std::chrono::duration<double, std::milli>(
+                         t_masks_end - t_masks_begin)
+                         .count();
   }
 
   return mask;
@@ -1293,7 +1339,8 @@ int main(int argc, char* argv[]) {
                            const Field2DDevice<Conserved>& parent_U,
                            const Box2D& parent_domain,
                            const IntervalSet2DDevice* prev_active = nullptr,
-                           Field2DDevice<Conserved>* prev_U = nullptr) {
+                           Field2DDevice<Conserved>* prev_U = nullptr,
+                           RemeshTiming* timers = nullptr) {
       if (!cfg.enable_amr) {
         return;
       }
@@ -1301,12 +1348,26 @@ int main(int argc, char* argv[]) {
         return;
       }
       IntervalSet2DDevice mask =
-          build_refine_mask(parent_U, parent_full, parent_domain, cfg, ctx);
+          build_refine_mask(parent_U, parent_full, parent_domain, cfg, ctx, timers);
+      const auto t_constrain_begin = Clock::now();
       mask = constrain_mask_to_parent_interior(
           mask, parent_full, parent_active,
           static_cast<Coord>(std::max(1, cfg.amr_guard)), ctx);
+      const auto t_constrain_end = Clock::now();
+      if (timers) {
+        timers->mask_constrain += std::chrono::duration<double, std::milli>(
+                                      t_constrain_end - t_constrain_begin)
+                                      .count();
+      }
+      const auto t_geom_begin = Clock::now();
       const AmrLayout amr = build_fine_geometry(
           parent_full, mask, static_cast<Coord>(cfg.amr_guard), parent_domain, ctx);
+      const auto t_geom_end = Clock::now();
+      if (timers) {
+        timers->geom += std::chrono::duration<double, std::milli>(
+                            t_geom_end - t_geom_begin)
+                            .count();
+      }
 
       fluid_full[lvl] = amr.fine_full;
       active_set[lvl] = ensure_subset(amr.fine_active, amr.fine_with_guard, ctx);
@@ -1330,10 +1391,19 @@ int main(int argc, char* argv[]) {
       pressure_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_pressure_lvl");
       mach_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_mach_lvl");
 
+      const auto t_prolong_begin = Clock::now();
       prolong_full(U_levels[lvl], parent_U, ctx);
       prolong_full(U_next_levels[lvl], parent_U, ctx);
+      Kokkos::DefaultExecutionSpace().fence();
+      const auto t_prolong_end = Clock::now();
+      if (timers) {
+        timers->prolong += std::chrono::duration<double, std::milli>(
+                               t_prolong_end - t_prolong_begin)
+                               .count();
+      }
 
       if (prev_active && prev_U) {
+        const auto t_overlap_begin = Clock::now();
         const std::size_t overlap_rows_cap =
             std::min(prev_active->num_rows, active_set[lvl].num_rows);
         const std::size_t overlap_intervals_cap =
@@ -1343,6 +1413,13 @@ int main(int argc, char* argv[]) {
               overlap_rows_cap, overlap_intervals_cap);
           set_intersection_device(*prev_active, active_set[lvl], overlap, ctx);
           copy_overlap(U_levels[lvl], *prev_U, overlap, ctx);
+        }
+        Kokkos::DefaultExecutionSpace().fence();
+        const auto t_overlap_end = Clock::now();
+        if (timers) {
+          timers->overlap += std::chrono::duration<double, std::milli>(
+                                 t_overlap_end - t_overlap_begin)
+                                 .count();
         }
       }
     };
@@ -1440,6 +1517,14 @@ int main(int argc, char* argv[]) {
     double time_coarse_ms = 0.0;
     double time_restrict_ms = 0.0;
     double time_remesh_ms = 0.0;
+    double time_remesh_masks_ms = 0.0;
+    double time_remesh_mask_indicator_ms = 0.0;
+    double time_remesh_mask_reduce_ms = 0.0;
+    double time_remesh_mask_expand_ms = 0.0;
+    double time_remesh_mask_constrain_ms = 0.0;
+    double time_remesh_geom_ms = 0.0;
+    double time_remesh_prolong_ms = 0.0;
+    double time_remesh_overlap_ms = 0.0;
     double time_output_ms = 0.0;
 
     for (int lvl = 1; lvl <= finest_level; ++lvl) {
@@ -1513,6 +1598,7 @@ int main(int argc, char* argv[]) {
                            cfg.amr_remesh_stride > 0 &&
                            (step % cfg.amr_remesh_stride == 0);
     if (do_remesh) {
+      RemeshTiming remesh_timers;
       const auto t_remesh_begin = Clock::now();
       auto prev_active = active_set;
       auto prev_U = U_levels;
@@ -1527,12 +1613,21 @@ int main(int argc, char* argv[]) {
                     U_levels[lvl - 1],
                     domains[lvl - 1],
                     has_level[lvl] ? &prev_active[lvl] : nullptr,
-                    has_level[lvl] ? &prev_U[lvl] : nullptr);
+                    has_level[lvl] ? &prev_U[lvl] : nullptr,
+                    &remesh_timers);
       }
       const auto t_remesh_end = Clock::now();
       time_remesh_ms += std::chrono::duration<double, std::milli>(
                             t_remesh_end - t_remesh_begin)
                             .count();
+      time_remesh_masks_ms += remesh_timers.masks;
+      time_remesh_mask_indicator_ms += remesh_timers.mask_indicator;
+      time_remesh_mask_reduce_ms += remesh_timers.mask_reduce;
+      time_remesh_mask_expand_ms += remesh_timers.mask_expand;
+      time_remesh_mask_constrain_ms += remesh_timers.mask_constrain;
+      time_remesh_geom_ms += remesh_timers.geom;
+      time_remesh_prolong_ms += remesh_timers.prolong;
+      time_remesh_overlap_ms += remesh_timers.overlap;
     }
 
     t += dt;
@@ -1587,6 +1682,14 @@ int main(int argc, char* argv[]) {
                 << " coarse=" << time_coarse_ms
                 << " restrict=" << time_restrict_ms
                 << " remesh=" << time_remesh_ms
+                << " remesh_masks=" << time_remesh_masks_ms
+                << " remesh_mask_indicator=" << time_remesh_mask_indicator_ms
+                << " remesh_mask_reduce=" << time_remesh_mask_reduce_ms
+                << " remesh_mask_expand=" << time_remesh_mask_expand_ms
+                << " remesh_mask_constrain=" << time_remesh_mask_constrain_ms
+                << " remesh_geom=" << time_remesh_geom_ms
+                << " remesh_prolong=" << time_remesh_prolong_ms
+                << " remesh_overlap=" << time_remesh_overlap_ms
                 << " output=" << time_output_ms
                 << " total=" << time_step_ms
                 << "\n";
