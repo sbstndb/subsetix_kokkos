@@ -367,6 +367,10 @@ Real compute_dt(const Field2DDevice<Conserved>& U,
   return cfl / max_rate;
 }
 
+IntervalSet2DDevice ensure_subset(const IntervalSet2DDevice& region,
+                                  const IntervalSet2DDevice& field_geom,
+                                  CsrSetAlgebraContext& ctx);
+
 struct AmrLayout {
   IntervalSet2DDevice coarse_mask;
   IntervalSet2DDevice fine_full;
@@ -423,35 +427,99 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
   const Real inv_dx = static_cast<Real>(1.0) / dx;
   const Real inv_dy = static_cast<Real>(1.0) / dy;
   const auto t_indicator_begin = Clock::now();
-  apply_on_set_device(indicator, indicator.geometry,
-                      KOKKOS_LAMBDA(Coord x, Coord y, Real& value,
-                                    std::size_t /*linear_index*/) {
-                        Conserved neigh;
-                        const Conserved center = acc.value_at(x, y);
-                        const Real rho_c = center.rho;
+  const IntervalSet2DDevice indicator_region =
+      ensure_subset(fluid_dev, U.geometry, ctx);
+  const auto mapping = build_mask_field_mapping(U, indicator_region);
+  auto interval_to_row = mapping.interval_to_row;
+  auto interval_to_field_interval = mapping.interval_to_field_interval;
+  auto row_map = mapping.row_map;
 
-                        Real rho_xp = rho_c;
-                        Real rho_xm = rho_c;
-                        Real rho_yp = rho_c;
-                        Real rho_ym = rho_c;
+  auto mask_row_keys = indicator_region.row_keys;
+  auto mask_intervals = indicator_region.intervals;
+  auto mask_offsets = indicator_region.cell_offsets;
 
-                        if (acc.try_get(static_cast<Coord>(x + 1), y, neigh)) {
-                          rho_xp = neigh.rho;
-                        }
-                        if (acc.try_get(static_cast<Coord>(x - 1), y, neigh)) {
-                          rho_xm = neigh.rho;
-                        }
-                        if (acc.try_get(x, static_cast<Coord>(y + 1), neigh)) {
-                          rho_yp = neigh.rho;
-                        }
-                        if (acc.try_get(x, static_cast<Coord>(y - 1), neigh)) {
-                          rho_ym = neigh.rho;
-                        }
+  auto field_intervals = U.geometry.intervals;
+  auto field_offsets = U.geometry.cell_offsets;
+  auto field_values = U.values;
+  auto indicator_values = indicator.values;
 
-                        const Real gx = static_cast<Real>(0.5) * (rho_xp - rho_xm) * inv_dx;
-                        const Real gy = static_cast<Real>(0.5) * (rho_yp - rho_ym) * inv_dy;
-                        value = std::fabs(gx) + std::fabs(gy);
-                      });
+  const auto vertical = subsetix::csr::detail::build_vertical_interval_mapping(U);
+  auto up_interval = vertical.up_interval;
+  auto down_interval = vertical.down_interval;
+
+  Kokkos::parallel_for(
+      "mach2_refine_indicator",
+      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+          0, static_cast<int>(indicator_region.num_intervals)),
+      KOKKOS_LAMBDA(const int interval_idx) {
+        const int row_idx = interval_to_row(interval_idx);
+        const int field_row = row_map(row_idx);
+        if (row_idx < 0 || field_row < 0) {
+          return;
+        }
+
+        const int field_interval_idx =
+            interval_to_field_interval(interval_idx);
+        if (field_interval_idx < 0) {
+          return;
+        }
+
+        const auto mask_iv = mask_intervals(interval_idx);
+        const auto field_iv = field_intervals(field_interval_idx);
+        const std::size_t out_base_offset = mask_offsets(interval_idx);
+        const Coord out_base_begin = mask_iv.begin;
+        const std::size_t in_base_offset = field_offsets(field_interval_idx);
+        const Coord in_base_begin = field_iv.begin;
+
+        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+          const std::size_t out_idx =
+              out_base_offset +
+              static_cast<std::size_t>(x - out_base_begin);
+          const std::size_t in_idx =
+              in_base_offset +
+              static_cast<std::size_t>(x - in_base_begin);
+
+          const Conserved center = field_values(in_idx);
+
+          Real rho_w = center.rho;
+          Real rho_e = center.rho;
+          Real rho_n = center.rho;
+          Real rho_s = center.rho;
+
+          if (x > field_iv.begin) {
+            rho_w = field_values(in_idx - 1).rho;
+          }
+          if (x + 1 < field_iv.end) {
+            rho_e = field_values(in_idx + 1).rho;
+          }
+
+          const int up_idx = up_interval(field_interval_idx);
+          if (up_idx >= 0) {
+            const subsetix::csr::Interval iv_up = field_intervals(up_idx);
+            if (x >= iv_up.begin && x < iv_up.end) {
+              const std::size_t off =
+                  field_offsets(up_idx) +
+                  static_cast<std::size_t>(x - iv_up.begin);
+              rho_n = field_values(off).rho;
+            }
+          }
+
+          const int down_idx = down_interval(field_interval_idx);
+          if (down_idx >= 0) {
+            const subsetix::csr::Interval iv_down = field_intervals(down_idx);
+            if (x >= iv_down.begin && x < iv_down.end) {
+              const std::size_t off =
+                  field_offsets(down_idx) +
+                  static_cast<std::size_t>(x - iv_down.begin);
+              rho_s = field_values(off).rho;
+            }
+          }
+
+          const Real gx = static_cast<Real>(0.5) * (rho_e - rho_w) * inv_dx;
+          const Real gy = static_cast<Real>(0.5) * (rho_n - rho_s) * inv_dy;
+          indicator_values(out_idx) = std::fabs(gx) + std::fabs(gy);
+        }
+      });
   Kokkos::DefaultExecutionSpace().fence();
   const auto t_indicator_end = Clock::now();
   if (timers) {
@@ -461,7 +529,6 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
   }
 
   using ExecSpace = Kokkos::DefaultExecutionSpace;
-  auto indicator_values = indicator.values;
   Real max_grad = static_cast<Real>(0.0);
   const auto t_reduce_begin = Clock::now();
   Kokkos::parallel_reduce(
