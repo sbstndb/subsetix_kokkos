@@ -85,6 +85,7 @@ struct RunConfig {
   int max_steps = 5000;
   int output_stride = 50;
   bool no_slip = false;
+  bool enable_output = true;
   std::string pbm_path;
 
   bool enable_amr = true;
@@ -934,6 +935,7 @@ RunConfig parse_args(int argc, char* argv[]) {
     else if (arg == "--max-steps") read_int(cfg.max_steps);
     else if (arg == "--output-stride") read_int(cfg.output_stride);
     else if (arg == "--no-slip") cfg.no_slip = true;
+    else if (arg == "--no-output") cfg.enable_output = false;
     else if (arg == "--no-amr") cfg.enable_amr = false;
     else if (arg == "--amr") cfg.enable_amr = true;
     else if (arg == "--amr-fraction") read_double(cfg.amr_fraction);
@@ -1147,9 +1149,11 @@ int main(int argc, char* argv[]) {
   Kokkos::ScopeGuard guard(argc, argv);
   {
     const RunConfig cfg = parse_args(argc, argv);
-    const std::filesystem::path output_dir =
-        subsetix_examples::make_example_output_dir("mach2_cylinder",
-                                                   argc, argv);
+    std::filesystem::path output_dir;
+    if (cfg.enable_output) {
+      output_dir = subsetix_examples::make_example_output_dir("mach2_cylinder",
+                                                              argc, argv);
+    }
 
     const Box2D domain{
         0, static_cast<Coord>(cfg.nx),
@@ -1250,7 +1254,7 @@ int main(int argc, char* argv[]) {
       prolong_full(U_fine_next, U, ctx);
     }
 
-    {
+    if (cfg.enable_output) {
       const IntervalSet2DHost fluid_host =
           subsetix::csr::build_host_from_device(fluid_dev);
       const IntervalSet2DHost obstacle_host =
@@ -1271,7 +1275,7 @@ int main(int argc, char* argv[]) {
         write_legacy_quads(fine_host,
                            subsetix_examples::output_file(output_dir, "fine_geometry.vtk"));
       }
-    }
+    } // initial outputs
     double t = 0.0;
     int step = 0;
     const double dx = 1.0;
@@ -1287,7 +1291,7 @@ int main(int argc, char* argv[]) {
             << " no-slip=" << (cfg.no_slip ? "yes" : "no")
             << " amr=" << (cfg.enable_amr ? "yes" : "no")
             << " remesh_stride=" << cfg.amr_remesh_stride
-            << " output_dir=" << output_dir << "\n";
+            << " output_dir=" << (cfg.enable_output ? output_dir.string() : "(disabled)") << "\n";
 
     double total_mass0 = compute_total_mass(U);
 
@@ -1432,31 +1436,33 @@ int main(int argc, char* argv[]) {
 
     if (step % cfg.output_stride == 0 || step == cfg.max_steps ||
         t >= cfg.t_final - 1e-12) {
-      if (has_fine) {
-        auto fine_src = make_subview(U_fine, fine_active, "fine_active_src");
-        auto fine_dst = make_subview(U_fine_active, fine_active,
-                                     "fine_active_dst");
-        copy_subview_device(fine_dst, fine_src, ctx);
-      }
+      if (cfg.enable_output) {
+        if (has_fine) {
+          auto fine_src = make_subview(U_fine, fine_active, "fine_active_src");
+          auto fine_dst = make_subview(U_fine_active, fine_active,
+                                       "fine_active_dst");
+          copy_subview_device(fine_dst, fine_src, ctx);
+        }
 
-      const auto t_out_begin = Clock::now();
-      write_step_outputs(fluid_dev,
-                         density,
-                         pressure,
-                         mach_field,
-                         cfg.gamma,
-                         output_dir,
-                         step,
-                         has_fine ? &fine_active : nullptr,
-                         has_fine ? &density_fine : nullptr,
-                         has_fine ? &pressure_fine : nullptr,
-                         has_fine ? &mach_fine : nullptr,
-                         &U,
-                         has_fine ? &U_fine_active : nullptr);
-      const auto t_out_end = Clock::now();
-      time_output_ms += std::chrono::duration<double, std::milli>(
-                            t_out_end - t_out_begin)
-                            .count();
+        const auto t_out_begin = Clock::now();
+        write_step_outputs(fluid_dev,
+                           density,
+                           pressure,
+                           mach_field,
+                           cfg.gamma,
+                           output_dir,
+                           step,
+                           has_fine ? &fine_active : nullptr,
+                           has_fine ? &density_fine : nullptr,
+                           has_fine ? &pressure_fine : nullptr,
+                           has_fine ? &mach_fine : nullptr,
+                           &U,
+                           has_fine ? &U_fine_active : nullptr);
+        const auto t_out_end = Clock::now();
+        time_output_ms += std::chrono::duration<double, std::milli>(
+                              t_out_end - t_out_begin)
+                              .count();
+      }
 
       const double total_mass = compute_total_mass(U);
       const auto t_step_end = Clock::now();
