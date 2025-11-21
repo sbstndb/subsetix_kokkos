@@ -30,6 +30,7 @@
 #include <utility>
 #include <vector>
 #include <filesystem>
+#include <array>
 
 namespace {
 
@@ -1130,86 +1131,49 @@ Conserved build_inflow_state(const RunConfig& cfg) {
 }
 
 
-void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
-                        Field2DDevice<Real>& density,
-                        Field2DDevice<Real>& pressure,
-                        Field2DDevice<Real>& mach,
-                        Real gamma,
-                        const std::filesystem::path& out_dir,
-                        int step,
-                        const IntervalSet2DDevice* fine_geom = nullptr,
-                        Field2DDevice<Real>* density_fine = nullptr,
-                        Field2DDevice<Real>* pressure_fine = nullptr,
-                        Field2DDevice<Real>* mach_fine = nullptr,
-                        const Field2DDevice<Conserved>* U_coarse = nullptr,
-                        const Field2DDevice<Conserved>* U_fine_active = nullptr,
-                        const IntervalSet2DDevice* fine2_geom = nullptr,
-                        Field2DDevice<Real>* density_fine2 = nullptr,
-                        Field2DDevice<Real>* pressure_fine2 = nullptr,
-                        Field2DDevice<Real>* mach_fine2 = nullptr,
-                        const Field2DDevice<Conserved>* U_fine2_active = nullptr) {
-  if (U_coarse) {
-    compute_diagnostics(*U_coarse, density, pressure, mach, gamma);
-  }
-  if (U_fine_active && density_fine && pressure_fine && mach_fine &&
-      U_fine_active->geometry.num_intervals > 0) {
-    compute_diagnostics(*U_fine_active, *density_fine, *pressure_fine,
-                        *mach_fine, gamma);
-  }
-  if (U_fine2_active && density_fine2 && pressure_fine2 && mach_fine2 &&
-      U_fine2_active->geometry.num_intervals > 0) {
-    compute_diagnostics(*U_fine2_active, *density_fine2, *pressure_fine2,
-                        *mach_fine2, gamma);
-  }
-
+template <int MaxLevels>
+void write_multilevel_outputs(
+    const std::array<IntervalSet2DDevice, MaxLevels>& geoms,
+    const std::array<Field2DDevice<Real>, MaxLevels>& density,
+    const std::array<Field2DDevice<Real>, MaxLevels>& pressure,
+    const std::array<Field2DDevice<Real>, MaxLevels>& mach,
+    const std::array<Field2DDevice<Conserved>, MaxLevels>& U_active,
+    const std::array<bool, MaxLevels>& has_level,
+    int max_active_level,
+    Real gamma,
+    const std::filesystem::path& out_dir,
+    int step) {
   MultilevelGeoDevice geo;
   geo.origin_x = 0.0;
   geo.origin_y = 0.0;
   geo.root_dx = 1.0;
   geo.root_dy = 1.0;
-  geo.num_active_levels = 1;
-  geo.levels[0] = coarse_geom;
+  geo.num_active_levels = max_active_level + 1;
 
   MultilevelFieldDevice<Real> f_density;
   MultilevelFieldDevice<Real> f_pressure;
   MultilevelFieldDevice<Real> f_mach;
-  f_density.num_active_levels = 1;
-  f_pressure.num_active_levels = 1;
-  f_mach.num_active_levels = 1;
-  f_density.levels[0] = density;
-  f_pressure.levels[0] = pressure;
-  f_mach.levels[0] = mach;
+  f_density.num_active_levels = geo.num_active_levels;
+  f_pressure.num_active_levels = geo.num_active_levels;
+  f_mach.num_active_levels = geo.num_active_levels;
 
-  const bool has_fine = (fine_geom && fine_geom->num_intervals > 0 &&
-                         density_fine && pressure_fine && mach_fine &&
-                         U_fine_active && U_fine_active->geometry.num_intervals > 0);
-  if (has_fine) {
-    geo.num_active_levels = 2;
-    geo.levels[1] = *fine_geom;
-    f_density.num_active_levels = 2;
-    f_pressure.num_active_levels = 2;
-    f_mach.num_active_levels = 2;
-    f_density.levels[1] = *density_fine;
-    f_pressure.levels[1] = *pressure_fine;
-    f_mach.levels[1] = *mach_fine;
-  }
-  const bool has_fine2 = (fine2_geom && fine2_geom->num_intervals > 0 &&
-                          density_fine2 && pressure_fine2 && mach_fine2 &&
-                          U_fine2_active && U_fine2_active->geometry.num_intervals > 0);
-  if (has_fine2) {
-    geo.num_active_levels = 3;
-    geo.levels[2] = *fine2_geom;
-    f_density.num_active_levels = 3;
-    f_pressure.num_active_levels = 3;
-    f_mach.num_active_levels = 3;
-    f_density.levels[2] = *density_fine2;
-    f_pressure.levels[2] = *pressure_fine2;
-    f_mach.levels[2] = *mach_fine2;
+  for (int lvl = 0; lvl <= max_active_level; ++lvl) {
+    if (!has_level[lvl]) {
+      continue;
+    }
+    geo.levels[lvl] = geoms[lvl];
+    f_density.levels[lvl] = density[lvl];
+    f_pressure.levels[lvl] = pressure[lvl];
+    f_mach.levels[lvl] = mach[lvl];
+    compute_diagnostics(U_active[lvl],
+                        f_density.levels[lvl],
+                        f_pressure.levels[lvl],
+                        f_mach.levels[lvl],
+                        gamma);
   }
 
   const auto host_geo = subsetix::deep_copy_to_host(geo);
   const auto host_rho = subsetix::deep_copy_to_host(f_density);
-
   subsetix::vtk::write_multilevel_field_vtk(
       host_rho, host_geo, vtk_filename(out_dir, step, "density"), "rho", true);
 }
@@ -1219,6 +1183,7 @@ void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
 int main(int argc, char* argv[]) {
   Kokkos::ScopeGuard guard(argc, argv);
   {
+    constexpr int MAX_AMR_LEVELS = 4; // level 0 is coarse, up to level 3 fine
     const RunConfig cfg = parse_args(argc, argv);
     std::filesystem::path output_dir;
     if (cfg.enable_output) {
@@ -1255,131 +1220,126 @@ int main(int argc, char* argv[]) {
     set_difference_device(domain_dev, obstacle_dev, fluid_dev, ctx);
     subsetix::csr::compute_cell_offsets_device(fluid_dev);
 
-    // AMR invariants:
-    //  - fluid_dev: coarse fluid geometry (fixed).
-    //  - coarse_mask: coarse cells to refine (mutable once remesh becomes dynamic).
-    //  - fine_active: refined geometry where fine unknowns live.
-    //  - fine_with_guard: fine_active dilated with guard cells, prolonged from coarse.
-    //  - projection_fine_on_coarse: coarse cells overlapped by fine_active (restriction area).
-    IntervalSet2DDevice coarse_mask;
-    IntervalSet2DDevice fine_full;
-    IntervalSet2DDevice fine_active;
-    IntervalSet2DDevice fine_with_guard;
-    IntervalSet2DDevice fine_guard;
-    IntervalSet2DDevice projection_fine_on_coarse;
-    Box2D fine_domain{0, 0, 0, 0};
-    bool has_fine = false;
-    IntervalSet2DDevice coarse_mask_l2;
-    IntervalSet2DDevice fine2_full;
-    IntervalSet2DDevice fine2_active;
-    IntervalSet2DDevice fine2_with_guard;
-    IntervalSet2DDevice fine2_guard;
-    IntervalSet2DDevice projection_fine2_on_fine1;
-    Box2D fine_domain2{0, 0, 0, 0};
-    bool has_fine2 = false;
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> fluid_full;
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> active_set;
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> with_guard_set;
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> guard_set;
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> projection_down;
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> coarse_masks;
+    std::array<Box2D, MAX_AMR_LEVELS> domains;
+    std::array<bool, MAX_AMR_LEVELS> has_level;
+    has_level.fill(false);
 
-    Field2DDevice<Conserved> U(fluid_dev, "mach2_state");
-    Field2DDevice<Conserved> U_next(fluid_dev, "mach2_state_next");
-    Field2DDevice<Real> density(fluid_dev, "mach2_density");
-    Field2DDevice<Real> pressure(fluid_dev, "mach2_pressure");
-    Field2DDevice<Real> mach_field(fluid_dev, "mach2_mach");
-
-    Field2DDevice<Conserved> U_fine;
-    Field2DDevice<Conserved> U_fine_next;
-    Field2DDevice<Conserved> U_fine_active;
-    Field2DDevice<Real> density_fine;
-    Field2DDevice<Real> pressure_fine;
-    Field2DDevice<Real> mach_fine;
-    Field2DDevice<Conserved> U_fine2;
-    Field2DDevice<Conserved> U_fine2_next;
-    Field2DDevice<Conserved> U_fine2_active;
-    Field2DDevice<Real> density_fine2;
-    Field2DDevice<Real> pressure_fine2;
-    Field2DDevice<Real> mach_fine2;
+    std::array<Field2DDevice<Conserved>, MAX_AMR_LEVELS> U_levels;
+    std::array<Field2DDevice<Conserved>, MAX_AMR_LEVELS> U_next_levels;
+    std::array<Field2DDevice<Conserved>, MAX_AMR_LEVELS> U_active_levels;
+    std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> density_levels;
+    std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> pressure_levels;
+    std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> mach_levels;
 
     const Conserved inflow = build_inflow_state(cfg);
 
     {
       using ExecSpace = Kokkos::DefaultExecutionSpace;
-      auto values = U.values;
-      auto values_next = U_next.values;
+      Field2DDevice<Conserved> U(fluid_dev, "mach2_state");
+      Field2DDevice<Conserved> U_next(fluid_dev, "mach2_state_next");
       Kokkos::parallel_for(
           "mach2_cylinder_init",
           Kokkos::RangePolicy<ExecSpace>(
               0, static_cast<int>(U.size())),
           KOKKOS_LAMBDA(const int idx) {
-            values(idx) = inflow;
-            values_next(idx) = inflow;
+            U.values(idx) = inflow;
+            U_next.values(idx) = inflow;
           });
+      U_levels[0] = U;
+      U_next_levels[0] = U_next;
     }
 
-    if (cfg.enable_amr) {
-      coarse_mask =
-          build_refine_mask(U, fluid_dev, domain, cfg, ctx);
-      const AmrLayout amr = build_fine_geometry(
-          fluid_dev, coarse_mask, static_cast<Coord>(cfg.amr_guard), domain, ctx);
-      fine_full = amr.fine_full;
-      fine_active = amr.fine_active;
-      fine_with_guard = amr.fine_with_guard;
-      fine_guard = amr.fine_guard;
-      projection_fine_on_coarse = amr.projection_fine_on_coarse;
-      fine_domain = amr.fine_domain;
-      has_fine = amr.has_fine;
-    }
+    fluid_full[0] = fluid_dev;
+    active_set[0] = fluid_dev;
+    with_guard_set[0] = fluid_dev;
+    guard_set[0] = IntervalSet2DDevice();
+    projection_down[0] = IntervalSet2DDevice();
+    domains[0] = domain;
+    has_level[0] = true;
+    coarse_masks[0] = IntervalSet2DDevice();
+    density_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_density");
+    pressure_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_pressure");
+    mach_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_mach");
+    U_active_levels[0] = U_levels[0];
 
-    if (has_fine) {
-      U_fine = Field2DDevice<Conserved>(fine_with_guard, "mach2_fine");
-      U_fine_next = Field2DDevice<Conserved>(fine_with_guard,
-                                             "mach2_fine_next");
-      U_fine_active = Field2DDevice<Conserved>(fine_active,
-                                               "mach2_fine_active");
-      density_fine = Field2DDevice<Real>(fine_active, "mach2_fine_density");
-      pressure_fine = Field2DDevice<Real>(fine_active, "mach2_fine_pressure");
-      mach_fine = Field2DDevice<Real>(fine_active, "mach2_fine_mach");
-
-      prolong_full(U_fine, U, ctx);
-      prolong_full(U_fine_next, U, ctx);
-    }
-
-    if (has_fine) {
-      coarse_mask_l2 =
-          build_refine_mask(U_fine, fine_full, fine_domain, cfg, ctx);
-      coarse_mask_l2 = constrain_mask_to_parent_interior(
-          coarse_mask_l2, fine_full, fine_active,
+    auto build_level = [&](int lvl,
+                           const IntervalSet2DDevice& parent_full,
+                           const IntervalSet2DDevice& parent_active,
+                           const Field2DDevice<Conserved>& parent_U,
+                           const Box2D& parent_domain,
+                           const IntervalSet2DDevice* prev_active = nullptr,
+                           Field2DDevice<Conserved>* prev_U = nullptr) {
+      if (!cfg.enable_amr) {
+        return;
+      }
+      if (lvl <= 0 || lvl >= MAX_AMR_LEVELS) {
+        return;
+      }
+      IntervalSet2DDevice mask =
+          build_refine_mask(parent_U, parent_full, parent_domain, cfg, ctx);
+      mask = constrain_mask_to_parent_interior(
+          mask, parent_full, parent_active,
           static_cast<Coord>(std::max(1, cfg.amr_guard)), ctx);
-      const AmrLayout amr2 = build_fine_geometry(
-          fine_full, coarse_mask_l2, static_cast<Coord>(cfg.amr_guard),
-          fine_domain, ctx);
-      fine2_full = amr2.fine_full;
-      fine2_active = amr2.fine_active;
-      fine2_with_guard = amr2.fine_with_guard;
-      fine2_guard = amr2.fine_guard;
-      IntervalSet2DDevice proj_fine2_on_fine1_clipped =
-          subsetix::csr::allocate_interval_set_device(
-              std::max(amr2.projection_fine_on_coarse.num_rows,
-                       fine_with_guard.num_rows),
-              amr2.projection_fine_on_coarse.num_intervals +
-                  fine_with_guard.num_intervals);
-      set_intersection_device(amr2.projection_fine_on_coarse, fine_with_guard,
-                              proj_fine2_on_fine1_clipped, ctx);
-      subsetix::csr::compute_cell_offsets_device(proj_fine2_on_fine1_clipped);
-      projection_fine2_on_fine1 = proj_fine2_on_fine1_clipped;
-      fine_domain2 = amr2.fine_domain;
-      has_fine2 = amr2.has_fine;
-    }
+      const AmrLayout amr = build_fine_geometry(
+          parent_full, mask, static_cast<Coord>(cfg.amr_guard), parent_domain, ctx);
 
-    if (has_fine2) {
-      U_fine2 = Field2DDevice<Conserved>(fine2_with_guard, "mach2_fine_lvl2");
-      U_fine2_next = Field2DDevice<Conserved>(fine2_with_guard,
-                                              "mach2_fine_lvl2_next");
-      U_fine2_active = Field2DDevice<Conserved>(fine2_active,
-                                                "mach2_fine_lvl2_active");
-      density_fine2 = Field2DDevice<Real>(fine2_active, "mach2_fine_lvl2_density");
-      pressure_fine2 = Field2DDevice<Real>(fine2_active, "mach2_fine_lvl2_pressure");
-      mach_fine2 = Field2DDevice<Real>(fine2_active, "mach2_fine_lvl2_mach");
+      fluid_full[lvl] = amr.fine_full;
+      active_set[lvl] = amr.fine_active;
+      with_guard_set[lvl] = amr.fine_with_guard;
+      guard_set[lvl] = amr.fine_guard;
+      projection_down[lvl] = amr.projection_fine_on_coarse;
+      domains[lvl] = amr.fine_domain;
+      coarse_masks[lvl] = mask;
+      has_level[lvl] = amr.has_fine;
+      if (!has_level[lvl]) {
+        return;
+      }
 
-      prolong_full(U_fine2, U_fine, ctx);
-      prolong_full(U_fine2_next, U_fine, ctx);
+      U_levels[lvl] = Field2DDevice<Conserved>(with_guard_set[lvl], "mach2_fine_lvl");
+      U_next_levels[lvl] = Field2DDevice<Conserved>(with_guard_set[lvl],
+                                                    "mach2_fine_lvl_next");
+      U_active_levels[lvl] = Field2DDevice<Conserved>(active_set[lvl],
+                                                      "mach2_fine_lvl_active");
+      density_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_density_lvl");
+      pressure_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_pressure_lvl");
+      mach_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_mach_lvl");
+
+      prolong_full(U_levels[lvl], parent_U, ctx);
+      prolong_full(U_next_levels[lvl], parent_U, ctx);
+
+      if (prev_active && prev_U) {
+        const std::size_t overlap_rows_cap =
+            std::min(prev_active->num_rows, active_set[lvl].num_rows);
+        const std::size_t overlap_intervals_cap =
+            prev_active->num_intervals + active_set[lvl].num_intervals;
+        if (overlap_rows_cap > 0 && overlap_intervals_cap > 0) {
+          auto overlap = subsetix::csr::allocate_interval_set_device(
+              overlap_rows_cap, overlap_intervals_cap);
+          set_intersection_device(*prev_active, active_set[lvl], overlap, ctx);
+          copy_overlap(U_levels[lvl], *prev_U, overlap, ctx);
+        }
+      }
+    };
+
+    // Initial hierarchy build up to MAX_AMR_LEVELS-1
+    for (int lvl = 1; lvl < MAX_AMR_LEVELS; ++lvl) {
+      if (!has_level[lvl - 1]) {
+        break;
+      }
+      build_level(lvl,
+                  fluid_full[lvl - 1],
+                  active_set[lvl - 1],
+                  U_levels[lvl - 1],
+                  domains[lvl - 1]);
+      if (!has_level[lvl]) {
+        break;
+      }
     }
 
     if (cfg.enable_output) {
@@ -1391,33 +1351,34 @@ int main(int argc, char* argv[]) {
                          subsetix_examples::output_file(output_dir, "fluid_geometry.vtk"));
       write_legacy_quads(obstacle_host,
                          subsetix_examples::output_file(output_dir, "obstacle_geometry.vtk"));
-      if (coarse_mask.num_intervals > 0) {
-        const IntervalSet2DHost coarse_mask_host =
-            subsetix::csr::build_host_from_device(coarse_mask);
-        write_legacy_quads(coarse_mask_host,
-                           subsetix_examples::output_file(output_dir, "coarse_refine_mask.vtk"));
-      }
-      if (has_fine) {
+      for (int lvl = 1; lvl < MAX_AMR_LEVELS; ++lvl) {
+        if (!has_level[lvl]) {
+          break;
+        }
+        if (coarse_masks[lvl].num_intervals > 0) {
+          const IntervalSet2DHost mask_host =
+              subsetix::csr::build_host_from_device(coarse_masks[lvl]);
+          write_legacy_quads(mask_host,
+                             subsetix_examples::output_file(
+                                 output_dir, "refine_mask_lvl" + std::to_string(lvl) + ".vtk"));
+        }
         const IntervalSet2DHost fine_host =
-            subsetix::csr::build_host_from_device(fine_active);
+            subsetix::csr::build_host_from_device(active_set[lvl]);
         write_legacy_quads(fine_host,
-                           subsetix_examples::output_file(output_dir, "fine_geometry.vtk"));
-      }
-      if (has_fine2) {
-        const IntervalSet2DHost fine2_host =
-            subsetix::csr::build_host_from_device(fine2_active);
-        write_legacy_quads(fine2_host,
-                           subsetix_examples::output_file(output_dir, "fine_lvl2_geometry.vtk"));
+                           subsetix_examples::output_file(
+                               output_dir, "fine_geometry_lvl" + std::to_string(lvl) + ".vtk"));
       }
     } // initial outputs
     Real t = static_cast<Real>(0.0);
     int step = 0;
-    const Real dx = static_cast<Real>(1.0);
-    const Real dy = static_cast<Real>(1.0);
-    const Real dx_fine = static_cast<Real>(0.5) * dx;
-    const Real dy_fine = static_cast<Real>(0.5) * dy;
-    const Real dx_fine2 = static_cast<Real>(0.5) * dx_fine;
-    const Real dy_fine2 = static_cast<Real>(0.5) * dy_fine;
+    std::array<Real, MAX_AMR_LEVELS> dx_levels;
+    std::array<Real, MAX_AMR_LEVELS> dy_levels;
+    dx_levels[0] = static_cast<Real>(1.0);
+    dy_levels[0] = static_cast<Real>(1.0);
+    for (int lvl = 1; lvl < MAX_AMR_LEVELS; ++lvl) {
+      dx_levels[lvl] = static_cast<Real>(0.5) * dx_levels[lvl - 1];
+      dy_levels[lvl] = static_cast<Real>(0.5) * dy_levels[lvl - 1];
+    }
 
   std::cout << "Mach 2 cylinder setup: "
             << "nx=" << cfg.nx << " ny=" << cfg.ny
@@ -1429,103 +1390,95 @@ int main(int argc, char* argv[]) {
             << " remesh_stride=" << cfg.amr_remesh_stride
             << " output_dir=" << (cfg.enable_output ? output_dir.string() : "(disabled)") << "\n";
 
-    Real total_mass0 = compute_total_mass(U);
+    Real total_mass0 = compute_total_mass(U_levels[0]);
+
+  auto max_active_level = [&]() {
+    int finest = 0;
+    for (int lvl = 0; lvl < MAX_AMR_LEVELS; ++lvl) {
+      if (has_level[lvl]) {
+        finest = lvl;
+      }
+    }
+    return finest;
+  };
 
   while ((t < cfg.t_final) && (step < cfg.max_steps)) {
-    const FieldReadAccessor<Conserved> acc_coarse = make_accessor(U);
-    Real dt = compute_dt(U, cfg.gamma, cfg.cfl, dx, dy);
+    const int finest_level = max_active_level();
+    std::array<FieldReadAccessor<Conserved>, MAX_AMR_LEVELS> accessors;
+    for (int lvl = 0; lvl <= finest_level; ++lvl) {
+      if (has_level[lvl]) {
+        accessors[lvl] = make_accessor(U_levels[lvl]);
+      }
+    }
+
+    Real dt = compute_dt(U_levels[0], cfg.gamma, cfg.cfl,
+                         dx_levels[0], dy_levels[0]);
 
     const auto t_step_begin = Clock::now();
     double time_prolong_ms = 0.0;
     double time_fine_ms = 0.0;
-    double time_fine2_ms = 0.0;
     double time_coarse_ms = 0.0;
     double time_restrict_ms = 0.0;
     double time_remesh_ms = 0.0;
     double time_output_ms = 0.0;
 
-    FieldReadAccessor<Conserved> acc_fine;
-    FieldReadAccessor<Conserved> acc_fine2;
-    if (has_fine) {
+    for (int lvl = 1; lvl <= finest_level; ++lvl) {
+      if (!has_level[lvl]) {
+        continue;
+      }
       const auto t0 = Clock::now();
-      prolong_guard_from_coarse(U_fine, fine_guard, acc_coarse);
+      prolong_guard_from_coarse(U_levels[lvl], guard_set[lvl], accessors[lvl - 1]);
       const auto t1 = Clock::now();
       time_prolong_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
-      acc_fine = make_accessor(U_fine);
-      const Real dt_fine =
-          compute_dt_on_set(U_fine, fine_active, cfg.gamma, cfg.cfl,
-                            dx_fine, dy_fine);
-      dt = std::min(dt, dt_fine);
-    }
-
-    if (has_fine2) {
-      const auto t0 = Clock::now();
-      prolong_guard_from_coarse(U_fine2, fine2_guard, acc_fine);
-      const auto t1 = Clock::now();
-      time_prolong_ms +=
-          std::chrono::duration<double, std::milli>(t1 - t0).count();
-      acc_fine2 = make_accessor(U_fine2);
-      const Real dt_fine2 =
-          compute_dt_on_set(U_fine2, fine2_active, cfg.gamma, cfg.cfl,
-                            dx_fine2, dy_fine2);
-      dt = std::min(dt, dt_fine2);
+      const Real dt_lvl = compute_dt_on_set(
+          U_levels[lvl], active_set[lvl], cfg.gamma, cfg.cfl,
+          dx_levels[lvl], dy_levels[lvl]);
+      dt = std::min(dt, dt_lvl);
     }
 
     if (t + dt > cfg.t_final) {
       dt = cfg.t_final - t;
     }
 
-    if (has_fine2) {
+    for (int lvl = finest_level; lvl >= 1; --lvl) {
+      if (!has_level[lvl]) {
+        continue;
+      }
       const auto t0 = Clock::now();
-      FineEulerStencil fine2_stencil{acc_fine2, acc_fine, fine_domain2,
-                                     inflow, cfg.gamma, dt, dx_fine2, dy_fine2,
-                                     cfg.no_slip};
-      apply_stencil_on_set_device(U_fine2_next, U_fine2, fine2_active,
-                                  fine2_stencil);
-      const auto t1 = Clock::now();
-      time_fine2_ms +=
-          std::chrono::duration<double, std::milli>(t1 - t0).count();
-    }
-
-    if (has_fine) {
-      const auto t0 = Clock::now();
-      FineEulerStencil fine_stencil{acc_fine, acc_coarse, fine_domain,
-                                    inflow, cfg.gamma, dt, dx_fine, dy_fine,
-                                    cfg.no_slip};
-      apply_stencil_on_set_device(U_fine_next, U_fine, fine_active,
-                                  fine_stencil);
+      FineEulerStencil fine_stencil{accessors[lvl], accessors[lvl - 1],
+                                    domains[lvl], inflow, cfg.gamma, dt,
+                                    dx_levels[lvl], dy_levels[lvl], cfg.no_slip};
+      apply_stencil_on_set_device(U_next_levels[lvl], U_levels[lvl],
+                                  active_set[lvl], fine_stencil);
       const auto t1 = Clock::now();
       time_fine_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
     }
 
     const auto t0_coarse = Clock::now();
-    CoarseEulerStencil coarse_stencil{acc_coarse, domain, inflow,
-                                      cfg.gamma, dt, dx, dy, cfg.no_slip};
-    apply_stencil_on_set_device(U_next, U, fluid_dev, coarse_stencil);
+    CoarseEulerStencil coarse_stencil{accessors[0], domain, inflow,
+                                      cfg.gamma, dt, dx_levels[0], dy_levels[0],
+                                      cfg.no_slip};
+    apply_stencil_on_set_device(U_next_levels[0], U_levels[0],
+                                fluid_dev, coarse_stencil);
     const auto t1_coarse = Clock::now();
     time_coarse_ms +=
         std::chrono::duration<double, std::milli>(t1_coarse - t0_coarse).count();
 
-    std::swap(U.values, U_next.values);
-    if (has_fine) {
-      std::swap(U_fine.values, U_fine_next.values);
-    }
-    if (has_fine2) {
-      std::swap(U_fine2.values, U_fine2_next.values);
+    for (int lvl = 0; lvl <= finest_level; ++lvl) {
+      if (has_level[lvl]) {
+        std::swap(U_levels[lvl].values, U_next_levels[lvl].values);
+      }
     }
 
-    if (has_fine2) {
+    for (int lvl = finest_level; lvl >= 1; --lvl) {
+      if (!has_level[lvl]) {
+        continue;
+      }
       const auto t0 = Clock::now();
-      restrict_fine_to_coarse(U_fine, U_fine2, projection_fine2_on_fine1);
-      const auto t1 = Clock::now();
-      time_restrict_ms +=
-          std::chrono::duration<double, std::milli>(t1 - t0).count();
-    }
-    if (has_fine) {
-      const auto t0 = Clock::now();
-      restrict_fine_to_coarse(U, U_fine, projection_fine_on_coarse);
+      restrict_fine_to_coarse(U_levels[lvl - 1], U_levels[lvl],
+                              projection_down[lvl]);
       const auto t1 = Clock::now();
       time_restrict_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -1535,162 +1488,21 @@ int main(int argc, char* argv[]) {
                            cfg.amr_remesh_stride > 0 &&
                            (step % cfg.amr_remesh_stride == 0);
     if (do_remesh) {
-      IntervalSet2DDevice coarse_mask_new =
-          build_refine_mask(U, fluid_dev, domain, cfg, ctx);
-      const AmrLayout amr_new = build_fine_geometry(
-          fluid_dev, coarse_mask_new, static_cast<Coord>(cfg.amr_guard), domain, ctx);
-
       const auto t_remesh_begin = Clock::now();
-      Field2DDevice<Conserved> U_fine_new;
-      Field2DDevice<Conserved> U_fine_next_new;
-      Field2DDevice<Conserved> U_fine_active_new;
-      Field2DDevice<Real> density_fine_new;
-      Field2DDevice<Real> pressure_fine_new;
-      Field2DDevice<Real> mach_fine_new;
-      Field2DDevice<Conserved> U_fine2_new;
-      Field2DDevice<Conserved> U_fine2_next_new;
-      Field2DDevice<Conserved> U_fine2_active_new;
-      Field2DDevice<Real> density_fine2_new;
-      Field2DDevice<Real> pressure_fine2_new;
-      Field2DDevice<Real> mach_fine2_new;
-
-      IntervalSet2DDevice coarse_mask_l2_new;
-      IntervalSet2DDevice fine2_full_new;
-      IntervalSet2DDevice fine2_active_new;
-      IntervalSet2DDevice fine2_with_guard_new;
-      IntervalSet2DDevice fine2_guard_new;
-      IntervalSet2DDevice projection_fine2_on_fine1_new;
-      Box2D fine_domain2_new{0, 0, 0, 0};
-      bool has_fine2_new = false;
-
-      if (amr_new.has_fine) {
-        U_fine_new = Field2DDevice<Conserved>(amr_new.fine_with_guard, "mach2_fine");
-        U_fine_next_new = Field2DDevice<Conserved>(amr_new.fine_with_guard,
-                                                   "mach2_fine_next");
-        U_fine_active_new = Field2DDevice<Conserved>(amr_new.fine_active,
-                                                     "mach2_fine_active");
-        density_fine_new = Field2DDevice<Real>(amr_new.fine_active, "mach2_fine_density");
-        pressure_fine_new = Field2DDevice<Real>(amr_new.fine_active, "mach2_fine_pressure");
-        mach_fine_new = Field2DDevice<Real>(amr_new.fine_active, "mach2_fine_mach");
-
-        prolong_full(U_fine_new, U, ctx);
-        prolong_full(U_fine_next_new, U, ctx);
-
-        if (has_fine) {
-          const std::size_t overlap_rows_cap =
-              std::min(amr_new.fine_active.num_rows, fine_active.num_rows);
-          const std::size_t overlap_intervals_cap =
-              amr_new.fine_active.num_intervals + fine_active.num_intervals;
-          if (overlap_rows_cap > 0 && overlap_intervals_cap > 0) {
-            auto overlap = subsetix::csr::allocate_interval_set_device(
-                overlap_rows_cap, overlap_intervals_cap);
-            set_intersection_device(amr_new.fine_active, fine_active, overlap, ctx);
-            copy_overlap(U_fine_new, U_fine, overlap, ctx);
-          }
+      auto prev_active = active_set;
+      auto prev_U = U_levels;
+      for (int lvl = 1; lvl < MAX_AMR_LEVELS; ++lvl) {
+        if (!has_level[lvl - 1]) {
+          has_level[lvl] = false;
+          continue;
         }
-
-        coarse_mask_l2_new =
-            build_refine_mask(U_fine_new, amr_new.fine_full, amr_new.fine_domain, cfg, ctx);
-        coarse_mask_l2_new = constrain_mask_to_parent_interior(
-            coarse_mask_l2_new, amr_new.fine_full, amr_new.fine_active,
-            static_cast<Coord>(std::max(1, cfg.amr_guard)), ctx);
-        const AmrLayout amr2_new = build_fine_geometry(
-            amr_new.fine_full, coarse_mask_l2_new,
-            static_cast<Coord>(cfg.amr_guard), amr_new.fine_domain, ctx);
-        fine2_full_new = amr2_new.fine_full;
-        fine2_active_new = amr2_new.fine_active;
-        fine2_with_guard_new = amr2_new.fine_with_guard;
-        fine2_guard_new = amr2_new.fine_guard;
-        IntervalSet2DDevice proj_fine2_on_fine1_new_clipped =
-            subsetix::csr::allocate_interval_set_device(
-                std::max(amr2_new.projection_fine_on_coarse.num_rows,
-                         amr_new.fine_with_guard.num_rows),
-                amr2_new.projection_fine_on_coarse.num_intervals +
-                    amr_new.fine_with_guard.num_intervals);
-        set_intersection_device(amr2_new.projection_fine_on_coarse,
-                                amr_new.fine_with_guard,
-                                proj_fine2_on_fine1_new_clipped, ctx);
-        subsetix::csr::compute_cell_offsets_device(proj_fine2_on_fine1_new_clipped);
-        projection_fine2_on_fine1_new = proj_fine2_on_fine1_new_clipped;
-        fine_domain2_new = amr2_new.fine_domain;
-        has_fine2_new = amr2_new.has_fine;
-
-        if (amr2_new.has_fine) {
-          U_fine2_new = Field2DDevice<Conserved>(amr2_new.fine_with_guard, "mach2_fine_lvl2");
-          U_fine2_next_new = Field2DDevice<Conserved>(amr2_new.fine_with_guard,
-                                                      "mach2_fine_lvl2_next");
-          U_fine2_active_new = Field2DDevice<Conserved>(amr2_new.fine_active,
-                                                        "mach2_fine_lvl2_active");
-          density_fine2_new = Field2DDevice<Real>(amr2_new.fine_active, "mach2_fine_lvl2_density");
-          pressure_fine2_new = Field2DDevice<Real>(amr2_new.fine_active, "mach2_fine_lvl2_pressure");
-          mach_fine2_new = Field2DDevice<Real>(amr2_new.fine_active, "mach2_fine_lvl2_mach");
-
-          prolong_full(U_fine2_new, U_fine_new, ctx);
-          prolong_full(U_fine2_next_new, U_fine_new, ctx);
-
-          if (has_fine2) {
-            const std::size_t overlap_rows_cap =
-                std::min(amr2_new.fine_active.num_rows, fine2_active.num_rows);
-            const std::size_t overlap_intervals_cap =
-                amr2_new.fine_active.num_intervals + fine2_active.num_intervals;
-            if (overlap_rows_cap > 0 && overlap_intervals_cap > 0) {
-              auto overlap = subsetix::csr::allocate_interval_set_device(
-                  overlap_rows_cap, overlap_intervals_cap);
-              set_intersection_device(amr2_new.fine_active, fine2_active, overlap, ctx);
-              copy_overlap(U_fine2_new, U_fine2, overlap, ctx);
-            }
-          }
-        }
-      }
-
-      coarse_mask = amr_new.coarse_mask;
-      fine_full = amr_new.fine_full;
-      fine_active = amr_new.fine_active;
-      fine_with_guard = amr_new.fine_with_guard;
-      fine_guard = amr_new.fine_guard;
-      projection_fine_on_coarse = amr_new.projection_fine_on_coarse;
-      fine_domain = amr_new.fine_domain;
-      has_fine = amr_new.has_fine;
-
-      if (has_fine) {
-        U_fine = std::move(U_fine_new);
-        U_fine_next = std::move(U_fine_next_new);
-        U_fine_active = std::move(U_fine_active_new);
-        density_fine = std::move(density_fine_new);
-        pressure_fine = std::move(pressure_fine_new);
-        mach_fine = std::move(mach_fine_new);
-      } else {
-        U_fine = Field2DDevice<Conserved>();
-        U_fine_next = Field2DDevice<Conserved>();
-        U_fine_active = Field2DDevice<Conserved>();
-        density_fine = Field2DDevice<Real>();
-        pressure_fine = Field2DDevice<Real>();
-        mach_fine = Field2DDevice<Real>();
-      }
-
-      coarse_mask_l2 = coarse_mask_l2_new;
-      fine2_full = fine2_full_new;
-      fine2_active = fine2_active_new;
-      fine2_with_guard = fine2_with_guard_new;
-      fine2_guard = fine2_guard_new;
-      projection_fine2_on_fine1 = projection_fine2_on_fine1_new;
-      fine_domain2 = fine_domain2_new;
-      has_fine2 = has_fine2_new;
-
-      if (has_fine2) {
-        U_fine2 = std::move(U_fine2_new);
-        U_fine2_next = std::move(U_fine2_next_new);
-        U_fine2_active = std::move(U_fine2_active_new);
-        density_fine2 = std::move(density_fine2_new);
-        pressure_fine2 = std::move(pressure_fine2_new);
-        mach_fine2 = std::move(mach_fine2_new);
-      } else {
-        U_fine2 = Field2DDevice<Conserved>();
-        U_fine2_next = Field2DDevice<Conserved>();
-        U_fine2_active = Field2DDevice<Conserved>();
-        density_fine2 = Field2DDevice<Real>();
-        pressure_fine2 = Field2DDevice<Real>();
-        mach_fine2 = Field2DDevice<Real>();
+        build_level(lvl,
+                    fluid_full[lvl - 1],
+                    active_set[lvl - 1],
+                    U_levels[lvl - 1],
+                    domains[lvl - 1],
+                    has_level[lvl] ? &prev_active[lvl] : nullptr,
+                    has_level[lvl] ? &prev_U[lvl] : nullptr);
       }
       const auto t_remesh_end = Clock::now();
       time_remesh_ms += std::chrono::duration<double, std::milli>(
@@ -1704,45 +1516,37 @@ int main(int argc, char* argv[]) {
     if (step % cfg.output_stride == 0 || step == cfg.max_steps ||
         t >= cfg.t_final - 1e-12) {
       if (cfg.enable_output) {
-        if (has_fine) {
-          auto fine_src = make_subview(U_fine, fine_active, "fine_active_src");
-          auto fine_dst = make_subview(U_fine_active, fine_active,
-                                       "fine_active_dst");
-          copy_subview_device(fine_dst, fine_src, ctx);
-        }
-        if (has_fine2) {
-          auto fine2_src = make_subview(U_fine2, fine2_active, "fine2_active_src");
-          auto fine2_dst = make_subview(U_fine2_active, fine2_active,
-                                        "fine2_active_dst");
-          copy_subview_device(fine2_dst, fine2_src, ctx);
+        const auto t_out_begin = Clock::now();
+        const int active_finest = max_active_level();
+        for (int lvl = 1; lvl <= active_finest; ++lvl) {
+          if (!has_level[lvl]) {
+            continue;
+          }
+          auto src = make_subview(U_levels[lvl], active_set[lvl],
+                                  "fine_active_src_lvl");
+          auto dst = make_subview(U_active_levels[lvl], active_set[lvl],
+                                  "fine_active_dst_lvl");
+          copy_subview_device(dst, src, ctx);
         }
 
-        const auto t_out_begin = Clock::now();
-        write_step_outputs(fluid_dev,
-                           density,
-                           pressure,
-                           mach_field,
-                           cfg.gamma,
-                           output_dir,
-                           step,
-                           has_fine ? &fine_active : nullptr,
-                           has_fine ? &density_fine : nullptr,
-                           has_fine ? &pressure_fine : nullptr,
-                           has_fine ? &mach_fine : nullptr,
-                           &U,
-                           has_fine ? &U_fine_active : nullptr,
-                           has_fine2 ? &fine2_active : nullptr,
-                           has_fine2 ? &density_fine2 : nullptr,
-                           has_fine2 ? &pressure_fine2 : nullptr,
-                           has_fine2 ? &mach_fine2 : nullptr,
-                           has_fine2 ? &U_fine2_active : nullptr);
+        write_multilevel_outputs<MAX_AMR_LEVELS>(
+            active_set,
+            density_levels,
+            pressure_levels,
+            mach_levels,
+            U_active_levels,
+            has_level,
+            active_finest,
+            cfg.gamma,
+            output_dir,
+            step);
         const auto t_out_end = Clock::now();
         time_output_ms += std::chrono::duration<double, std::milli>(
                               t_out_end - t_out_begin)
                               .count();
       }
 
-      const Real total_mass = compute_total_mass(U);
+      const Real total_mass = compute_total_mass(U_levels[0]);
       const auto t_step_end = Clock::now();
       const double time_step_ms = std::chrono::duration<double, std::milli>(
                                       t_step_end - t_step_begin)
@@ -1755,7 +1559,6 @@ int main(int argc, char* argv[]) {
                 << " timings_ms:"
                 << " prolong=" << time_prolong_ms
                 << " fine=" << time_fine_ms
-                << " fine2=" << time_fine2_ms
                 << " coarse=" << time_coarse_ms
                 << " restrict=" << time_restrict_ms
                 << " remesh=" << time_remesh_ms
