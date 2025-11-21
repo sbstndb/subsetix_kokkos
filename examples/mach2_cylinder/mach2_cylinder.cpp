@@ -57,7 +57,7 @@ using subsetix::MultilevelGeoDevice;
 using subsetix::MultilevelFieldDevice;
 
 using Clock = std::chrono::steady_clock;
-constexpr int MAX_AMR_LEVELS = 4; // level 0 + up to 3 refined levels
+constexpr int MAX_AMR_LEVELS = 6; // level 0 + up to 5 refined levels
 
 struct Conserved {
   Real rho;
