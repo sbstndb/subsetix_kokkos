@@ -355,6 +355,7 @@ Real compute_dt(const Field2DDevice<Conserved>& U,
 
 struct AmrLayout {
   IntervalSet2DDevice coarse_mask;
+  IntervalSet2DDevice fine_full;
   IntervalSet2DDevice fine_active;
   IntervalSet2DDevice fine_with_guard;
   IntervalSet2DDevice fine_guard;
@@ -374,14 +375,16 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
   }
 
   auto make_central_box_mask = [&]() {
+    const Coord span_x = domain.x_max - domain.x_min;
+    const Coord span_y = domain.y_max - domain.y_min;
     const Coord refine_w = static_cast<Coord>(
-        std::max<int>(4, static_cast<int>(cfg.amr_fraction * cfg.nx)));
+        std::max<int>(4, static_cast<int>(cfg.amr_fraction * span_x)));
     const Coord refine_h = static_cast<Coord>(
-        std::max<int>(4, static_cast<int>(cfg.amr_fraction * cfg.ny)));
+        std::max<int>(4, static_cast<int>(cfg.amr_fraction * span_y)));
     const Coord refine_x0 =
-        domain.x_min + static_cast<Coord>((cfg.nx - refine_w) / 2);
+        domain.x_min + static_cast<Coord>((span_x - refine_w) / 2);
     const Coord refine_y0 =
-        domain.y_min + static_cast<Coord>((cfg.ny - refine_h) / 2);
+        domain.y_min + static_cast<Coord>((span_y - refine_h) / 2);
     const Box2D refine_box{
         refine_x0, static_cast<Coord>(refine_x0 + refine_w),
         refine_y0, static_cast<Coord>(refine_y0 + refine_h)};
@@ -482,6 +485,7 @@ AmrLayout build_fine_geometry(const IntervalSet2DDevice& fluid_dev,
   IntervalSet2DDevice fine_full;
   refine_level_up_device(fluid_dev, fine_full, ctx);
   subsetix::csr::compute_cell_offsets_device(fine_full);
+  layout.fine_full = fine_full;
 
   IntervalSet2DDevice fine_mask;
   refine_level_up_device(coarse_mask, fine_mask, ctx);
@@ -533,6 +537,48 @@ AmrLayout build_fine_geometry(const IntervalSet2DDevice& fluid_dev,
   layout.has_fine = layout.fine_active.num_rows > 0 &&
                     layout.fine_active.num_intervals > 0;
   return layout;
+}
+
+IntervalSet2DDevice constrain_mask_to_parent_interior(
+    const IntervalSet2DDevice& mask,
+    const IntervalSet2DDevice& parent_fluid,
+    const IntervalSet2DDevice& parent_active,
+    Coord buffer,
+    CsrSetAlgebraContext& ctx) {
+  if (mask.num_rows == 0 || mask.num_intervals == 0) {
+    return mask;
+  }
+
+  const Coord guard = (buffer < static_cast<Coord>(1))
+                          ? static_cast<Coord>(1)
+                          : buffer;
+
+  IntervalSet2DDevice parent_out = subsetix::csr::allocate_interval_set_device(
+      parent_fluid.num_rows,
+      parent_fluid.num_intervals + parent_active.num_intervals);
+  set_difference_device(parent_fluid, parent_active, parent_out, ctx);
+  subsetix::csr::compute_cell_offsets_device(parent_out);
+
+  IntervalSet2DDevice parent_out_expanded;
+  expand_device(parent_out, guard, guard, parent_out_expanded, ctx);
+  subsetix::csr::compute_cell_offsets_device(parent_out_expanded);
+
+  IntervalSet2DDevice allowed = subsetix::csr::allocate_interval_set_device(
+      parent_fluid.num_rows,
+      parent_fluid.num_intervals + parent_out_expanded.num_intervals);
+  set_difference_device(parent_fluid, parent_out_expanded, allowed, ctx);
+  subsetix::csr::compute_cell_offsets_device(allowed);
+
+  IntervalSet2DDevice clipped = subsetix::csr::allocate_interval_set_device(
+      std::max(mask.num_rows, allowed.num_rows),
+      mask.num_intervals + allowed.num_intervals);
+  set_intersection_device(mask, allowed, clipped, ctx);
+  subsetix::csr::compute_cell_offsets_device(clipped);
+
+  if (clipped.num_intervals == 0 || clipped.num_rows == 0) {
+    clipped = allowed;
+  }
+  return clipped;
 }
 
 Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
@@ -1096,7 +1142,12 @@ void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
                         Field2DDevice<Real>* pressure_fine = nullptr,
                         Field2DDevice<Real>* mach_fine = nullptr,
                         const Field2DDevice<Conserved>* U_coarse = nullptr,
-                        const Field2DDevice<Conserved>* U_fine_active = nullptr) {
+                        const Field2DDevice<Conserved>* U_fine_active = nullptr,
+                        const IntervalSet2DDevice* fine2_geom = nullptr,
+                        Field2DDevice<Real>* density_fine2 = nullptr,
+                        Field2DDevice<Real>* pressure_fine2 = nullptr,
+                        Field2DDevice<Real>* mach_fine2 = nullptr,
+                        const Field2DDevice<Conserved>* U_fine2_active = nullptr) {
   if (U_coarse) {
     compute_diagnostics(*U_coarse, density, pressure, mach, gamma);
   }
@@ -1104,6 +1155,11 @@ void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
       U_fine_active->geometry.num_intervals > 0) {
     compute_diagnostics(*U_fine_active, *density_fine, *pressure_fine,
                         *mach_fine, gamma);
+  }
+  if (U_fine2_active && density_fine2 && pressure_fine2 && mach_fine2 &&
+      U_fine2_active->geometry.num_intervals > 0) {
+    compute_diagnostics(*U_fine2_active, *density_fine2, *pressure_fine2,
+                        *mach_fine2, gamma);
   }
 
   MultilevelGeoDevice geo;
@@ -1136,6 +1192,19 @@ void write_step_outputs(const IntervalSet2DDevice& coarse_geom,
     f_density.levels[1] = *density_fine;
     f_pressure.levels[1] = *pressure_fine;
     f_mach.levels[1] = *mach_fine;
+  }
+  const bool has_fine2 = (fine2_geom && fine2_geom->num_intervals > 0 &&
+                          density_fine2 && pressure_fine2 && mach_fine2 &&
+                          U_fine2_active && U_fine2_active->geometry.num_intervals > 0);
+  if (has_fine2) {
+    geo.num_active_levels = 3;
+    geo.levels[2] = *fine2_geom;
+    f_density.num_active_levels = 3;
+    f_pressure.num_active_levels = 3;
+    f_mach.num_active_levels = 3;
+    f_density.levels[2] = *density_fine2;
+    f_pressure.levels[2] = *pressure_fine2;
+    f_mach.levels[2] = *mach_fine2;
   }
 
   const auto host_geo = subsetix::deep_copy_to_host(geo);
@@ -1193,12 +1262,21 @@ int main(int argc, char* argv[]) {
     //  - fine_with_guard: fine_active dilated with guard cells, prolonged from coarse.
     //  - projection_fine_on_coarse: coarse cells overlapped by fine_active (restriction area).
     IntervalSet2DDevice coarse_mask;
+    IntervalSet2DDevice fine_full;
     IntervalSet2DDevice fine_active;
     IntervalSet2DDevice fine_with_guard;
     IntervalSet2DDevice fine_guard;
     IntervalSet2DDevice projection_fine_on_coarse;
     Box2D fine_domain{0, 0, 0, 0};
     bool has_fine = false;
+    IntervalSet2DDevice coarse_mask_l2;
+    IntervalSet2DDevice fine2_full;
+    IntervalSet2DDevice fine2_active;
+    IntervalSet2DDevice fine2_with_guard;
+    IntervalSet2DDevice fine2_guard;
+    IntervalSet2DDevice projection_fine2_on_fine1;
+    Box2D fine_domain2{0, 0, 0, 0};
+    bool has_fine2 = false;
 
     Field2DDevice<Conserved> U(fluid_dev, "mach2_state");
     Field2DDevice<Conserved> U_next(fluid_dev, "mach2_state_next");
@@ -1212,6 +1290,12 @@ int main(int argc, char* argv[]) {
     Field2DDevice<Real> density_fine;
     Field2DDevice<Real> pressure_fine;
     Field2DDevice<Real> mach_fine;
+    Field2DDevice<Conserved> U_fine2;
+    Field2DDevice<Conserved> U_fine2_next;
+    Field2DDevice<Conserved> U_fine2_active;
+    Field2DDevice<Real> density_fine2;
+    Field2DDevice<Real> pressure_fine2;
+    Field2DDevice<Real> mach_fine2;
 
     const Conserved inflow = build_inflow_state(cfg);
 
@@ -1234,6 +1318,7 @@ int main(int argc, char* argv[]) {
           build_refine_mask(U, fluid_dev, domain, cfg, ctx);
       const AmrLayout amr = build_fine_geometry(
           fluid_dev, coarse_mask, static_cast<Coord>(cfg.amr_guard), domain, ctx);
+      fine_full = amr.fine_full;
       fine_active = amr.fine_active;
       fine_with_guard = amr.fine_with_guard;
       fine_guard = amr.fine_guard;
@@ -1254,6 +1339,47 @@ int main(int argc, char* argv[]) {
 
       prolong_full(U_fine, U, ctx);
       prolong_full(U_fine_next, U, ctx);
+    }
+
+    if (has_fine) {
+      coarse_mask_l2 =
+          build_refine_mask(U_fine, fine_full, fine_domain, cfg, ctx);
+      coarse_mask_l2 = constrain_mask_to_parent_interior(
+          coarse_mask_l2, fine_full, fine_active,
+          static_cast<Coord>(std::max(1, cfg.amr_guard)), ctx);
+      const AmrLayout amr2 = build_fine_geometry(
+          fine_full, coarse_mask_l2, static_cast<Coord>(cfg.amr_guard),
+          fine_domain, ctx);
+      fine2_full = amr2.fine_full;
+      fine2_active = amr2.fine_active;
+      fine2_with_guard = amr2.fine_with_guard;
+      fine2_guard = amr2.fine_guard;
+      IntervalSet2DDevice proj_fine2_on_fine1_clipped =
+          subsetix::csr::allocate_interval_set_device(
+              std::max(amr2.projection_fine_on_coarse.num_rows,
+                       fine_with_guard.num_rows),
+              amr2.projection_fine_on_coarse.num_intervals +
+                  fine_with_guard.num_intervals);
+      set_intersection_device(amr2.projection_fine_on_coarse, fine_with_guard,
+                              proj_fine2_on_fine1_clipped, ctx);
+      subsetix::csr::compute_cell_offsets_device(proj_fine2_on_fine1_clipped);
+      projection_fine2_on_fine1 = proj_fine2_on_fine1_clipped;
+      fine_domain2 = amr2.fine_domain;
+      has_fine2 = amr2.has_fine;
+    }
+
+    if (has_fine2) {
+      U_fine2 = Field2DDevice<Conserved>(fine2_with_guard, "mach2_fine_lvl2");
+      U_fine2_next = Field2DDevice<Conserved>(fine2_with_guard,
+                                              "mach2_fine_lvl2_next");
+      U_fine2_active = Field2DDevice<Conserved>(fine2_active,
+                                                "mach2_fine_lvl2_active");
+      density_fine2 = Field2DDevice<Real>(fine2_active, "mach2_fine_lvl2_density");
+      pressure_fine2 = Field2DDevice<Real>(fine2_active, "mach2_fine_lvl2_pressure");
+      mach_fine2 = Field2DDevice<Real>(fine2_active, "mach2_fine_lvl2_mach");
+
+      prolong_full(U_fine2, U_fine, ctx);
+      prolong_full(U_fine2_next, U_fine, ctx);
     }
 
     if (cfg.enable_output) {
@@ -1277,6 +1403,12 @@ int main(int argc, char* argv[]) {
         write_legacy_quads(fine_host,
                            subsetix_examples::output_file(output_dir, "fine_geometry.vtk"));
       }
+      if (has_fine2) {
+        const IntervalSet2DHost fine2_host =
+            subsetix::csr::build_host_from_device(fine2_active);
+        write_legacy_quads(fine2_host,
+                           subsetix_examples::output_file(output_dir, "fine_lvl2_geometry.vtk"));
+      }
     } // initial outputs
     Real t = static_cast<Real>(0.0);
     int step = 0;
@@ -1284,6 +1416,8 @@ int main(int argc, char* argv[]) {
     const Real dy = static_cast<Real>(1.0);
     const Real dx_fine = static_cast<Real>(0.5) * dx;
     const Real dy_fine = static_cast<Real>(0.5) * dy;
+    const Real dx_fine2 = static_cast<Real>(0.5) * dx_fine;
+    const Real dy_fine2 = static_cast<Real>(0.5) * dy_fine;
 
   std::cout << "Mach 2 cylinder setup: "
             << "nx=" << cfg.nx << " ny=" << cfg.ny
@@ -1304,12 +1438,14 @@ int main(int argc, char* argv[]) {
     const auto t_step_begin = Clock::now();
     double time_prolong_ms = 0.0;
     double time_fine_ms = 0.0;
+    double time_fine2_ms = 0.0;
     double time_coarse_ms = 0.0;
     double time_restrict_ms = 0.0;
     double time_remesh_ms = 0.0;
     double time_output_ms = 0.0;
 
     FieldReadAccessor<Conserved> acc_fine;
+    FieldReadAccessor<Conserved> acc_fine2;
     if (has_fine) {
       const auto t0 = Clock::now();
       prolong_guard_from_coarse(U_fine, fine_guard, acc_coarse);
@@ -1323,9 +1459,34 @@ int main(int argc, char* argv[]) {
       dt = std::min(dt, dt_fine);
     }
 
-      if (t + dt > cfg.t_final) {
-        dt = cfg.t_final - t;
-      }
+    if (has_fine2) {
+      const auto t0 = Clock::now();
+      prolong_guard_from_coarse(U_fine2, fine2_guard, acc_fine);
+      const auto t1 = Clock::now();
+      time_prolong_ms +=
+          std::chrono::duration<double, std::milli>(t1 - t0).count();
+      acc_fine2 = make_accessor(U_fine2);
+      const Real dt_fine2 =
+          compute_dt_on_set(U_fine2, fine2_active, cfg.gamma, cfg.cfl,
+                            dx_fine2, dy_fine2);
+      dt = std::min(dt, dt_fine2);
+    }
+
+    if (t + dt > cfg.t_final) {
+      dt = cfg.t_final - t;
+    }
+
+    if (has_fine2) {
+      const auto t0 = Clock::now();
+      FineEulerStencil fine2_stencil{acc_fine2, acc_fine, fine_domain2,
+                                     inflow, cfg.gamma, dt, dx_fine2, dy_fine2,
+                                     cfg.no_slip};
+      apply_stencil_on_set_device(U_fine2_next, U_fine2, fine2_active,
+                                  fine2_stencil);
+      const auto t1 = Clock::now();
+      time_fine2_ms +=
+          std::chrono::duration<double, std::milli>(t1 - t0).count();
+    }
 
     if (has_fine) {
       const auto t0 = Clock::now();
@@ -1351,7 +1512,17 @@ int main(int argc, char* argv[]) {
     if (has_fine) {
       std::swap(U_fine.values, U_fine_next.values);
     }
+    if (has_fine2) {
+      std::swap(U_fine2.values, U_fine2_next.values);
+    }
 
+    if (has_fine2) {
+      const auto t0 = Clock::now();
+      restrict_fine_to_coarse(U_fine, U_fine2, projection_fine2_on_fine1);
+      const auto t1 = Clock::now();
+      time_restrict_ms +=
+          std::chrono::duration<double, std::milli>(t1 - t0).count();
+    }
     if (has_fine) {
       const auto t0 = Clock::now();
       restrict_fine_to_coarse(U, U_fine, projection_fine_on_coarse);
@@ -1376,6 +1547,21 @@ int main(int argc, char* argv[]) {
       Field2DDevice<Real> density_fine_new;
       Field2DDevice<Real> pressure_fine_new;
       Field2DDevice<Real> mach_fine_new;
+      Field2DDevice<Conserved> U_fine2_new;
+      Field2DDevice<Conserved> U_fine2_next_new;
+      Field2DDevice<Conserved> U_fine2_active_new;
+      Field2DDevice<Real> density_fine2_new;
+      Field2DDevice<Real> pressure_fine2_new;
+      Field2DDevice<Real> mach_fine2_new;
+
+      IntervalSet2DDevice coarse_mask_l2_new;
+      IntervalSet2DDevice fine2_full_new;
+      IntervalSet2DDevice fine2_active_new;
+      IntervalSet2DDevice fine2_with_guard_new;
+      IntervalSet2DDevice fine2_guard_new;
+      IntervalSet2DDevice projection_fine2_on_fine1_new;
+      Box2D fine_domain2_new{0, 0, 0, 0};
+      bool has_fine2_new = false;
 
       if (amr_new.has_fine) {
         U_fine_new = Field2DDevice<Conserved>(amr_new.fine_with_guard, "mach2_fine");
@@ -1402,9 +1588,63 @@ int main(int argc, char* argv[]) {
             copy_overlap(U_fine_new, U_fine, overlap, ctx);
           }
         }
+
+        coarse_mask_l2_new =
+            build_refine_mask(U_fine_new, amr_new.fine_full, amr_new.fine_domain, cfg, ctx);
+        coarse_mask_l2_new = constrain_mask_to_parent_interior(
+            coarse_mask_l2_new, amr_new.fine_full, amr_new.fine_active,
+            static_cast<Coord>(std::max(1, cfg.amr_guard)), ctx);
+        const AmrLayout amr2_new = build_fine_geometry(
+            amr_new.fine_full, coarse_mask_l2_new,
+            static_cast<Coord>(cfg.amr_guard), amr_new.fine_domain, ctx);
+        fine2_full_new = amr2_new.fine_full;
+        fine2_active_new = amr2_new.fine_active;
+        fine2_with_guard_new = amr2_new.fine_with_guard;
+        fine2_guard_new = amr2_new.fine_guard;
+        IntervalSet2DDevice proj_fine2_on_fine1_new_clipped =
+            subsetix::csr::allocate_interval_set_device(
+                std::max(amr2_new.projection_fine_on_coarse.num_rows,
+                         amr_new.fine_with_guard.num_rows),
+                amr2_new.projection_fine_on_coarse.num_intervals +
+                    amr_new.fine_with_guard.num_intervals);
+        set_intersection_device(amr2_new.projection_fine_on_coarse,
+                                amr_new.fine_with_guard,
+                                proj_fine2_on_fine1_new_clipped, ctx);
+        subsetix::csr::compute_cell_offsets_device(proj_fine2_on_fine1_new_clipped);
+        projection_fine2_on_fine1_new = proj_fine2_on_fine1_new_clipped;
+        fine_domain2_new = amr2_new.fine_domain;
+        has_fine2_new = amr2_new.has_fine;
+
+        if (amr2_new.has_fine) {
+          U_fine2_new = Field2DDevice<Conserved>(amr2_new.fine_with_guard, "mach2_fine_lvl2");
+          U_fine2_next_new = Field2DDevice<Conserved>(amr2_new.fine_with_guard,
+                                                      "mach2_fine_lvl2_next");
+          U_fine2_active_new = Field2DDevice<Conserved>(amr2_new.fine_active,
+                                                        "mach2_fine_lvl2_active");
+          density_fine2_new = Field2DDevice<Real>(amr2_new.fine_active, "mach2_fine_lvl2_density");
+          pressure_fine2_new = Field2DDevice<Real>(amr2_new.fine_active, "mach2_fine_lvl2_pressure");
+          mach_fine2_new = Field2DDevice<Real>(amr2_new.fine_active, "mach2_fine_lvl2_mach");
+
+          prolong_full(U_fine2_new, U_fine_new, ctx);
+          prolong_full(U_fine2_next_new, U_fine_new, ctx);
+
+          if (has_fine2) {
+            const std::size_t overlap_rows_cap =
+                std::min(amr2_new.fine_active.num_rows, fine2_active.num_rows);
+            const std::size_t overlap_intervals_cap =
+                amr2_new.fine_active.num_intervals + fine2_active.num_intervals;
+            if (overlap_rows_cap > 0 && overlap_intervals_cap > 0) {
+              auto overlap = subsetix::csr::allocate_interval_set_device(
+                  overlap_rows_cap, overlap_intervals_cap);
+              set_intersection_device(amr2_new.fine_active, fine2_active, overlap, ctx);
+              copy_overlap(U_fine2_new, U_fine2, overlap, ctx);
+            }
+          }
+        }
       }
 
       coarse_mask = amr_new.coarse_mask;
+      fine_full = amr_new.fine_full;
       fine_active = amr_new.fine_active;
       fine_with_guard = amr_new.fine_with_guard;
       fine_guard = amr_new.fine_guard;
@@ -1427,6 +1667,31 @@ int main(int argc, char* argv[]) {
         pressure_fine = Field2DDevice<Real>();
         mach_fine = Field2DDevice<Real>();
       }
+
+      coarse_mask_l2 = coarse_mask_l2_new;
+      fine2_full = fine2_full_new;
+      fine2_active = fine2_active_new;
+      fine2_with_guard = fine2_with_guard_new;
+      fine2_guard = fine2_guard_new;
+      projection_fine2_on_fine1 = projection_fine2_on_fine1_new;
+      fine_domain2 = fine_domain2_new;
+      has_fine2 = has_fine2_new;
+
+      if (has_fine2) {
+        U_fine2 = std::move(U_fine2_new);
+        U_fine2_next = std::move(U_fine2_next_new);
+        U_fine2_active = std::move(U_fine2_active_new);
+        density_fine2 = std::move(density_fine2_new);
+        pressure_fine2 = std::move(pressure_fine2_new);
+        mach_fine2 = std::move(mach_fine2_new);
+      } else {
+        U_fine2 = Field2DDevice<Conserved>();
+        U_fine2_next = Field2DDevice<Conserved>();
+        U_fine2_active = Field2DDevice<Conserved>();
+        density_fine2 = Field2DDevice<Real>();
+        pressure_fine2 = Field2DDevice<Real>();
+        mach_fine2 = Field2DDevice<Real>();
+      }
       const auto t_remesh_end = Clock::now();
       time_remesh_ms += std::chrono::duration<double, std::milli>(
                             t_remesh_end - t_remesh_begin)
@@ -1445,6 +1710,12 @@ int main(int argc, char* argv[]) {
                                        "fine_active_dst");
           copy_subview_device(fine_dst, fine_src, ctx);
         }
+        if (has_fine2) {
+          auto fine2_src = make_subview(U_fine2, fine2_active, "fine2_active_src");
+          auto fine2_dst = make_subview(U_fine2_active, fine2_active,
+                                        "fine2_active_dst");
+          copy_subview_device(fine2_dst, fine2_src, ctx);
+        }
 
         const auto t_out_begin = Clock::now();
         write_step_outputs(fluid_dev,
@@ -1459,7 +1730,12 @@ int main(int argc, char* argv[]) {
                            has_fine ? &pressure_fine : nullptr,
                            has_fine ? &mach_fine : nullptr,
                            &U,
-                           has_fine ? &U_fine_active : nullptr);
+                           has_fine ? &U_fine_active : nullptr,
+                           has_fine2 ? &fine2_active : nullptr,
+                           has_fine2 ? &density_fine2 : nullptr,
+                           has_fine2 ? &pressure_fine2 : nullptr,
+                           has_fine2 ? &mach_fine2 : nullptr,
+                           has_fine2 ? &U_fine2_active : nullptr);
         const auto t_out_end = Clock::now();
         time_output_ms += std::chrono::duration<double, std::milli>(
                               t_out_end - t_out_begin)
@@ -1479,6 +1755,7 @@ int main(int argc, char* argv[]) {
                 << " timings_ms:"
                 << " prolong=" << time_prolong_ms
                 << " fine=" << time_fine_ms
+                << " fine2=" << time_fine2_ms
                 << " coarse=" << time_coarse_ms
                 << " restrict=" << time_restrict_ms
                 << " remesh=" << time_remesh_ms
