@@ -582,6 +582,20 @@ IntervalSet2DDevice constrain_mask_to_parent_interior(
   return clipped;
 }
 
+IntervalSet2DDevice ensure_subset(const IntervalSet2DDevice& region,
+                                  const IntervalSet2DDevice& field_geom,
+                                  CsrSetAlgebraContext& ctx) {
+  if (region.num_rows == 0 || region.num_intervals == 0) {
+    return region;
+  }
+  IntervalSet2DDevice subset = subsetix::csr::allocate_interval_set_device(
+      std::max(region.num_rows, field_geom.num_rows),
+      region.num_intervals + field_geom.num_intervals);
+  set_intersection_device(region, field_geom, subset, ctx);
+  subsetix::csr::compute_cell_offsets_device(subset);
+  return subset;
+}
+
 Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
                        const IntervalSet2DDevice& region,
                        Real gamma,
@@ -1290,10 +1304,11 @@ int main(int argc, char* argv[]) {
           parent_full, mask, static_cast<Coord>(cfg.amr_guard), parent_domain, ctx);
 
       fluid_full[lvl] = amr.fine_full;
-      active_set[lvl] = amr.fine_active;
+      active_set[lvl] = ensure_subset(amr.fine_active, amr.fine_with_guard, ctx);
       with_guard_set[lvl] = amr.fine_with_guard;
       guard_set[lvl] = amr.fine_guard;
-      projection_down[lvl] = amr.projection_fine_on_coarse;
+      projection_down[lvl] = ensure_subset(
+          amr.projection_fine_on_coarse, parent_active, ctx);
       domains[lvl] = amr.fine_domain;
       coarse_masks[lvl] = mask;
       has_level[lvl] = amr.has_fine;
@@ -1431,6 +1446,9 @@ int main(int argc, char* argv[]) {
       const auto t1 = Clock::now();
       time_prolong_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
+      IntervalSet2DDevice active_clipped =
+          ensure_subset(active_set[lvl], U_levels[lvl].geometry, ctx);
+      active_set[lvl] = active_clipped;
       const Real dt_lvl = compute_dt_on_set(
           U_levels[lvl], active_set[lvl], cfg.gamma, cfg.cfl,
           dx_levels[lvl], dy_levels[lvl]);
@@ -1477,6 +1495,8 @@ int main(int argc, char* argv[]) {
         continue;
       }
       const auto t0 = Clock::now();
+      projection_down[lvl] = ensure_subset(
+          projection_down[lvl], U_levels[lvl - 1].geometry, ctx);
       restrict_fine_to_coarse(U_levels[lvl - 1], U_levels[lvl],
                               projection_down[lvl]);
       const auto t1 = Clock::now();
