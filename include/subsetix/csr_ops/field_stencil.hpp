@@ -577,11 +577,18 @@ inline void apply_csr_stencil_on_set_device(
   auto north_interval = vertical.north_interval;
   auto south_interval = vertical.south_interval;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(mask.num_intervals), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_apply_csr_stencil_on_set_device",
-      Kokkos::RangePolicy<ExecSpace>(
-          0, static_cast<int>(mask.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int interval_idx = team.league_rank();
+
         const int row_idx_out = interval_to_row_out(interval_idx);
         const int field_row_out = row_map_out(row_idx_out);
         if (row_idx_out < 0 || field_row_out < 0) {
@@ -635,34 +642,39 @@ inline void apply_csr_stencil_on_set_device(
         const std::size_t south_base =
             (south_iv_idx >= 0) ? in_offsets(south_iv_idx) : in_base;
 
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
-          const std::size_t idx_center_in =
-              in_base +
-              static_cast<std::size_t>(x - in_begin);
-          // Sub-geometry is assumed to exclude boundaries, so idx±1 are valid.
-          const std::size_t idx_west = idx_center_in - 1;
-          const std::size_t idx_east = idx_center_in + 1;
-          const std::size_t idx_north =
-              north_base +
-              static_cast<std::size_t>(x - north_iv.begin);
-          const std::size_t idx_south =
-              south_base +
-              static_cast<std::size_t>(x - south_iv.begin);
+        const Coord x_begin = mask_iv.begin;
+        const Coord x_end = mask_iv.end;
 
-          CsrStencilPoint<InT> p;
-          p.values = values_in;
-          p.idx_center = idx_center_in;
-          p.idx_west = idx_west;
-          p.idx_east = idx_east;
-          p.idx_south = idx_south;
-          p.idx_north = idx_north;
+        Kokkos::parallel_for(
+            Kokkos::TeamThreadRange(team, x_begin, x_end),
+            [&](const Coord x) {
+              const std::size_t idx_center_in =
+                  in_base +
+                  static_cast<std::size_t>(x - in_begin);
+              // Sub-geometry is assumed to exclude boundaries, so idx±1 are valid.
+              const std::size_t idx_west = idx_center_in - 1;
+              const std::size_t idx_east = idx_center_in + 1;
+              const std::size_t idx_north =
+                  north_base +
+                  static_cast<std::size_t>(x - north_iv.begin);
+              const std::size_t idx_south =
+                  south_base +
+                  static_cast<std::size_t>(x - south_iv.begin);
 
-          const OutT out_val = stencil(x, y, p);
-          const std::size_t idx_out =
-              out_base +
-              static_cast<std::size_t>(x - out_begin);
-          values_out(idx_out) = out_val;
-        }
+              CsrStencilPoint<InT> p;
+              p.values = values_in;
+              p.idx_center = idx_center_in;
+              p.idx_west = idx_west;
+              p.idx_east = idx_east;
+              p.idx_south = idx_south;
+              p.idx_north = idx_north;
+
+              const OutT out_val = stencil(x, y, p);
+              const std::size_t idx_out =
+                  out_base +
+                  static_cast<std::size_t>(x - out_begin);
+              values_out(idx_out) = out_val;
+            });
       });
   ExecSpace().fence();
 }
