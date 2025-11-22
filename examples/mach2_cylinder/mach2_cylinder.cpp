@@ -1641,7 +1641,7 @@ int main(int argc, char* argv[]) {
                                     dx_levels[lvl], dy_levels[lvl]};
       apply_csr_stencil_on_set_device(U_next_levels[lvl], U_levels[lvl],
                                       active_set[lvl], fine_stencil,
-                                      /*strict_check=*/true);
+                                      /*strict_check=*/false);
       const auto t1 = Clock::now();
       time_fine_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -1652,7 +1652,7 @@ int main(int argc, char* argv[]) {
                                       dx_levels[0], dy_levels[0]};
     apply_csr_stencil_on_set_device(U_next_levels[0], U_levels[0],
                                     fluid_dev, coarse_stencil,
-                                    /*strict_check=*/true);
+                                    /*strict_check=*/false);
     const auto t1_coarse = Clock::now();
     time_coarse_ms +=
         std::chrono::duration<double, std::milli>(t1_coarse - t0_coarse).count();
