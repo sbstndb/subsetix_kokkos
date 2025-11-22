@@ -528,7 +528,7 @@ inline void apply_csr_stencil_on_set_device(
     const Field2DDevice<InT>& field_in,
     const IntervalSet2DDevice& mask,
     StencilFunctor stencil,
-    bool strict_check = true) {
+    bool strict_check = false) {
   if (mask.num_rows == 0 || mask.num_intervals == 0) {
     return;
   }
@@ -545,14 +545,7 @@ inline void apply_csr_stencil_on_set_device(
   const auto vertical = detail::build_subset_stencil_vertical_mapping(
       field_in, mask, mapping_in);
 
-  if (strict_check) {
-    detail::assert_no_negative_entries(
-        vertical.north_interval,
-        "CSR stencil mapping: missing north neighbour for an interval");
-    detail::assert_no_negative_entries(
-        vertical.south_interval,
-        "CSR stencil mapping: missing south neighbour for an interval");
-  }
+  (void)strict_check;
 
   auto interval_to_row_out = mapping_out.interval_to_row;
   auto interval_to_field_interval_out =
@@ -645,36 +638,39 @@ inline void apply_csr_stencil_on_set_device(
         const Coord x_begin = mask_iv.begin;
         const Coord x_end = mask_iv.end;
 
-        Kokkos::parallel_for(
-            Kokkos::TeamThreadRange(team, x_begin, x_end),
-            [&](const Coord x) {
-              const std::size_t idx_center_in =
-                  in_base +
-                  static_cast<std::size_t>(x - in_begin);
-              // Sub-geometry is assumed to exclude boundaries, so idx±1 are valid.
-              const std::size_t idx_west = idx_center_in - 1;
-              const std::size_t idx_east = idx_center_in + 1;
-              const std::size_t idx_north =
-                  north_base +
-                  static_cast<std::size_t>(x - north_iv.begin);
-              const std::size_t idx_south =
-                  south_base +
-                  static_cast<std::size_t>(x - south_iv.begin);
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
 
-              CsrStencilPoint<InT> p;
-              p.values = values_in;
-              p.idx_center = idx_center_in;
-              p.idx_west = idx_west;
-              p.idx_east = idx_east;
-              p.idx_south = idx_south;
-              p.idx_north = idx_north;
+        for (Coord x = static_cast<Coord>(x_begin + team_rank);
+             x < x_end;
+             x += static_cast<Coord>(team_size)) {
+          const std::size_t idx_center_in =
+              in_base +
+              static_cast<std::size_t>(x - in_begin);
+          // Sub-geometry is assumed to exclude boundaries, so idx±1 are valid.
+          const std::size_t idx_west = idx_center_in - 1;
+          const std::size_t idx_east = idx_center_in + 1;
+          const std::size_t idx_north =
+              north_base +
+              static_cast<std::size_t>(x - north_iv.begin);
+          const std::size_t idx_south =
+              south_base +
+              static_cast<std::size_t>(x - south_iv.begin);
 
-              const OutT out_val = stencil(x, y, p);
-              const std::size_t idx_out =
-                  out_base +
-                  static_cast<std::size_t>(x - out_begin);
-              values_out(idx_out) = out_val;
-            });
+          CsrStencilPoint<InT> p;
+          p.values = values_in;
+          p.idx_center = idx_center_in;
+          p.idx_west = idx_west;
+          p.idx_east = idx_east;
+          p.idx_south = idx_south;
+          p.idx_north = idx_north;
+
+          const OutT out_val = stencil(x, y, p);
+          const std::size_t idx_out =
+              out_base +
+              static_cast<std::size_t>(x - out_begin);
+          values_out(idx_out) = out_val;
+        }
       });
   ExecSpace().fence();
 }

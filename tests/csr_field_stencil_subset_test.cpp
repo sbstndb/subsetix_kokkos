@@ -82,15 +82,13 @@ double host_value_at(const IntervalField2DHost<double>& field,
     }
     const std::size_t begin = field.row_ptr[i];
     const std::size_t end = field.row_ptr[i + 1];
-    std::size_t value_offset = 0;
     for (std::size_t k = begin; k < end; ++k) {
       const auto iv = field.intervals[k];
       if (x >= iv.begin && x < iv.end) {
         const std::size_t idx =
-            value_offset + static_cast<std::size_t>(x - iv.begin);
+            iv.value_offset + static_cast<std::size_t>(x - iv.begin);
         return field.values[idx];
       }
-      value_offset += static_cast<std::size_t>(iv.end - iv.begin);
     }
   }
   return std::numeric_limits<double>::quiet_NaN();
