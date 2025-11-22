@@ -44,6 +44,7 @@ using subsetix::csr::Field2DDevice;
 using subsetix::csr::IntervalField2DHost;
 using subsetix::csr::IntervalSet2DDevice;
 using subsetix::csr::IntervalSet2DHost;
+using subsetix::csr::shrink_device;
 using subsetix::csr::make_box_device;
 using subsetix::csr::make_disk_device;
 using subsetix::csr::make_bitmap_device;
@@ -97,6 +98,18 @@ struct RunConfig {
   Real amr_fraction = static_cast<Real>(0.5); // fraction of domain length refined in each direction
   int amr_guard = 2;         // coarse-cell guard radius around the refined zone
   int amr_remesh_stride = 0; // 0 => static AMR, >0 => remesh every N steps
+};
+
+struct IndicatorStencil {
+  Real inv_dx;
+  Real inv_dy;
+  KOKKOS_INLINE_FUNCTION
+  Real operator()(Coord /*x*/, Coord /*y*/,
+                  const subsetix::csr::CsrStencilPoint<Conserved>& p) const {
+    const Real gx = static_cast<Real>(0.5) * (p.east().rho - p.west().rho) * inv_dx;
+    const Real gy = static_cast<Real>(0.5) * (p.north().rho - p.south().rho) * inv_dy;
+    return std::fabs(gx) + std::fabs(gy);
+  }
 };
 
 struct RemeshTiming {
@@ -563,99 +576,19 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
   const Real inv_dx = static_cast<Real>(1.0) / dx;
   const Real inv_dy = static_cast<Real>(1.0) / dy;
   const auto t_indicator_begin = Clock::now();
-  const IntervalSet2DDevice indicator_region =
-      ensure_subset(fluid_dev, U.geometry, ctx);
-  const auto mapping = build_mask_field_mapping(U, indicator_region);
-  auto interval_to_row = mapping.interval_to_row;
-  auto interval_to_field_interval = mapping.interval_to_field_interval;
-  auto row_map = mapping.row_map;
-
-  auto mask_row_keys = indicator_region.row_keys;
-  auto mask_intervals = indicator_region.intervals;
-  auto mask_offsets = indicator_region.cell_offsets;
-
-  auto field_intervals = U.geometry.intervals;
-  auto field_offsets = U.geometry.cell_offsets;
-  auto field_values = U.values;
-  auto indicator_values = indicator.values;
-
-  const auto vertical = subsetix::csr::detail::build_vertical_interval_mapping(U);
-  auto up_interval = vertical.up_interval;
-  auto down_interval = vertical.down_interval;
-
-  Kokkos::parallel_for(
-      "mach2_refine_indicator",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
-          0, static_cast<int>(indicator_region.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
-        const int row_idx = interval_to_row(interval_idx);
-        const int field_row = row_map(row_idx);
-        if (row_idx < 0 || field_row < 0) {
-          return;
-        }
-
-        const int field_interval_idx =
-            interval_to_field_interval(interval_idx);
-        if (field_interval_idx < 0) {
-          return;
-        }
-
-        const auto mask_iv = mask_intervals(interval_idx);
-        const auto field_iv = field_intervals(field_interval_idx);
-        const std::size_t out_base_offset = mask_offsets(interval_idx);
-        const Coord out_base_begin = mask_iv.begin;
-        const std::size_t in_base_offset = field_offsets(field_interval_idx);
-        const Coord in_base_begin = field_iv.begin;
-
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
-          const std::size_t out_idx =
-              out_base_offset +
-              static_cast<std::size_t>(x - out_base_begin);
-          const std::size_t in_idx =
-              in_base_offset +
-              static_cast<std::size_t>(x - in_base_begin);
-
-          const Conserved center = field_values(in_idx);
-
-          Real rho_w = center.rho;
-          Real rho_e = center.rho;
-          Real rho_n = center.rho;
-          Real rho_s = center.rho;
-
-          if (x > field_iv.begin) {
-            rho_w = field_values(in_idx - 1).rho;
-          }
-          if (x + 1 < field_iv.end) {
-            rho_e = field_values(in_idx + 1).rho;
-          }
-
-          const int up_idx = up_interval(field_interval_idx);
-          if (up_idx >= 0) {
-            const subsetix::csr::Interval iv_up = field_intervals(up_idx);
-            if (x >= iv_up.begin && x < iv_up.end) {
-              const std::size_t off =
-                  field_offsets(up_idx) +
-                  static_cast<std::size_t>(x - iv_up.begin);
-              rho_n = field_values(off).rho;
-            }
-          }
-
-          const int down_idx = down_interval(field_interval_idx);
-          if (down_idx >= 0) {
-            const subsetix::csr::Interval iv_down = field_intervals(down_idx);
-            if (x >= iv_down.begin && x < iv_down.end) {
-              const std::size_t off =
-                  field_offsets(down_idx) +
-                  static_cast<std::size_t>(x - iv_down.begin);
-              rho_s = field_values(off).rho;
-            }
-          }
-
-          const Real gx = static_cast<Real>(0.5) * (rho_e - rho_w) * inv_dx;
-          const Real gy = static_cast<Real>(0.5) * (rho_n - rho_s) * inv_dy;
-          indicator_values(out_idx) = std::fabs(gx) + std::fabs(gy);
-        }
-      });
+  IntervalSet2DDevice indicator_region;
+  if (fluid_dev.num_rows > 0 && fluid_dev.num_intervals > 0) {
+    IntervalSet2DDevice eroded;
+    shrink_device(fluid_dev, static_cast<Coord>(1), static_cast<Coord>(1),
+                  eroded, ctx);
+    subsetix::csr::compute_cell_offsets_device(eroded);
+    indicator_region = ensure_subset(eroded, U.geometry, ctx);
+  } else {
+    indicator_region = ensure_subset(fluid_dev, U.geometry, ctx);
+  }
+  IndicatorStencil stencil{inv_dx, inv_dy};
+  apply_csr_stencil_on_set_device(indicator, U, indicator_region, stencil,
+                                  /*strict_check=*/false);
   Kokkos::DefaultExecutionSpace().fence();
   const auto t_indicator_end = Clock::now();
   if (timers) {
@@ -665,6 +598,7 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
   }
 
   using ExecSpace = Kokkos::DefaultExecutionSpace;
+  auto indicator_values = indicator.values;
   Real max_grad = static_cast<Real>(0.0);
   const auto t_reduce_begin = Clock::now();
   Kokkos::parallel_reduce(

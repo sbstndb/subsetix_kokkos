@@ -197,6 +197,23 @@ inline void apply_stencil_on_subview_device(
 }
 
 /**
+ * @brief Apply a CSR-friendly stencil functor on a subview region.
+ */
+template <typename OutT, typename InT, class StencilFunctor>
+inline void apply_csr_stencil_on_subview_device(
+    Field2DSubViewDevice<OutT>& dst,
+    const Field2DSubViewDevice<InT>& src,
+    StencilFunctor stencil,
+    bool strict_check = true) {
+  detail::ensure_matching_regions(dst, src);
+  if (detail::subview_region_empty(dst)) {
+    return;
+  }
+  apply_csr_stencil_on_set_device(dst.parent, src.parent,
+                                  dst.region, stencil, strict_check);
+}
+
+/**
  * @brief Restrict fine field values onto a coarse subview.
  */
 template <typename T>

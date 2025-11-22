@@ -270,6 +270,149 @@ struct FieldStencilContext {
 } // namespace detail
 
 // ---------------------------------------------------------------------------
+// CSR-friendly stencil helpers
+// ---------------------------------------------------------------------------
+
+template <typename T>
+struct CsrStencilPoint {
+  typename Field2DDevice<T>::ValueView values;
+  std::size_t idx_center = 0;
+  std::size_t idx_west = 0;
+  std::size_t idx_east = 0;
+  std::size_t idx_south = 0;
+  std::size_t idx_north = 0;
+
+  KOKKOS_INLINE_FUNCTION
+  T center() const { return values(idx_center); }
+  KOKKOS_INLINE_FUNCTION
+  T west() const { return values(idx_west); }
+  KOKKOS_INLINE_FUNCTION
+  T east() const { return values(idx_east); }
+  KOKKOS_INLINE_FUNCTION
+  T south() const { return values(idx_south); }
+  KOKKOS_INLINE_FUNCTION
+  T north() const { return values(idx_north); }
+};
+
+namespace detail {
+
+template <typename T>
+struct SubsetStencilVerticalMapping {
+  Kokkos::View<int*, DeviceMemorySpace> north_interval;
+  Kokkos::View<int*, DeviceMemorySpace> south_interval;
+};
+
+template <typename T, typename Mapping>
+inline SubsetStencilVerticalMapping<T>
+build_subset_stencil_vertical_mapping(
+    const Field2DDevice<T>& field,
+    const IntervalSet2DDevice& subset,
+    const Mapping& mapping) {
+  SubsetStencilVerticalMapping<T> out;
+  const std::size_t n_intervals = subset.num_intervals;
+  out.north_interval = Kokkos::View<int*, DeviceMemorySpace>(
+      "subsetix_subset_stencil_north", n_intervals);
+  out.south_interval = Kokkos::View<int*, DeviceMemorySpace>(
+      "subsetix_subset_stencil_south", n_intervals);
+
+  if (n_intervals == 0 || subset.num_rows == 0 ||
+      field.geometry.num_rows == 0 || field.geometry.num_intervals == 0) {
+    return out;
+  }
+
+  Kokkos::deep_copy(out.north_interval, -1);
+  Kokkos::deep_copy(out.south_interval, -1);
+
+  auto subset_row_keys = subset.row_keys;
+  auto subset_intervals = subset.intervals;
+
+  auto field_row_keys = field.geometry.row_keys;
+  auto field_row_ptr = field.geometry.row_ptr;
+  auto field_intervals = field.geometry.intervals;
+
+  auto interval_to_row = mapping.interval_to_row;
+  auto row_map = mapping.row_map;
+
+  const std::size_t num_field_rows = field.geometry.num_rows;
+
+  Kokkos::parallel_for(
+      "subsetix_build_subset_stencil_vertical_mapping",
+      Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(n_intervals)),
+      KOKKOS_LAMBDA(const int interval_idx) {
+        const int subset_row = interval_to_row(interval_idx);
+        const int field_row = row_map(subset_row);
+        if (subset_row < 0 || field_row < 0) {
+          return;
+        }
+
+        const Coord y = subset_row_keys(subset_row).y;
+        const auto mask_iv = subset_intervals(interval_idx);
+
+        auto find_row = [&](Coord target_y) -> int {
+          std::size_t lo = 0;
+          std::size_t hi = num_field_rows;
+          while (lo < hi) {
+            const std::size_t mid = lo + (hi - lo) / 2;
+            const Coord my = field_row_keys(mid).y;
+            if (my < target_y) {
+              lo = mid + 1;
+            } else {
+              hi = mid;
+            }
+          }
+          if (lo < num_field_rows &&
+              field_row_keys(lo).y == target_y) {
+            return static_cast<int>(lo);
+          }
+          return -1;
+        };
+
+        auto find_interval_containing = [&](int row_idx) -> int {
+          const std::size_t begin = field_row_ptr(row_idx);
+          const std::size_t end = field_row_ptr(row_idx + 1);
+          for (std::size_t k = begin; k < end; ++k) {
+            const Interval iv = field_intervals(k);
+            if (mask_iv.begin >= iv.begin && mask_iv.end <= iv.end) {
+              return static_cast<int>(k);
+            }
+          }
+          return -1;
+        };
+
+        const int row_up = find_row(static_cast<Coord>(y + 1));
+        if (row_up >= 0) {
+          const int up_interval = find_interval_containing(row_up);
+          if (up_interval >= 0) {
+            out.north_interval(interval_idx) = up_interval;
+          }
+        }
+
+        const int row_down = find_row(static_cast<Coord>(y - 1));
+        if (row_down >= 0) {
+          const int down_interval = find_interval_containing(row_down);
+          if (down_interval >= 0) {
+            out.south_interval(interval_idx) = down_interval;
+          }
+        }
+      });
+  ExecSpace().fence();
+  return out;
+}
+
+template <typename View>
+inline void assert_no_negative_entries(const View& v, const char* what) {
+  auto h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, v);
+  for (std::size_t i = 0; i < h.extent(0); ++i) {
+    if (h(i) < 0) {
+      throw std::runtime_error(what);
+    }
+  }
+}
+
+} // namespace detail
+
+
+// ---------------------------------------------------------------------------
 // Phase 2 – Simple stencils restricted to a set
 // ---------------------------------------------------------------------------
 
@@ -334,6 +477,7 @@ inline void apply_stencil_on_set_device(
         if (row_idx < 0 || field_row < 0) {
           return;
         }
+        (void)field_row;
 
         const int field_interval_idx =
             interval_to_field_interval(interval_idx);
@@ -362,6 +506,166 @@ inline void apply_stencil_on_set_device(
   ExecSpace().fence();
 }
 
+// ---------------------------------------------------------------------------
+// CSR-friendly stencils restricted to a set/subset
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Apply a 5-point stencil on a masked region with CSR-friendly
+ *        neighbour localisation.
+ *
+ * Functor signature:
+ *   KOKKOS_INLINE_FUNCTION
+ *   T operator()(Coord x, Coord y,
+ *                const CsrStencilPoint<T>& p) const;
+ *
+ * Precondition: the mask must be an interior region such that all four
+ * neighbours of every cell exist in the input field geometry.
+ */
+template <typename OutT, typename InT, class StencilFunctor>
+inline void apply_csr_stencil_on_set_device(
+    Field2DDevice<OutT>& field_out,
+    const Field2DDevice<InT>& field_in,
+    const IntervalSet2DDevice& mask,
+    StencilFunctor stencil,
+    bool strict_check = true) {
+  if (mask.num_rows == 0 || mask.num_intervals == 0) {
+    return;
+  }
+
+  if (field_out.geometry.num_rows == 0 || field_in.geometry.num_rows == 0) {
+    throw std::runtime_error(
+        "fields must be initialized before applying a stencil");
+  }
+
+  const auto mapping_out =
+      detail::build_mask_field_mapping(field_out, mask);
+  const auto mapping_in =
+      detail::build_mask_field_mapping(field_in, mask);
+  const auto vertical = detail::build_subset_stencil_vertical_mapping(
+      field_in, mask, mapping_in);
+
+  if (strict_check) {
+    detail::assert_no_negative_entries(
+        vertical.north_interval,
+        "CSR stencil mapping: missing north neighbour for an interval");
+    detail::assert_no_negative_entries(
+        vertical.south_interval,
+        "CSR stencil mapping: missing south neighbour for an interval");
+  }
+
+  auto interval_to_row_out = mapping_out.interval_to_row;
+  auto interval_to_field_interval_out =
+      mapping_out.interval_to_field_interval;
+  auto row_map_out = mapping_out.row_map;
+
+  auto interval_to_row_in = mapping_in.interval_to_row;
+  auto interval_to_field_interval_in =
+      mapping_in.interval_to_field_interval;
+  auto row_map_in = mapping_in.row_map;
+
+  auto mask_row_keys = mask.row_keys;
+  auto mask_intervals = mask.intervals;
+
+  auto out_intervals = field_out.geometry.intervals;
+  auto out_offsets = field_out.geometry.cell_offsets;
+  auto in_intervals = field_in.geometry.intervals;
+  auto in_offsets = field_in.geometry.cell_offsets;
+  auto values_in = field_in.values;
+  auto values_out = field_out.values;
+
+  auto north_interval = vertical.north_interval;
+  auto south_interval = vertical.south_interval;
+
+  Kokkos::parallel_for(
+      "subsetix_apply_csr_stencil_on_set_device",
+      Kokkos::RangePolicy<ExecSpace>(
+          0, static_cast<int>(mask.num_intervals)),
+      KOKKOS_LAMBDA(const int interval_idx) {
+        const int row_idx_out = interval_to_row_out(interval_idx);
+        const int field_row_out = row_map_out(row_idx_out);
+        if (row_idx_out < 0 || field_row_out < 0) {
+          return;
+        }
+
+        const int out_interval_idx =
+            interval_to_field_interval_out(interval_idx);
+        if (out_interval_idx < 0) {
+          return;
+        }
+
+        const auto mask_iv = mask_intervals(interval_idx);
+        const auto out_iv =
+            out_intervals(out_interval_idx);
+        const Coord y = mask_row_keys(row_idx_out).y;
+        const std::size_t out_base =
+            out_offsets(out_interval_idx);
+        const Coord out_begin = out_iv.begin;
+
+        // Input mapping
+        const int row_idx_in = interval_to_row_in(interval_idx);
+        const int field_row_in = row_map_in(row_idx_in);
+        if (row_idx_in < 0 || field_row_in < 0) {
+          return;
+        }
+
+        const int in_interval_idx =
+            interval_to_field_interval_in(interval_idx);
+        if (in_interval_idx < 0) {
+          return;
+        }
+
+        const auto in_iv =
+            in_intervals(in_interval_idx);
+        const std::size_t in_base =
+            in_offsets(in_interval_idx);
+        const Coord in_begin = in_iv.begin;
+
+        const int north_iv_idx = north_interval(interval_idx);
+        const int south_iv_idx = south_interval(interval_idx);
+
+        const auto north_iv = (north_iv_idx >= 0)
+                                  ? in_intervals(north_iv_idx)
+                                  : in_iv;
+        const auto south_iv = (south_iv_idx >= 0)
+                                  ? in_intervals(south_iv_idx)
+                                  : in_iv;
+        const std::size_t north_base =
+            (north_iv_idx >= 0) ? in_offsets(north_iv_idx) : in_base;
+        const std::size_t south_base =
+            (south_iv_idx >= 0) ? in_offsets(south_iv_idx) : in_base;
+
+        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+          const std::size_t idx_center_in =
+              in_base +
+              static_cast<std::size_t>(x - in_begin);
+          // Sub-geometry is assumed to exclude boundaries, so idx±1 are valid.
+          const std::size_t idx_west = idx_center_in - 1;
+          const std::size_t idx_east = idx_center_in + 1;
+          const std::size_t idx_north =
+              north_base +
+              static_cast<std::size_t>(x - north_iv.begin);
+          const std::size_t idx_south =
+              south_base +
+              static_cast<std::size_t>(x - south_iv.begin);
+
+          CsrStencilPoint<InT> p;
+          p.values = values_in;
+          p.idx_center = idx_center_in;
+          p.idx_west = idx_west;
+          p.idx_east = idx_east;
+          p.idx_south = idx_south;
+          p.idx_north = idx_north;
+
+          const OutT out_val = stencil(x, y, p);
+          const std::size_t idx_out =
+              out_base +
+              static_cast<std::size_t>(x - out_begin);
+          values_out(idx_out) = out_val;
+        }
+      });
+  ExecSpace().fence();
+}
+
 } // namespace csr
 } // namespace subsetix
-

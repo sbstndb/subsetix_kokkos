@@ -34,6 +34,7 @@ add_executable(subsetix_test_advanced
     test_main.cpp
     csr_field_ops_smoke_test.cpp
     csr_field_stencil_smoke_test.cpp
+    csr_field_stencil_subset_test.cpp
     csr_field_algebra_smoke_test.cpp
     csr_field_new_smoke_test.cpp
     csr_row_ops_components_smoke_test.cpp
