@@ -1416,12 +1416,23 @@ int main(int argc, char* argv[]) {
       obstacle_dev = make_disk_device(obstacle);
     }
 
+    subsetix::csr::compute_cell_offsets_device(obstacle_dev);
+
     CsrSetAlgebraContext ctx;
     auto fluid_dev = subsetix::csr::allocate_interval_set_device(
         domain_dev.num_rows,
         domain_dev.num_intervals + obstacle_dev.num_intervals);
     set_difference_device(domain_dev, obstacle_dev, fluid_dev, ctx);
     subsetix::csr::compute_cell_offsets_device(fluid_dev);
+
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> obstacle_levels;
+    obstacle_levels[0] = obstacle_dev;
+    for (int lvl = 1; lvl < MAX_AMR_LEVELS; ++lvl) {
+      IntervalSet2DDevice refined;
+      refine_level_up_device(obstacle_levels[lvl - 1], refined, ctx);
+      subsetix::csr::compute_cell_offsets_device(refined);
+      obstacle_levels[lvl] = refined;
+    }
 
     std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> fluid_full;
     std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> active_set;
@@ -1442,11 +1453,21 @@ int main(int argc, char* argv[]) {
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> pressure_levels;
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> mach_levels;
 
-    IntervalSet2DDevice field0;
+    IntervalSet2DDevice field0_expanded;
     expand_device(fluid_dev,
                   static_cast<Coord>(2),
                   static_cast<Coord>(2),
-                  field0, ctx);
+                  field0_expanded, ctx);
+    subsetix::csr::compute_cell_offsets_device(field0_expanded);
+    IntervalSet2DDevice obstacle0_clip = subsetix::csr::allocate_interval_set_device(
+        field0_expanded.num_rows,
+        field0_expanded.num_intervals + obstacle_levels[0].num_intervals);
+    set_intersection_device(obstacle_levels[0], field0_expanded, obstacle0_clip, ctx);
+    subsetix::csr::compute_cell_offsets_device(obstacle0_clip);
+    IntervalSet2DDevice field0 = subsetix::csr::allocate_interval_set_device(
+        field0_expanded.num_rows,
+        field0_expanded.num_intervals + obstacle0_clip.num_intervals);
+    set_union_device(field0_expanded, obstacle0_clip, field0, ctx);
     subsetix::csr::compute_cell_offsets_device(field0);
     field_geom[0] = field0;
     auto ghost0 = subsetix::csr::allocate_interval_set_device(
@@ -1533,11 +1554,21 @@ int main(int argc, char* argv[]) {
         return;
       }
 
-      IntervalSet2DDevice field_lvl;
+      IntervalSet2DDevice field_lvl_expanded;
       expand_device(with_guard_set[lvl],
                     static_cast<Coord>(2),
                     static_cast<Coord>(2),
-                    field_lvl, ctx);
+                    field_lvl_expanded, ctx);
+      subsetix::csr::compute_cell_offsets_device(field_lvl_expanded);
+      IntervalSet2DDevice obstacle_clip = subsetix::csr::allocate_interval_set_device(
+          field_lvl_expanded.num_rows,
+          field_lvl_expanded.num_intervals + obstacle_levels[lvl].num_intervals);
+      set_intersection_device(obstacle_levels[lvl], field_lvl_expanded, obstacle_clip, ctx);
+      subsetix::csr::compute_cell_offsets_device(obstacle_clip);
+      IntervalSet2DDevice field_lvl = subsetix::csr::allocate_interval_set_device(
+          field_lvl_expanded.num_rows,
+          field_lvl_expanded.num_intervals + obstacle_clip.num_intervals);
+      set_union_device(field_lvl_expanded, obstacle_clip, field_lvl, ctx);
       subsetix::csr::compute_cell_offsets_device(field_lvl);
       field_geom[lvl] = field_lvl;
       auto ghost_lvl = subsetix::csr::allocate_interval_set_device(
