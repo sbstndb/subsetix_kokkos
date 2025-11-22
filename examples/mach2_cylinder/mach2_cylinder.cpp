@@ -969,36 +969,21 @@ void restrict_fine_to_coarse(Field2DDevice<Conserved>& coarse_field,
 }
 
 struct CoarseEulerStencil {
-  FieldReadAccessor<Conserved> acc;
-  Box2D domain;
-  Conserved inflow;
   Real gamma;
   Real dt;
   Real dx;
   Real dy;
-  bool no_slip = false;
 
   KOKKOS_INLINE_FUNCTION
-  Conserved operator()(Coord x, Coord y,
-                       std::size_t linear_index,
-                       int field_interval_idx,
-                       const subsetix::csr::detail::FieldStencilContext<Conserved>& ctx) const {
-    (void)field_interval_idx;
-    const Conserved center = ctx.center(linear_index);
+  Conserved operator()(Coord /*x*/, Coord /*y*/,
+                       const subsetix::csr::CsrStencilPoint<Conserved>& p) const {
+    const Conserved center = p.center();
     const Primitive q_center = cons_to_prim(center, gamma);
 
-    const Conserved left_state =
-        sample_neighbor(center, x, y, -1, 0, acc, domain,
-                        inflow, gamma, no_slip);
-    const Conserved right_state =
-        sample_neighbor(center, x, y, +1, 0, acc, domain,
-                        inflow, gamma, no_slip);
-    const Conserved down_state =
-        sample_neighbor(center, x, y, 0, -1, acc, domain,
-                        inflow, gamma, no_slip);
-    const Conserved up_state =
-        sample_neighbor(center, x, y, 0, +1, acc, domain,
-                        inflow, gamma, no_slip);
+    const Conserved left_state = p.west();
+    const Conserved right_state = p.east();
+    const Conserved down_state = p.south();
+    const Conserved up_state = p.north();
 
     const Primitive q_left = cons_to_prim(left_state, gamma);
     const Primitive q_right = cons_to_prim(right_state, gamma);
@@ -1040,45 +1025,21 @@ struct CoarseEulerStencil {
 };
 
 struct FineEulerStencil {
-  FieldReadAccessor<Conserved> acc_fine;
-  FieldReadAccessor<Conserved> acc_coarse;
-  Box2D fine_domain;
-  Conserved inflow;
   Real gamma;
   Real dt;
   Real dx;
   Real dy;
-  bool no_slip = false;
 
   KOKKOS_INLINE_FUNCTION
-  Conserved operator()(Coord x, Coord y,
-                       std::size_t linear_index,
-                       int field_interval_idx,
-                       const subsetix::csr::detail::FieldStencilContext<Conserved>& ctx) const {
-    (void)field_interval_idx;
-    const Conserved center = ctx.center(linear_index);
+  Conserved operator()(Coord /*x*/, Coord /*y*/,
+                       const subsetix::csr::CsrStencilPoint<Conserved>& p) const {
+    const Conserved center = p.center();
     const Primitive q_center = cons_to_prim(center, gamma);
 
-    const Conserved left_state =
-        sample_neighbor_with_coarse(center, x, y, -1, 0,
-                                    acc_fine, &acc_coarse,
-                                    fine_domain, inflow,
-                                    gamma, no_slip);
-    const Conserved right_state =
-        sample_neighbor_with_coarse(center, x, y, +1, 0,
-                                    acc_fine, &acc_coarse,
-                                    fine_domain, inflow,
-                                    gamma, no_slip);
-    const Conserved down_state =
-        sample_neighbor_with_coarse(center, x, y, 0, -1,
-                                    acc_fine, &acc_coarse,
-                                    fine_domain, inflow,
-                                    gamma, no_slip);
-    const Conserved up_state =
-        sample_neighbor_with_coarse(center, x, y, 0, +1,
-                                    acc_fine, &acc_coarse,
-                                    fine_domain, inflow,
-                                    gamma, no_slip);
+    const Conserved left_state = p.west();
+    const Conserved right_state = p.east();
+    const Conserved down_state = p.south();
+    const Conserved up_state = p.north();
 
     const Primitive q_left = cons_to_prim(left_state, gamma);
     const Primitive q_right = cons_to_prim(right_state, gamma);
@@ -1702,12 +1663,6 @@ int main(int argc, char* argv[]) {
 
   while ((t < cfg.t_final) && (step < cfg.max_steps)) {
     const int finest_level = max_active_level();
-    std::array<FieldReadAccessor<Conserved>, MAX_AMR_LEVELS> accessors;
-    for (int lvl = 0; lvl <= finest_level; ++lvl) {
-      if (has_level[lvl]) {
-        accessors[lvl] = make_accessor(U_levels[lvl]);
-      }
-    }
 
     Real dt = compute_dt(U_levels[0], cfg.gamma, cfg.cfl,
                          dx_levels[0], dy_levels[0]);
@@ -1766,23 +1721,22 @@ int main(int argc, char* argv[]) {
         continue;
       }
       const auto t0 = Clock::now();
-      FineEulerStencil fine_stencil{accessors[lvl], accessors[lvl - 1],
-                                    domains[lvl], inflow, cfg.gamma, dt,
-                                    dx_levels[lvl], dy_levels[lvl],
-                                    cfg.no_slip};
-      apply_stencil_on_set_device(U_next_levels[lvl], U_levels[lvl],
-                                  active_set[lvl], fine_stencil);
+      FineEulerStencil fine_stencil{cfg.gamma, dt,
+                                    dx_levels[lvl], dy_levels[lvl]};
+      apply_csr_stencil_on_set_device(U_next_levels[lvl], U_levels[lvl],
+                                      active_set[lvl], fine_stencil,
+                                      /*strict_check=*/true);
       const auto t1 = Clock::now();
       time_fine_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
     }
 
     const auto t0_coarse = Clock::now();
-    CoarseEulerStencil coarse_stencil{accessors[0], domain, inflow,
-                                      cfg.gamma, dt, dx_levels[0], dy_levels[0],
-                                      cfg.no_slip};
-    apply_stencil_on_set_device(U_next_levels[0], U_levels[0],
-                                fluid_dev, coarse_stencil);
+    CoarseEulerStencil coarse_stencil{cfg.gamma, dt,
+                                      dx_levels[0], dy_levels[0]};
+    apply_csr_stencil_on_set_device(U_next_levels[0], U_levels[0],
+                                    fluid_dev, coarse_stencil,
+                                    /*strict_check=*/true);
     const auto t1_coarse = Clock::now();
     time_coarse_ms +=
         std::chrono::duration<double, std::milli>(t1_coarse - t0_coarse).count();
