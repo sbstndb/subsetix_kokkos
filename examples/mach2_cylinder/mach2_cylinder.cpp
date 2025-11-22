@@ -1372,17 +1372,10 @@ int main(int argc, char* argv[]) {
     const Conserved inflow = build_inflow_state(cfg);
 
     {
-      using ExecSpace = Kokkos::DefaultExecutionSpace;
       Field2DDevice<Conserved> U(fluid_dev, "mach2_state");
       Field2DDevice<Conserved> U_next(fluid_dev, "mach2_state_next");
-      Kokkos::parallel_for(
-          "mach2_cylinder_init",
-          Kokkos::RangePolicy<ExecSpace>(
-              0, static_cast<int>(U.size())),
-          KOKKOS_LAMBDA(const int idx) {
-            U.values(idx) = inflow;
-            U_next.values(idx) = inflow;
-          });
+      fill_on_set_device(U, fluid_dev, inflow);
+      fill_on_set_device(U_next, fluid_dev, inflow);
       U_levels[0] = U;
       U_next_levels[0] = U_next;
     }
