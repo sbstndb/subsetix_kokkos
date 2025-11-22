@@ -1608,9 +1608,6 @@ int main(int argc, char* argv[]) {
       const auto t1 = Clock::now();
       time_prolong_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
-      IntervalSet2DDevice active_clipped =
-          ensure_subset(active_set[lvl], U_levels[lvl].geometry, ctx);
-      active_set[lvl] = active_clipped;
       const Real dt_lvl = compute_dt_on_set(
           U_levels[lvl], active_set[lvl], cfg.gamma, cfg.cfl,
           dx_levels[lvl], dy_levels[lvl]);
