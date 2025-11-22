@@ -106,11 +106,18 @@ inline void copy_on_subset_device(Field2DDevice<T>& dst,
   auto subset_x_end = subset.x_end;
   auto subset_rows = subset.row_indices;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(subset.num_entries), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_copy_on_subset_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(subset.num_entries)),
-      KOKKOS_LAMBDA(const int entry_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int entry_idx = team.league_rank();
+
         const std::size_t interval_idx =
             subset_indices(entry_idx);
         const Interval dst_iv =
@@ -134,17 +141,25 @@ inline void copy_on_subset_device(Field2DDevice<T>& dst,
           return;
         }
 
-        int src_interval_idx =
+        // Initial interval in src row that contains xb, reused by all team threads.
+        int src_interval_idx0 =
             detail::find_interval_index(src_intervals, src_row_begin,
                                         src_row_end, xb);
-        if (src_interval_idx < 0) {
+        if (src_interval_idx0 < 0) {
           return;
         }
-        Interval src_iv = src_intervals(src_interval_idx);
-        std::size_t src_base = src_offsets(src_interval_idx);
-        Coord src_begin = src_iv.begin;
 
-        for (Coord x = xb; x < xe; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(xb + team_rank);
+             x < xe;
+             x += static_cast<Coord>(team_size)) {
+          int src_interval_idx = src_interval_idx0;
+          Interval src_iv = src_intervals(src_interval_idx);
+          std::size_t src_base = src_offsets(src_interval_idx);
+          Coord src_begin = src_iv.begin;
+
           while (x >= src_iv.end) {
             ++src_interval_idx;
             if (src_interval_idx >= static_cast<int>(src_row_end)) {
