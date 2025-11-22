@@ -1001,24 +1001,22 @@ void compute_diagnostics(const Field2DDevice<Conserved>& U,
                          Field2DDevice<Real>& pressure,
                          Field2DDevice<Real>& mach,
                          Real gamma) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
-  auto values = U.values;
-  auto rho_out = density.values;
+  auto u_values = U.values;
   auto p_out = pressure.values;
-  auto mach_out = mach.values;
-
-  Kokkos::parallel_for(
-      "mach2_cylinder_diagnostics",
-      Kokkos::RangePolicy<ExecSpace>(
-          0, static_cast<int>(U.size())),
-      KOKKOS_LAMBDA(const int idx) {
-        const Conserved s = values(idx);
+  auto m_out = mach.values;
+  apply_on_set_device(
+      density, density.geometry,
+      KOKKOS_LAMBDA(
+          Coord /*x*/, Coord /*y*/,
+          Real& rho_out, std::size_t idx) {
+        const Conserved s = u_values(idx);
         const Primitive q = cons_to_prim(s, gamma);
         const Real a = sound_speed(q, gamma);
         const Real vel = std::sqrt(q.u * q.u + q.v * q.v);
-        rho_out(idx) = q.rho;
+        rho_out = q.rho;
         p_out(idx) = q.p;
-        mach_out(idx) = (a > static_cast<Real>(1e-12)) ? (vel / a) : static_cast<Real>(0.0);
+        m_out(idx) = (a > static_cast<Real>(1e-12)) ? (vel / a)
+                                                    : static_cast<Real>(0.0);
       });
 }
 
@@ -1580,8 +1578,9 @@ int main(int argc, char* argv[]) {
   while ((t < cfg.t_final) && (step < cfg.max_steps)) {
     const int finest_level = max_active_level();
 
-    Real dt = compute_dt(U_levels[0], cfg.gamma, cfg.cfl,
-                         dx_levels[0], dy_levels[0]);
+    Real dt = compute_dt_on_set(U_levels[0], active_set[0],
+                                cfg.gamma, cfg.cfl,
+                                dx_levels[0], dy_levels[0]);
 
     const auto t_step_begin = Clock::now();
     double time_prolong_ms = 0.0;
