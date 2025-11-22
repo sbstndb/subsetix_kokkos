@@ -225,6 +225,22 @@ bool in_domain(Coord x, Coord y, const Box2D& domain) {
 }
 
 KOKKOS_INLINE_FUNCTION
+bool contains_point(const IntervalSet2DDevice& set,
+                    Coord x,
+                    Coord y) {
+  const int row_idx =
+      subsetix::csr::detail::find_row_index(set.row_keys, set.num_rows, y);
+  if (row_idx < 0) {
+    return false;
+  }
+  const std::size_t begin = set.row_ptr(row_idx);
+  const std::size_t end = set.row_ptr(row_idx + 1);
+  const int interval_idx =
+      subsetix::csr::detail::find_interval_index(set.intervals, begin, end, x);
+  return interval_idx >= 0;
+}
+
+KOKKOS_INLINE_FUNCTION
 Conserved make_wall_ghost(const Conserved& interior,
                           Real nx,
                           Real ny,
@@ -332,6 +348,109 @@ Conserved sample_neighbor_with_coarse(
   const Real nx = static_cast<Real>(-dx);
   const Real ny = static_cast<Real>(-dy);
   return make_wall_ghost(center, nx, ny, gamma, no_slip);
+}
+
+KOKKOS_INLINE_FUNCTION
+Conserved make_wall_from_neighbor(const Conserved& interior,
+                                  int dx,
+                                  int dy,
+                                  Real gamma,
+                                  bool no_slip) {
+  const Real nx = (dx != 0)
+                      ? ((dx > 0) ? static_cast<Real>(1.0)
+                                  : static_cast<Real>(-1.0))
+                      : static_cast<Real>(0.0);
+  const Real ny = (dy != 0)
+                      ? ((dy > 0) ? static_cast<Real>(1.0)
+                                  : static_cast<Real>(-1.0))
+                      : static_cast<Real>(0.0);
+  return make_wall_ghost(interior, nx, ny, gamma, no_slip);
+}
+
+void fill_ghost_cells(Field2DDevice<Conserved>& field,
+                      const IntervalSet2DDevice& ghost_mask,
+                      const IntervalSet2DDevice& base_mask,
+                      const Box2D& domain,
+                      const Conserved& inflow,
+                      Real gamma,
+                      bool no_slip) {
+  if (ghost_mask.num_rows == 0 || ghost_mask.num_intervals == 0) {
+    return;
+  }
+
+  const auto acc = make_accessor(field);
+
+  apply_on_set_device(
+      field, ghost_mask,
+      KOKKOS_LAMBDA(
+          Coord x, Coord y, Conserved& value, std::size_t /*idx*/) {
+        const bool outside = !in_domain(x, y, domain);
+
+        const auto clamp_coord = [&](Coord v, Coord vmin, Coord vmax) {
+          return (v < vmin) ? vmin : ((v >= vmax) ? static_cast<Coord>(vmax - 1) : v);
+        };
+
+        if (outside) {
+          const bool left = (x < domain.x_min);
+          const bool right = (x >= domain.x_max);
+          const bool bottom = (y < domain.y_min);
+
+          if (left) {
+            value = inflow;
+            return;
+          }
+          if (right) {
+            const Coord yc = clamp_coord(y, domain.y_min, domain.y_max);
+            value = acc.value_at(static_cast<Coord>(domain.x_max - 1), yc);
+            return;
+          }
+
+          const Coord xc = clamp_coord(x, domain.x_min, domain.x_max);
+          const Coord yc = bottom ? static_cast<Coord>(domain.y_min)
+                                  : static_cast<Coord>(domain.y_max - 1);
+          const Conserved interior = acc.value_at(xc, yc);
+          const Real ny = bottom ? static_cast<Real>(-1.0)
+                                 : static_cast<Real>(1.0);
+          value = make_wall_ghost(interior,
+                                  static_cast<Real>(0.0), ny,
+                                  gamma, no_slip);
+          return;
+        }
+
+        auto has_base = [&](Coord xb, Coord yb) {
+          return contains_point(base_mask, xb, yb);
+        };
+
+        Conserved neigh;
+        int ndx = 0;
+        int ndy = 0;
+
+        auto try_dir = [&](int dx, int dy) {
+          const Coord xn = static_cast<Coord>(x + dx);
+          const Coord yn = static_cast<Coord>(y + dy);
+          if (!has_base(xn, yn)) {
+            return false;
+          }
+          neigh = acc.value_at(xn, yn);
+          ndx = dx;
+          ndy = dy;
+          return true;
+        };
+
+        const bool found =
+            try_dir(-1, 0) || try_dir(1, 0) ||
+            try_dir(0, -1) || try_dir(0, 1);
+
+        if (found) {
+          value = make_wall_from_neighbor(neigh, ndx, ndy, gamma, no_slip);
+          return;
+        }
+
+        // Fallback: use clamped interior as copy (should be rare)
+        const Coord xc = clamp_coord(x, domain.x_min, domain.x_max);
+        const Coord yc = clamp_coord(y, domain.y_min, domain.y_max);
+        value = acc.value_at(xc, yc);
+      });
 }
 
 Real compute_dt(const Field2DDevice<Conserved>& U,
@@ -782,12 +901,13 @@ Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
 }
 
 void prolong_full(Field2DDevice<Conserved>& fine_field,
+                  const IntervalSet2DDevice& fine_mask,
                   const Field2DDevice<Conserved>& coarse_field,
                   CsrSetAlgebraContext& ctx) {
   (void)ctx;
   const auto coarse_acc = make_accessor(coarse_field);
   apply_on_set_device(
-      fine_field, fine_field.geometry,
+      fine_field, fine_mask,
       KOKKOS_LAMBDA(Coord x, Coord y, Conserved& value,
                     std::size_t /*linear_index*/) {
         const Coord xc = subsetix::csr::detail::floor_div2(x);
@@ -1358,6 +1478,8 @@ int main(int argc, char* argv[]) {
     std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> guard_set;
     std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> projection_down;
     std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> coarse_masks;
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> field_geom;
+    std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> ghost_mask;
     std::array<Box2D, MAX_AMR_LEVELS> domains;
     std::array<bool, MAX_AMR_LEVELS> has_level;
     has_level.fill(false);
@@ -1369,15 +1491,33 @@ int main(int argc, char* argv[]) {
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> pressure_levels;
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> mach_levels;
 
+    IntervalSet2DDevice field0;
+    expand_device(fluid_dev,
+                  static_cast<Coord>(1),
+                  static_cast<Coord>(1),
+                  field0, ctx);
+    subsetix::csr::compute_cell_offsets_device(field0);
+    field_geom[0] = field0;
+    auto ghost0 = subsetix::csr::allocate_interval_set_device(
+        field0.num_rows,
+        field0.num_intervals + fluid_dev.num_intervals);
+    set_difference_device(field0, fluid_dev, ghost0, ctx);
+    subsetix::csr::compute_cell_offsets_device(ghost0);
+    ghost_mask[0] = ghost0;
+
     const Conserved inflow = build_inflow_state(cfg);
 
     {
-      Field2DDevice<Conserved> U(fluid_dev, "mach2_state");
-      Field2DDevice<Conserved> U_next(fluid_dev, "mach2_state_next");
-      fill_on_set_device(U, fluid_dev, inflow);
-      fill_on_set_device(U_next, fluid_dev, inflow);
+      Field2DDevice<Conserved> U(field_geom[0], "mach2_state");
+      Field2DDevice<Conserved> U_next(field_geom[0], "mach2_state_next");
+      fill_on_set_device(U, field_geom[0], inflow);
+      fill_on_set_device(U_next, field_geom[0], inflow);
       U_levels[0] = U;
       U_next_levels[0] = U_next;
+      fill_ghost_cells(U_levels[0], ghost_mask[0], fluid_dev,
+                       domain, inflow, cfg.gamma, cfg.no_slip);
+      fill_ghost_cells(U_next_levels[0], ghost_mask[0], fluid_dev,
+                       domain, inflow, cfg.gamma, cfg.no_slip);
     }
 
     fluid_full[0] = fluid_dev;
@@ -1391,7 +1531,7 @@ int main(int argc, char* argv[]) {
     density_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_density");
     pressure_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_pressure");
     mach_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_mach");
-    U_active_levels[0] = U_levels[0];
+    U_active_levels[0] = Field2DDevice<Conserved>(fluid_dev, "mach2_state_active");
 
     auto build_level = [&](int lvl,
                            const IntervalSet2DDevice& parent_full,
@@ -1442,8 +1582,22 @@ int main(int argc, char* argv[]) {
         return;
       }
 
-      U_levels[lvl] = Field2DDevice<Conserved>(with_guard_set[lvl], "mach2_fine_lvl");
-      U_next_levels[lvl] = Field2DDevice<Conserved>(with_guard_set[lvl],
+      IntervalSet2DDevice field_lvl;
+      expand_device(with_guard_set[lvl],
+                    static_cast<Coord>(1),
+                    static_cast<Coord>(1),
+                    field_lvl, ctx);
+      subsetix::csr::compute_cell_offsets_device(field_lvl);
+      field_geom[lvl] = field_lvl;
+      auto ghost_lvl = subsetix::csr::allocate_interval_set_device(
+          field_lvl.num_rows,
+          field_lvl.num_intervals + with_guard_set[lvl].num_intervals);
+      set_difference_device(field_lvl, with_guard_set[lvl], ghost_lvl, ctx);
+      subsetix::csr::compute_cell_offsets_device(ghost_lvl);
+      ghost_mask[lvl] = ghost_lvl;
+
+      U_levels[lvl] = Field2DDevice<Conserved>(field_geom[lvl], "mach2_fine_lvl");
+      U_next_levels[lvl] = Field2DDevice<Conserved>(field_geom[lvl],
                                                     "mach2_fine_lvl_next");
       U_active_levels[lvl] = Field2DDevice<Conserved>(active_set[lvl],
                                                       "mach2_fine_lvl_active");
@@ -1452,8 +1606,8 @@ int main(int argc, char* argv[]) {
       mach_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_mach_lvl");
 
       const auto t_prolong_begin = Clock::now();
-      prolong_full(U_levels[lvl], parent_U, ctx);
-      prolong_full(U_next_levels[lvl], parent_U, ctx);
+      prolong_full(U_levels[lvl], with_guard_set[lvl], parent_U, ctx);
+      prolong_full(U_next_levels[lvl], with_guard_set[lvl], parent_U, ctx);
       Kokkos::DefaultExecutionSpace().fence();
       const auto t_prolong_end = Clock::now();
       if (timers) {
@@ -1482,6 +1636,11 @@ int main(int argc, char* argv[]) {
                                  .count();
         }
       }
+
+      fill_ghost_cells(U_levels[lvl], ghost_mask[lvl], with_guard_set[lvl],
+                       domains[lvl], inflow, cfg.gamma, cfg.no_slip);
+      fill_ghost_cells(U_next_levels[lvl], ghost_mask[lvl], with_guard_set[lvl],
+                       domains[lvl], inflow, cfg.gamma, cfg.no_slip);
     };
 
     // Initial hierarchy build up to MAX_AMR_LEVELS-1
@@ -1609,6 +1768,16 @@ int main(int argc, char* argv[]) {
       dt = cfg.t_final - t;
     }
 
+    for (int lvl = 1; lvl <= finest_level; ++lvl) {
+      if (!has_level[lvl]) {
+        continue;
+      }
+      fill_ghost_cells(U_levels[lvl], ghost_mask[lvl], with_guard_set[lvl],
+                       domains[lvl], inflow, cfg.gamma, cfg.no_slip);
+    }
+    fill_ghost_cells(U_levels[0], ghost_mask[0], fluid_dev,
+                     domain, inflow, cfg.gamma, cfg.no_slip);
+
     for (int lvl = finest_level; lvl >= 1; --lvl) {
       if (!has_level[lvl]) {
         continue;
@@ -1698,6 +1867,13 @@ int main(int argc, char* argv[]) {
       if (cfg.enable_output) {
         const auto t_out_begin = Clock::now();
         const int active_finest = max_active_level();
+        {
+          auto src0 = make_subview(U_levels[0], active_set[0],
+                                   "coarse_active_src");
+          auto dst0 = make_subview(U_active_levels[0], active_set[0],
+                                   "coarse_active_dst");
+          copy_subview_device(dst0, src0, ctx);
+        }
         for (int lvl = 1; lvl <= active_finest; ++lvl) {
           if (!has_level[lvl]) {
             continue;
