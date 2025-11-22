@@ -275,6 +275,34 @@ Conserved make_wall_from_neighbor(const Conserved& interior,
   return make_wall_ghost(interior, nx, ny, gamma, no_slip);
 }
 
+enum class BcKind {
+  Inlet,
+  Outlet,
+  WallBottom,
+  WallTop
+};
+
+KOKKOS_INLINE_FUNCTION
+Conserved make_bc_state(BcKind kind,
+                        const Conserved& interior,
+                        const Conserved& inflow,
+                        Real gamma,
+                        bool no_slip) {
+  switch (kind) {
+    case BcKind::Inlet:
+      return inflow;
+    case BcKind::Outlet:
+      return interior; // extrapolation
+    case BcKind::WallBottom:
+      return make_wall_ghost(interior, static_cast<Real>(0.0),
+                             static_cast<Real>(-1.0), gamma, no_slip);
+    case BcKind::WallTop:
+      return make_wall_ghost(interior, static_cast<Real>(0.0),
+                             static_cast<Real>(1.0), gamma, no_slip);
+  }
+  return interior;
+}
+
 KOKKOS_INLINE_FUNCTION
 Conserved sample_neighbor(const Conserved& center,
                           Coord x,
@@ -296,14 +324,13 @@ Conserved sample_neighbor(const Conserved& center,
 
   if (!in_domain(xn, yn, domain)) {
     if (dx == -1 && dy == 0) {
-      return inflow; // inlet
+      return make_bc_state(BcKind::Inlet, center, inflow, gamma, no_slip);
     }
     if (dx == 1 && dy == 0) {
-      return center; // supersonic outflow: extrapolate
+      return make_bc_state(BcKind::Outlet, center, inflow, gamma, no_slip);
     }
-    const Real nx = static_cast<Real>(0.0);
-    const Real ny = (dy > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
-    return make_wall_ghost(center, nx, ny, gamma, no_slip);
+    const BcKind kind = (dy > 0) ? BcKind::WallTop : BcKind::WallBottom;
+    return make_bc_state(kind, center, inflow, gamma, no_slip);
   }
 
   // Inside rectangular domain -> obstacle ghost
@@ -346,16 +373,13 @@ Conserved sample_neighbor_with_coarse(
 
   if (!inside) {
     if (dx == -1 && dy == 0) {
-      return inflow;
+      return make_bc_state(BcKind::Inlet, center, inflow, gamma, no_slip);
     }
     if (dx == 1 && dy == 0) {
-      return center;
+      return make_bc_state(BcKind::Outlet, center, inflow, gamma, no_slip);
     }
-    const Real nx = (dy == 0) ? ((dx > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0))
-                              : static_cast<Real>(0.0);
-    const Real ny = (dx == 0) ? ((dy > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0))
-                              : static_cast<Real>(0.0);
-    return make_wall_ghost(center, nx, ny, gamma, no_slip);
+    const BcKind kind = (dy > 0) ? BcKind::WallTop : BcKind::WallBottom;
+    return make_bc_state(kind, center, inflow, gamma, no_slip);
   }
 
   const Real nx = static_cast<Real>(-dx);
@@ -390,14 +414,15 @@ void fill_ghost_cells(Field2DDevice<Conserved>& field,
           const bool left = (x < domain.x_min);
           const bool right = (x >= domain.x_max);
           const bool bottom = (y < domain.y_min);
-
           if (left) {
-            value = inflow;
+            value = make_bc_state(BcKind::Inlet, value, inflow, gamma, no_slip);
             return;
           }
           if (right) {
             const Coord yc = clamp_coord(y, domain.y_min, domain.y_max);
-            value = acc.value_at(static_cast<Coord>(domain.x_max - 1), yc);
+            const Conserved interior =
+                acc.value_at(static_cast<Coord>(domain.x_max - 1), yc);
+            value = make_bc_state(BcKind::Outlet, interior, inflow, gamma, no_slip);
             return;
           }
 
@@ -405,11 +430,8 @@ void fill_ghost_cells(Field2DDevice<Conserved>& field,
           const Coord yc = bottom ? static_cast<Coord>(domain.y_min)
                                   : static_cast<Coord>(domain.y_max - 1);
           const Conserved interior = acc.value_at(xc, yc);
-          const Real ny = bottom ? static_cast<Real>(-1.0)
-                                 : static_cast<Real>(1.0);
-          value = make_wall_ghost(interior,
-                                  static_cast<Real>(0.0), ny,
-                                  gamma, no_slip);
+          const BcKind kind = bottom ? BcKind::WallBottom : BcKind::WallTop;
+          value = make_bc_state(kind, interior, inflow, gamma, no_slip);
           return;
         }
 
