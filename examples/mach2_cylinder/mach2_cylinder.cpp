@@ -259,6 +259,23 @@ Conserved make_wall_ghost(const Conserved& interior,
 }
 
 KOKKOS_INLINE_FUNCTION
+Conserved make_wall_from_neighbor(const Conserved& interior,
+                                  int dx,
+                                  int dy,
+                                  Real gamma,
+                                  bool no_slip) {
+  const Real nx = (dx != 0)
+                      ? ((dx > 0) ? static_cast<Real>(1.0)
+                                  : static_cast<Real>(-1.0))
+                      : static_cast<Real>(0.0);
+  const Real ny = (dy != 0)
+                      ? ((dy > 0) ? static_cast<Real>(1.0)
+                                  : static_cast<Real>(-1.0))
+                      : static_cast<Real>(0.0);
+  return make_wall_ghost(interior, nx, ny, gamma, no_slip);
+}
+
+KOKKOS_INLINE_FUNCTION
 Conserved sample_neighbor(const Conserved& center,
                           Coord x,
                           Coord y,
@@ -274,26 +291,22 @@ Conserved sample_neighbor(const Conserved& center,
 
   Conserved neigh;
   if (acc.try_get(xn, yn, neigh)) {
-    return neigh; // fluid neighbor
+    return neigh; // fluid or ghost neighbor
   }
 
   if (!in_domain(xn, yn, domain)) {
-    // Physical domain boundary
     if (dx == -1 && dy == 0) {
-      // Inlet
-      return inflow;
+      return inflow; // inlet
     }
     if (dx == 1 && dy == 0) {
-      // Supersonic outflow: extrapolate
-      return center;
+      return center; // supersonic outflow: extrapolate
     }
-    // Top/bottom walls
     const Real nx = static_cast<Real>(0.0);
     const Real ny = (dy > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
     return make_wall_ghost(center, nx, ny, gamma, no_slip);
   }
 
-  // Inside rectangular domain -> obstacle
+  // Inside rectangular domain -> obstacle ghost
   const Real nx = (dx != 0) ? ((dx > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0))
                             : static_cast<Real>(0.0);
   const Real ny = (dy != 0) ? ((dy > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0))
@@ -348,23 +361,6 @@ Conserved sample_neighbor_with_coarse(
   const Real nx = static_cast<Real>(-dx);
   const Real ny = static_cast<Real>(-dy);
   return make_wall_ghost(center, nx, ny, gamma, no_slip);
-}
-
-KOKKOS_INLINE_FUNCTION
-Conserved make_wall_from_neighbor(const Conserved& interior,
-                                  int dx,
-                                  int dy,
-                                  Real gamma,
-                                  bool no_slip) {
-  const Real nx = (dx != 0)
-                      ? ((dx > 0) ? static_cast<Real>(1.0)
-                                  : static_cast<Real>(-1.0))
-                      : static_cast<Real>(0.0);
-  const Real ny = (dy != 0)
-                      ? ((dy > 0) ? static_cast<Real>(1.0)
-                                  : static_cast<Real>(-1.0))
-                      : static_cast<Real>(0.0);
-  return make_wall_ghost(interior, nx, ny, gamma, no_slip);
 }
 
 void fill_ghost_cells(Field2DDevice<Conserved>& field,
@@ -437,9 +433,8 @@ void fill_ghost_cells(Field2DDevice<Conserved>& field,
           return true;
         };
 
-        const bool found =
-            try_dir(-1, 0) || try_dir(1, 0) ||
-            try_dir(0, -1) || try_dir(0, 1);
+        const bool found = try_dir(-1, 0) || try_dir(1, 0) ||
+                           try_dir(0, -1) || try_dir(0, 1);
 
         if (found) {
           value = make_wall_from_neighbor(neigh, ndx, ndy, gamma, no_slip);
@@ -1493,8 +1488,8 @@ int main(int argc, char* argv[]) {
 
     IntervalSet2DDevice field0;
     expand_device(fluid_dev,
-                  static_cast<Coord>(1),
-                  static_cast<Coord>(1),
+                  static_cast<Coord>(2),
+                  static_cast<Coord>(2),
                   field0, ctx);
     subsetix::csr::compute_cell_offsets_device(field0);
     field_geom[0] = field0;
@@ -1584,8 +1579,8 @@ int main(int argc, char* argv[]) {
 
       IntervalSet2DDevice field_lvl;
       expand_device(with_guard_set[lvl],
-                    static_cast<Coord>(1),
-                    static_cast<Coord>(1),
+                    static_cast<Coord>(2),
+                    static_cast<Coord>(2),
                     field_lvl, ctx);
       subsetix::csr::compute_cell_offsets_device(field_lvl);
       field_geom[lvl] = field_lvl;
@@ -1751,7 +1746,8 @@ int main(int argc, char* argv[]) {
         continue;
       }
       const auto t0 = Clock::now();
-      prolong_guard_from_coarse(U_levels[lvl], guard_set[lvl], accessors[lvl - 1]);
+      const auto coarse_acc = make_accessor(U_levels[lvl - 1]);
+      prolong_guard_from_coarse(U_levels[lvl], guard_set[lvl], coarse_acc);
       const auto t1 = Clock::now();
       time_prolong_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -1785,7 +1781,8 @@ int main(int argc, char* argv[]) {
       const auto t0 = Clock::now();
       FineEulerStencil fine_stencil{accessors[lvl], accessors[lvl - 1],
                                     domains[lvl], inflow, cfg.gamma, dt,
-                                    dx_levels[lvl], dy_levels[lvl], cfg.no_slip};
+                                    dx_levels[lvl], dy_levels[lvl],
+                                    cfg.no_slip};
       apply_stencil_on_set_device(U_next_levels[lvl], U_levels[lvl],
                                   active_set[lvl], fine_stencil);
       const auto t1 = Clock::now();

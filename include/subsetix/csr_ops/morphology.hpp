@@ -605,8 +605,11 @@ expand_device(const IntervalSet2DDevice& in,
       const int start_idx = map_start(i);
       const int end_idx = map_end(i);
       const int n_rows = end_idx - start_idx;
+      const int capped_rows = (n_rows > detail::MAX_MORPH_N)
+                                  ? detail::MAX_MORPH_N
+                                  : n_rows;
       
-      if (n_rows <= 0) {
+      if (capped_rows <= 0) {
         row_counts(i) = 0;
         return;
       }
@@ -614,13 +617,13 @@ expand_device(const IntervalSet2DDevice& in,
       std::size_t ptrs[detail::MAX_MORPH_N];
       std::size_t ends[detail::MAX_MORPH_N];
       
-      for(int k=0; k<n_rows; ++k) {
+      for(int k=0; k<capped_rows; ++k) {
         const std::size_t r = static_cast<std::size_t>(start_idx + k);
         ptrs[k] = row_ptr_in(r);
         ends[k] = row_ptr_in(r+1);
       }
       
-      row_counts(i) = detail::row_n_way_union_count(intervals_in, ptrs, ends, n_rows, rx);
+      row_counts(i) = detail::row_n_way_union_count(intervals_in, ptrs, ends, capped_rows, rx);
   });
   
   ExecSpace().fence();
@@ -665,20 +668,23 @@ expand_device(const IntervalSet2DDevice& in,
       const int start_idx = map_start(i);
       const int end_idx = map_end(i);
       const int n_rows = end_idx - start_idx;
+      const int capped_rows = (n_rows > detail::MAX_MORPH_N)
+                                  ? detail::MAX_MORPH_N
+                                  : n_rows;
       
-      if (n_rows <= 0) return;
+      if (capped_rows <= 0) return;
       
       std::size_t ptrs[detail::MAX_MORPH_N];
       std::size_t ends[detail::MAX_MORPH_N];
       
-      for(int k=0; k<n_rows; ++k) {
+      for(int k=0; k<capped_rows; ++k) {
         const std::size_t r = static_cast<std::size_t>(start_idx + k);
         ptrs[k] = row_ptr_in(r);
         ends[k] = row_ptr_in(r+1);
       }
       
       const std::size_t offset = row_ptr_out(i);
-      detail::row_n_way_union_fill(intervals_in, ptrs, ends, n_rows, rx, intervals_out, offset);
+      detail::row_n_way_union_fill(intervals_in, ptrs, ends, capped_rows, rx, intervals_out, offset);
   });
   
   ExecSpace().fence();

@@ -123,3 +123,12 @@ target_link_libraries(mach2_cylinder
     PRIVATE
         subsetix_core
 )
+
+add_executable(smoke_plume
+    smoke_plume/smoke_plume.cpp
+)
+
+target_link_libraries(smoke_plume
+    PRIVATE
+        subsetix_core
+)
