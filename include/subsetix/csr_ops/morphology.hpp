@@ -5,9 +5,6 @@
 #include <subsetix/csr_ops/workspace.hpp>
 #include <subsetix/detail/csr_utils.hpp>
 
-#include <subsetix/csr_ops/workspace.hpp>
-#include <subsetix/detail/csr_utils.hpp>
-
 namespace subsetix {
 namespace csr {
 namespace detail {

@@ -24,9 +24,11 @@
 #include <subsetix/csr_set_ops.hpp>
 #include <subsetix/multilevel.hpp>
 #include <subsetix/vtk_export.hpp>
+#include <subsetix/csr_backend.hpp>
 
 using namespace subsetix;
 using namespace subsetix::csr;
+using subsetix::csr::ExecSpace;
 
 template <typename T>
 detail::FieldReadAccessor<T>
@@ -65,7 +67,7 @@ void prolong_by_coords(Field2DDevice<double>& fine_field,
 
   Kokkos::parallel_for(
       "subsetix_prolong_by_coords",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(fine_field.geometry.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const Coord y_f = fine_rows(row_idx).y;
@@ -84,7 +86,7 @@ void prolong_by_coords(Field2DDevice<double>& fine_field,
           }
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 }
 
 void restrict_by_coords(Field2DDevice<double>& coarse_field,
@@ -111,7 +113,7 @@ void restrict_by_coords(Field2DDevice<double>& coarse_field,
 
   Kokkos::parallel_for(
       "subsetix_restrict_by_coords",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(coarse_region.num_intervals)),
       KOKKOS_LAMBDA(const int interval_idx) {
         const int row_idx = interval_to_row(interval_idx);
@@ -148,7 +150,7 @@ void restrict_by_coords(Field2DDevice<double>& coarse_field,
               0.25 * (v00 + v01 + v10 + v11);
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 }
 
 struct AdvectionStencil {
@@ -255,7 +257,7 @@ void initialize_square(Field2DDevice<double>& field, double origin_x,
 
   Kokkos::parallel_for(
       "subsetix_init_square",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(field.geometry.num_rows)),
       KOKKOS_LAMBDA(const int i) {
         const Coord y_idx = row_keys(i).y;
@@ -279,7 +281,7 @@ void initialize_square(Field2DDevice<double>& field, double origin_x,
           }
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 }
 
 IntervalSet2DDevice build_refine_mask(const Field2DDevice<double>& coarse_field,

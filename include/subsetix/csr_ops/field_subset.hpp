@@ -9,8 +9,6 @@
 namespace subsetix {
 namespace csr {
 
-using ExecSpace = Kokkos::DefaultExecutionSpace;
-
 template <typename T, class Functor>
 inline void apply_on_subset_device(Field2DDevice<T>& field,
                                    const IntervalSubSet2DDevice& subset,

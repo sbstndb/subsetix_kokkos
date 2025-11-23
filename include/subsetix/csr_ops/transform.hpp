@@ -3,7 +3,6 @@
 #include <Kokkos_Core.hpp>
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
-#include <subsetix/csr_ops/workspace.hpp>
 
 namespace subsetix {
 namespace csr {

@@ -14,8 +14,6 @@
 namespace subsetix {
 namespace csr {
 
-using ExecSpace = Kokkos::DefaultExecutionSpace;
-
 namespace detail {
 
 // ---------------------------------------------------------------------------

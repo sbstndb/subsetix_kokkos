@@ -9,6 +9,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Random.hpp>
+#include <subsetix/csr_backend.hpp>
 
 namespace subsetix {
 namespace csr {
@@ -76,9 +77,6 @@ struct IntervalSet2DView {
   std::size_t num_intervals = 0;
 };
 
-using DeviceMemorySpace = typename Kokkos::DefaultExecutionSpace::memory_space;
-using HostMemorySpace = Kokkos::HostSpace;
-
 using IntervalSet2DDevice = IntervalSet2DView<DeviceMemorySpace>;
 using IntervalSet2DHostView = IntervalSet2DView<HostMemorySpace>;
 
@@ -106,8 +104,6 @@ allocate_interval_set_device(std::size_t row_capacity,
 }
 
 inline void compute_cell_offsets_device(IntervalSet2DDevice& dev) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
-
   if (dev.num_intervals == 0) {
     dev.total_cells = 0;
     return;
@@ -291,8 +287,6 @@ struct Domain2D {
   Coord y_min = 0;
   Coord y_max = 0; // half-open
 };
-
-using ExecSpace = Kokkos::DefaultExecutionSpace;
 
 template <class ComputeRowFunctor, class FillRowFunctor>
 inline IntervalSet2DDevice

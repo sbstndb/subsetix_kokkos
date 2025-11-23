@@ -25,7 +25,6 @@ namespace csr {
 template <typename T>
 IntervalSet2DDevice threshold_field(const Field2DDevice<T>& field,
                                     double epsilon) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
   IntervalSet2DDevice result_set;
 
   if (field.geometry.num_rows == 0) {
@@ -212,4 +211,3 @@ IntervalSet2DDevice threshold_field(const Field2DDevice<T>& field,
 
 } // namespace csr
 } // namespace subsetix
-

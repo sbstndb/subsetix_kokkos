@@ -9,6 +9,7 @@
 #include <subsetix/csr_ops/threshold.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>
 #include <subsetix/vtk_export.hpp>
+#include <subsetix/csr_backend.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -29,6 +30,7 @@ namespace {
 using Real = double;
 using subsetix::csr::Box2D;
 using subsetix::csr::Coord;
+using subsetix::csr::ExecSpace;
 using subsetix::csr::Field2DDevice;
 using subsetix::csr::Interval;
 using subsetix::csr::IntervalSet2DDevice;
@@ -117,7 +119,7 @@ remap_to_box(const Field2DDevice<T>& src,
 
   Kokkos::parallel_for(
       "subsetix_smoke_remap",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(dst.geometry.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const Coord y = row_keys(row_idx).y;
@@ -133,7 +135,7 @@ remap_to_box(const Field2DDevice<T>& src,
           }
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
   return dst;
 }
 
@@ -155,7 +157,7 @@ remap_to_geometry(const Field2DDevice<T>& src,
 
   Kokkos::parallel_for(
       "subsetix_smoke_remap_geom",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(dst.geometry.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const Coord y = row_keys(row_idx).y;
@@ -172,7 +174,7 @@ remap_to_geometry(const Field2DDevice<T>& src,
           out(idx) = src_acc.value_at(x, y);
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
   return dst;
 }
 
@@ -245,7 +247,7 @@ compute_dt(const Field2DDevice<Real>& smoke,
   const std::size_t n = std::min(u_vals.extent(0), v_vals.extent(0));
   Kokkos::parallel_reduce(
       "subsetix_smoke_max_speed",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(n)),
       KOKKOS_LAMBDA(const int i, Real& max_v) {
         const Real ux = cfg.base_right + u_vals(i);
@@ -349,7 +351,7 @@ compute_diagnostics(const Field2DDevice<Real>& smoke, Real threshold) {
 
   Kokkos::parallel_reduce(
       "subsetix_smoke_diag",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(smoke.geometry.num_rows)),
       reducer,
       diag);
@@ -379,7 +381,7 @@ advance_omega(const Field2DDevice<Real>& omega,
 
   Kokkos::parallel_for(
       "subsetix_smoke_advect_omega",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(omega.geometry.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const std::size_t iv_begin = row_ptr(row_idx);
@@ -470,7 +472,7 @@ advance_omega(const Field2DDevice<Real>& omega,
           }
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 }
 
 void
@@ -495,7 +497,7 @@ solve_poisson(const Field2DDevice<Real>& omega,
   for (int iter = 0; iter < cfg.poisson_iters; ++iter) {
     Kokkos::parallel_for(
         "subsetix_smoke_poisson",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+        Kokkos::RangePolicy<ExecSpace>(
             0, static_cast<int>(psi.geometry.num_rows)),
         KOKKOS_LAMBDA(const int row_idx) {
           const std::size_t iv_begin = row_ptr(row_idx);
@@ -546,7 +548,7 @@ solve_poisson(const Field2DDevice<Real>& omega,
             }
           }
         });
-    Kokkos::DefaultExecutionSpace().fence();
+    ExecSpace().fence();
     std::swap(psi_vals, tmp_vals);
   }
   // Ensure psi holds latest values
@@ -570,7 +572,7 @@ compute_velocity(const Field2DDevice<Real>& psi,
 
   Kokkos::parallel_for(
       "subsetix_smoke_velocity",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(psi.geometry.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const std::size_t iv_begin = row_ptr(row_idx);
@@ -618,7 +620,7 @@ compute_velocity(const Field2DDevice<Real>& psi,
           }
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 }
 void
 advance_scalar(const Field2DDevice<Real>& value,
@@ -646,7 +648,7 @@ advance_scalar(const Field2DDevice<Real>& value,
 
   Kokkos::parallel_for(
       "subsetix_smoke_advance",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(value.geometry.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const std::size_t iv_begin = row_ptr(row_idx);
@@ -729,7 +731,7 @@ advance_scalar(const Field2DDevice<Real>& value,
           }
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 }
 
 void
@@ -752,7 +754,7 @@ apply_source(Field2DDevice<Real>& smoke,
 
   Kokkos::parallel_for(
       "subsetix_smoke_source",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(smoke.geometry.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const Coord y = row_keys(row_idx).y;
@@ -781,7 +783,7 @@ apply_source(Field2DDevice<Real>& smoke,
           temp_vals(idx) = cfg.source_temp;
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 }
 
 std::string

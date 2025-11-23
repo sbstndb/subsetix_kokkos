@@ -15,6 +15,7 @@
 #include <subsetix/detail/csr_utils.hpp>
 #include <subsetix/multilevel.hpp>
 #include <subsetix/vtk_export.hpp>
+#include <subsetix/csr_backend.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -38,6 +39,7 @@ using Real = float;
 
 using subsetix::csr::Box2D;
 using subsetix::csr::Coord;
+using subsetix::csr::ExecSpace;
 using subsetix::csr::CsrSetAlgebraContext;
 using subsetix::csr::Disk2D;
 using subsetix::csr::Field2DDevice;
@@ -404,7 +406,6 @@ Real compute_dt(const Field2DDevice<Conserved>& U,
                 Real cfl,
                 Real dx,
                 Real dy) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
   const Real inv_dx = static_cast<Real>(1.0) / dx;
   const Real inv_dy = static_cast<Real>(1.0) / dy;
   Real max_rate = static_cast<Real>(0.0);
@@ -505,7 +506,7 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
   IndicatorStencil stencil{inv_dx, inv_dy};
   apply_csr_stencil_on_set_device(indicator, U, indicator_region, stencil,
                                   /*strict_check=*/false);
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
   const auto t_indicator_end = Clock::now();
   if (timers) {
     timers->mask_indicator += std::chrono::duration<double, std::milli>(
@@ -513,7 +514,6 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
                                   .count();
   }
 
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
   auto indicator_values = indicator.values;
   Real max_grad = static_cast<Real>(0.0);
   const auto t_reduce_begin = Clock::now();
@@ -553,7 +553,7 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
     const auto t_expand_begin = Clock::now();
     expand_device(mask, smooth, smooth, expanded, ctx);
     subsetix::csr::compute_cell_offsets_device(expanded);
-    Kokkos::DefaultExecutionSpace().fence();
+    ExecSpace().fence();
     const auto t_expand_end = Clock::now();
     if (timers) {
       timers->mask_expand += std::chrono::duration<double, std::milli>(
@@ -725,7 +725,7 @@ Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
 
   Kokkos::parallel_reduce(
       "mach2_cylinder_dt_on_set",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(region.num_intervals)),
       KOKKOS_LAMBDA(const int interval_idx, Real& lmax) {
         const int row_idx = interval_to_row(interval_idx);
@@ -838,7 +838,7 @@ void restrict_fine_to_coarse(Field2DDevice<Conserved>& coarse_field,
 
   Kokkos::parallel_for(
       "mach2_cylinder_restrict",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+      Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(coarse_region.num_intervals)),
       KOKKOS_LAMBDA(const int interval_idx) {
         const int row_idx = interval_to_row(interval_idx);
@@ -881,7 +881,7 @@ void restrict_fine_to_coarse(Field2DDevice<Conserved>& coarse_field,
           coarse_values(c_idx) = avg;
         }
       });
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 }
 
 struct CoarseEulerStencil {
@@ -1021,7 +1021,6 @@ void compute_diagnostics(const Field2DDevice<Conserved>& U,
 }
 
 Real compute_total_mass(const Field2DDevice<Conserved>& U) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
   Real total = static_cast<Real>(0.0);
   Kokkos::parallel_reduce(
       "mach2_cylinder_mass",
@@ -1465,7 +1464,7 @@ int main(int argc, char* argv[]) {
       const auto t_prolong_begin = Clock::now();
       prolong_full(U_levels[lvl], with_guard_set[lvl], parent_U, ctx);
       prolong_full(U_next_levels[lvl], with_guard_set[lvl], parent_U, ctx);
-      Kokkos::DefaultExecutionSpace().fence();
+      ExecSpace().fence();
       const auto t_prolong_end = Clock::now();
       if (timers) {
         timers->prolong += std::chrono::duration<double, std::milli>(
@@ -1485,7 +1484,7 @@ int main(int argc, char* argv[]) {
           set_intersection_device(*prev_active, active_set[lvl], overlap, ctx);
           copy_overlap(U_levels[lvl], *prev_U, overlap, ctx);
         }
-        Kokkos::DefaultExecutionSpace().fence();
+        ExecSpace().fence();
         const auto t_overlap_end = Clock::now();
         if (timers) {
           timers->overlap += std::chrono::duration<double, std::milli>(

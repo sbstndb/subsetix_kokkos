@@ -4,10 +4,12 @@
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_field.hpp>
 #include <subsetix/vtk_export.hpp>
+#include <subsetix/csr_backend.hpp>
 
 namespace {
 
 using namespace subsetix::csr;
+using subsetix::csr::ExecSpace;
 
 IntervalField2DHost<float> build_scaled_field_roundtrip() {
   IntervalField2DHost<float> host_field;
@@ -16,7 +18,6 @@ IntervalField2DHost<float> build_scaled_field_roundtrip() {
 
   auto dev_field = build_device_field_from_host(host_field);
 
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
   Kokkos::parallel_for(
       "subsetix_csr_field_scale_values",
       Kokkos::RangePolicy<ExecSpace>(0, dev_field.size()),

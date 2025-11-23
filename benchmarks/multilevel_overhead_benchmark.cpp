@@ -4,9 +4,11 @@
 #include <subsetix/multilevel.hpp>
 #include <subsetix/csr_interval_set.hpp>
 #include <subsetix/csr_set_ops.hpp>
+#include <subsetix/csr_backend.hpp>
 
 using namespace subsetix;
 using namespace subsetix::csr;
+using subsetix::csr::ExecSpace;
 
 // Global variables to hold data across benchmark runs to avoid reallocation noise
 // We allocate ONCE for the max size, and then benchmarks use a subset.
@@ -36,8 +38,6 @@ void CleanupData() {
 // Benchmark 1: Direct View Access
 // ----------------------------------------------------------------------------
 void BM_DirectViewAccess(benchmark::State& state) {
-    using ExecSpace = Kokkos::DefaultExecutionSpace;
-    
     // Use a subset of rows determined by the benchmark arg
     const int num_rows = static_cast<int>(state.range(0));
     
@@ -65,7 +65,6 @@ void BM_DirectViewAccess(benchmark::State& state) {
 // Benchmark 2: Multilevel Struct Access
 // ----------------------------------------------------------------------------
 void BM_MultilevelStructAccess(benchmark::State& state) {
-    using ExecSpace = Kokkos::DefaultExecutionSpace;
     const int num_rows = static_cast<int>(state.range(0));
     
     MultilevelGeoDevice geo = global_multi_max; 
@@ -85,7 +84,6 @@ void BM_MultilevelStructAccess(benchmark::State& state) {
 // Benchmark 3: Dynamic Index Access
 // ----------------------------------------------------------------------------
 void BM_MultilevelDynamicAccess(benchmark::State& state) {
-    using ExecSpace = Kokkos::DefaultExecutionSpace;
     const int num_rows = static_cast<int>(state.range(0));
     
     MultilevelGeoDevice geo = global_multi_max;

@@ -12,8 +12,6 @@
 namespace subsetix {
 namespace csr {
 
-using ExecSpace = Kokkos::DefaultExecutionSpace;
-
 namespace detail {
 
 // ---------------------------------------------------------------------------
@@ -330,4 +328,3 @@ inline void accumulate_field_device(Field2DDevice<T>& dst,
 
 } // namespace csr
 } // namespace subsetix
-

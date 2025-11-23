@@ -74,7 +74,7 @@ build_subset_row_map(const IntervalSet2DDevice& geom,
 
   Kokkos::parallel_for(
       "subsetix_interval_subset_row_map",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, mask.num_rows),
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
       KOKKOS_LAMBDA(const std::size_t i) {
         const Coord ym = mask_rows(i).y;
 
@@ -96,12 +96,12 @@ build_subset_row_map(const IntervalSet2DDevice& geom,
         }
       });
 
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 
   int min_val = 0;
   Kokkos::parallel_reduce(
       "subsetix_interval_subset_row_map_min",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, mask.num_rows),
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
       KOKKOS_LAMBDA(const std::size_t i, int& lmin) {
         if (row_map(i) < lmin) {
           lmin = row_map(i);
@@ -177,7 +177,7 @@ inline void build_interval_subset_device(
 
   Kokkos::parallel_for(
       "subsetix_interval_subset_count",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows),
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
       KOKKOS_LAMBDA(const std::size_t row_idx) {
         const int geom_row = row_map(row_idx);
         if (geom_row < 0) {
@@ -195,14 +195,14 @@ inline void build_interval_subset_device(
             geom_end);
       });
 
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 
   Kokkos::View<std::size_t, DeviceMemorySpace> total_entries(
       "subsetix_interval_subset_total_entries");
 
   Kokkos::parallel_scan(
       "subsetix_interval_subset_offsets",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows),
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
       KOKKOS_LAMBDA(const std::size_t row_idx, std::size_t& update,
                     const bool final_pass) {
         const std::size_t count = row_counts(row_idx);
@@ -216,7 +216,7 @@ inline void build_interval_subset_device(
         update += count;
       });
 
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 
   std::size_t num_entries = 0;
   Kokkos::deep_copy(num_entries, total_entries);
@@ -245,7 +245,7 @@ inline void build_interval_subset_device(
 
   Kokkos::parallel_for(
       "subsetix_interval_subset_fill",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows),
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
       KOKKOS_LAMBDA(const std::size_t row_idx) {
         const int geom_row = row_map(row_idx);
         if (geom_row < 0) {
@@ -290,11 +290,11 @@ inline void build_interval_subset_device(
         }
       });
 
-  Kokkos::DefaultExecutionSpace().fence();
+  ExecSpace().fence();
 
   Kokkos::parallel_reduce(
       "subsetix_interval_subset_total_cells",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_entries),
+      Kokkos::RangePolicy<ExecSpace>(0, num_entries),
       KOKKOS_LAMBDA(const std::size_t i, std::size_t& sum) {
         const Coord begin = subset_x_begin(i);
         const Coord end = subset_x_end(i);
@@ -314,4 +314,3 @@ build_interval_subset_device(const IntervalSet2DDevice& geom,
 
 } // namespace csr
 } // namespace subsetix
-

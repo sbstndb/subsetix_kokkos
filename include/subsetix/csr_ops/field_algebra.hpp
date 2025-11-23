@@ -11,8 +11,6 @@
 namespace subsetix {
 namespace csr {
 
-using ExecSpace = Kokkos::DefaultExecutionSpace;
-
 // ---------------------------------------------------------------------------
 // Field Algebra Operations
 // ---------------------------------------------------------------------------
@@ -247,4 +245,3 @@ inline T field_norm_l2_device(const Field2DDevice<T>& a) {
 
 } // namespace csr
 } // namespace subsetix
-

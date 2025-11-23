@@ -16,6 +16,7 @@ namespace subsetix {
 namespace csr_test {
 
 using namespace subsetix::csr;
+using subsetix::csr::ExecSpace;
 
 struct RowOpCase {
   std::vector<Interval> intervals_a;
@@ -228,8 +229,6 @@ inline std::vector<RowOpCase> build_row_op_cases() {
 
 inline void run_row_union_case(const RowOpCase& c,
                                std::size_t case_id) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
-
   const std::size_t nA = c.intervals_a.size();
   const std::size_t nB = c.intervals_b.size();
 
@@ -305,8 +304,6 @@ inline void run_row_union_case(const RowOpCase& c,
 
 inline void run_row_intersection_case(const RowOpCase& c,
                                       std::size_t case_id) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
-
   const std::size_t nA = c.intervals_a.size();
   const std::size_t nB = c.intervals_b.size();
 
@@ -383,8 +380,6 @@ inline void run_row_intersection_case(const RowOpCase& c,
 
 inline void run_row_difference_case(const RowOpCase& c,
                                     std::size_t case_id) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
-
   const std::size_t nA = c.intervals_a.size();
   const std::size_t nB = c.intervals_b.size();
 
