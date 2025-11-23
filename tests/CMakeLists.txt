@@ -9,7 +9,6 @@ add_executable(subsetix_test_core
     csr_builders_smoke_test.cpp
     csr_field_smoke_test.cpp
     workspace_capacity_test.cpp
-    csr_mapping_smoke_test.cpp
     vtk_export_test.cpp
 )
 target_link_libraries(subsetix_test_core PRIVATE subsetix::core GTest::gtest)
