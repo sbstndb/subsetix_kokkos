@@ -222,11 +222,17 @@ inline void apply_on_set_device(Field2DDevice<T>& field,
   auto field_offsets = field.geometry.cell_offsets;
   auto field_values = field.values;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(mask.num_intervals), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_apply_on_set_field2d_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(mask.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int interval_idx = team.league_rank();
         const int row_idx = interval_to_row(interval_idx);
         const int field_row = row_map(row_idx);
         if (row_idx < 0 || field_row < 0) {
@@ -247,7 +253,12 @@ inline void apply_on_set_device(Field2DDevice<T>& field,
             field_offsets(field_interval_idx);
         const Coord base_begin = field_iv.begin;
 
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(mask_iv.begin + team_rank);
+             x < mask_iv.end;
+             x += static_cast<Coord>(team_size)) {
           const std::size_t linear_index =
               base_offset +
               static_cast<std::size_t>(x - base_begin);
@@ -316,11 +327,17 @@ inline void copy_on_set_device(Field2DDevice<T>& dst,
   auto src_offsets = src.geometry.cell_offsets;
   auto src_values = src.values;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(mask.num_intervals), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_copy_on_set_field2d_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(mask.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int interval_idx = team.league_rank();
         const int row_idx = interval_to_row(interval_idx);
         const int dst_row = dst_row_map(row_idx);
         const int src_row = src_row_map(row_idx);
@@ -348,7 +365,12 @@ inline void copy_on_set_device(Field2DDevice<T>& dst,
         const std::size_t src_base_offset = src_offsets(src_iv_idx);
         const Coord src_base_begin = src_iv.begin;
 
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(mask_iv.begin + team_rank);
+             x < mask_iv.end;
+             x += static_cast<Coord>(team_size)) {
           const std::size_t dst_idx =
               dst_base_offset +
               static_cast<std::size_t>(x - dst_base_begin);
@@ -363,4 +385,3 @@ inline void copy_on_set_device(Field2DDevice<T>& dst,
 
 } // namespace csr
 } // namespace subsetix
-

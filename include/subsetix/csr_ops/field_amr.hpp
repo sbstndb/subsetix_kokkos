@@ -228,11 +228,17 @@ inline void restrict_field_on_set_device(
   auto fine_offsets = fine_field.geometry.cell_offsets;
   auto fine_values = fine_field.values;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(coarse_mask.num_intervals), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_restrict_field_on_set_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(coarse_mask.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int interval_idx = team.league_rank();
         const int row_idx = interval_to_row(interval_idx);
         const int field_row = row_map(row_idx);
         if (row_idx < 0 || field_row < 0) {
@@ -250,9 +256,9 @@ inline void restrict_field_on_set_device(
             coarse_to_fine_first(coarse_interval_idx);
         const int fine_interval_idx1 =
             coarse_to_fine_second(coarse_interval_idx);
-            
+
         if (fine_interval_idx0 < 0 || fine_interval_idx1 < 0) {
-            return; // Sparse AMR: Missing fine data, skip restriction
+          return; // Sparse AMR: Missing fine data, skip restriction
         }
 
         const auto mask_iv = mask_intervals(interval_idx);
@@ -274,7 +280,12 @@ inline void restrict_field_on_set_device(
         const Coord fine_base_begin1 =
             fine_iv1.begin;
 
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(mask_iv.begin + team_rank);
+             x < mask_iv.end;
+             x += static_cast<Coord>(team_size)) {
           const std::size_t linear_index =
               base_offset +
               static_cast<std::size_t>(x - base_begin);
@@ -348,11 +359,17 @@ inline void prolong_field_generic_device(
   auto coarse_offsets = coarse_field.geometry.cell_offsets;
   auto coarse_values = coarse_field.values;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(fine_mask.num_intervals), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_prolong_field_generic_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(fine_mask.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int interval_idx = team.league_rank();
         const int row_idx = interval_to_row(interval_idx);
         const int field_row = row_map(row_idx);
         if (row_idx < 0 || field_row < 0) {
@@ -367,9 +384,9 @@ inline void prolong_field_generic_device(
 
         const int coarse_interval_idx =
             fine_to_coarse(fine_interval_idx);
-            
+
         if (coarse_interval_idx < 0) {
-            return; // Sparse AMR: Missing coarse parent, skip prolongation
+          return; // Sparse AMR: Missing coarse parent, skip prolongation
         }
 
         const auto mask_iv = mask_intervals(interval_idx);
@@ -377,7 +394,7 @@ inline void prolong_field_generic_device(
             fine_intervals(fine_interval_idx);
         const std::size_t base_offset = fine_offsets(fine_interval_idx);
         const Coord base_begin = fine_iv.begin;
-        
+
         const auto coarse_iv =
             coarse_intervals(coarse_interval_idx);
         const std::size_t coarse_base_offset =
@@ -386,7 +403,12 @@ inline void prolong_field_generic_device(
             coarse_iv.begin;
         const Coord fine_y = fine_row_keys(field_row).y;
 
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(mask_iv.begin + team_rank);
+             x < mask_iv.end;
+             x += static_cast<Coord>(team_size)) {
           const std::size_t linear_index =
               base_offset +
               static_cast<std::size_t>(x - base_begin);
@@ -397,7 +419,7 @@ inline void prolong_field_generic_device(
               coarse_base_offset +
               static_cast<std::size_t>(
                   coarse_x - coarse_base_begin);
-          
+
           const T value = reconstructor(x, fine_y, coarse_x, coarse_offset, coarse_interval_idx, coarse_intervals, coarse_values);
           fine_values(linear_index) = value;
         }

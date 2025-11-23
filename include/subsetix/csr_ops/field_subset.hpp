@@ -29,11 +29,17 @@ inline void apply_on_subset_device(Field2DDevice<T>& field,
   auto subset_x_end = subset.x_end;
   auto subset_rows = subset.row_indices;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(subset.num_entries), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_apply_on_subset_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(subset.num_entries)),
-      KOKKOS_LAMBDA(const int entry_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int entry_idx = team.league_rank();
         const std::size_t interval_idx =
             subset_indices(entry_idx);
         const int row_idx = subset_rows(entry_idx);
@@ -45,7 +51,12 @@ inline void apply_on_subset_device(Field2DDevice<T>& field,
         const Coord xb = subset_x_begin(entry_idx);
         const Coord xe = subset_x_end(entry_idx);
 
-        for (Coord x = xb; x < xe; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(xb + team_rank);
+             x < xe;
+             x += static_cast<Coord>(team_size)) {
           const std::size_t linear_index =
               base_offset +
               static_cast<std::size_t>(x - base_begin);
@@ -223,11 +234,17 @@ inline void apply_stencil_on_subset_device(
   ctx.up_interval = vertical.up_interval;
   ctx.down_interval = vertical.down_interval;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(subset.num_entries), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_apply_stencil_on_subset_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(subset.num_entries)),
-      KOKKOS_LAMBDA(const int entry_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int entry_idx = team.league_rank();
         const std::size_t interval_idx = mask_indices(entry_idx);
         const int row_idx = mask_rows(entry_idx);
         const Coord y = row_keys(row_idx).y;
@@ -259,7 +276,12 @@ inline void apply_stencil_on_subset_device(
         std::size_t src_base = src_offsets(src_interval_idx);
         Coord src_begin = src_iv.begin;
 
-        for (Coord x = xb; x < xe; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(xb + team_rank);
+             x < xe;
+             x += static_cast<Coord>(team_size)) {
           while (x >= src_iv.end) {
             ++src_interval_idx;
             if (src_interval_idx >= static_cast<int>(src_row_end)) {
@@ -314,11 +336,17 @@ inline void restrict_field_on_subset_device(
   auto coarse_to_fine_first = mapping.coarse_to_fine_first;
   auto coarse_to_fine_second = mapping.coarse_to_fine_second;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(coarse_subset.num_entries), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_restrict_field_on_subset_device",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(coarse_subset.num_entries)),
-      KOKKOS_LAMBDA(const int entry_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int entry_idx = team.league_rank();
         const std::size_t coarse_interval_idx =
             subset_indices(entry_idx);
         const int fine_interval_idx0 =
@@ -350,7 +378,12 @@ inline void restrict_field_on_subset_device(
         const Coord xb = subset_x_begin(entry_idx);
         const Coord xe = subset_x_end(entry_idx);
 
-        for (Coord x = xb; x < xe; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(xb + team_rank);
+             x < xe;
+             x += static_cast<Coord>(team_size)) {
           const std::size_t coarse_index =
               coarse_base +
               static_cast<std::size_t>(x - coarse_begin);
@@ -416,11 +449,17 @@ inline void prolong_field_on_subset_generic_device(
 
   auto fine_to_coarse = mapping.fine_to_coarse;
 
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+
+  const TeamPolicy policy(
+      static_cast<int>(fine_subset.num_entries), Kokkos::AUTO);
+
   Kokkos::parallel_for(
       "subsetix_prolong_field_on_subset_generic",
-      Kokkos::RangePolicy<ExecSpace>(0,
-                                     static_cast<int>(fine_subset.num_entries)),
-      KOKKOS_LAMBDA(const int entry_idx) {
+      policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int entry_idx = team.league_rank();
         const std::size_t fine_interval_idx =
             subset_indices(entry_idx);
         const int coarse_interval_idx =
@@ -444,7 +483,12 @@ inline void prolong_field_on_subset_generic_device(
         const Coord xb = subset_x_begin(entry_idx);
         const Coord xe = subset_x_end(entry_idx);
 
-        for (Coord x = xb; x < xe; ++x) {
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(xb + team_rank);
+             x < xe;
+             x += static_cast<Coord>(team_size)) {
           const std::size_t fine_index =
               fine_base +
               static_cast<std::size_t>(x - fine_begin);
