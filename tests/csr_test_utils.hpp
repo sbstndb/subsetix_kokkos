@@ -5,7 +5,11 @@
 
 #include <gtest/gtest.h>
 
-#include <subsetix/geometry.hpp>
+#include <subsetix/geometry/csr_backend.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/geometry/csr_interval_subset.hpp>
+#include <subsetix/geometry/csr_mapping.hpp>
+#include <subsetix/geometry/csr_set_ops.hpp>
 
 // Utilitaires de tests pour comparer et construire des CSR 2D simples.
 

@@ -2,8 +2,12 @@
 
 #include "example_output.hpp"
 
-#include <subsetix/geometry.hpp>
-#include <subsetix/io.hpp>
+#include <subsetix/geometry/csr_backend.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/geometry/csr_interval_subset.hpp>
+#include <subsetix/geometry/csr_mapping.hpp>
+#include <subsetix/geometry/csr_set_ops.hpp>
+#include <subsetix/io/vtk_export.hpp>
 
 #include <cstdint>
 #include <filesystem>

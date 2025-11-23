@@ -4,10 +4,15 @@
 
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/geometry.hpp>
-#include <subsetix/field.hpp>
+#include <subsetix/geometry/csr_backend.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/geometry/csr_interval_subset.hpp>
+#include <subsetix/geometry/csr_mapping.hpp>
+#include <subsetix/geometry/csr_set_ops.hpp>
+#include <subsetix/field/csr_field.hpp>
+#include <subsetix/field/csr_field_ops.hpp>
 #include <subsetix/multilevel/multilevel.hpp>
-#include <subsetix/io.hpp>
+#include <subsetix/io/vtk_export.hpp>
 #include <subsetix/csr_ops/amr.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>
 

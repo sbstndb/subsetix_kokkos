@@ -5,10 +5,15 @@
 #include <cmath>
 #include <string_view>
 
-#include <subsetix/field.hpp>
-#include <subsetix/geometry.hpp>
+#include <subsetix/field/csr_field.hpp>
+#include <subsetix/field/csr_field_ops.hpp>
+#include <subsetix/geometry/csr_backend.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/geometry/csr_interval_subset.hpp>
+#include <subsetix/geometry/csr_mapping.hpp>
+#include <subsetix/geometry/csr_set_ops.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
-#include <subsetix/io.hpp>
+#include <subsetix/io/vtk_export.hpp>
 
 namespace {
 

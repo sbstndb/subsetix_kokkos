@@ -6,7 +6,11 @@
 #include <Kokkos_Core.hpp>
 #include <gtest/gtest.h>
 
-#include <subsetix/geometry.hpp>
+#include <subsetix/geometry/csr_backend.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/geometry/csr_interval_subset.hpp>
+#include <subsetix/geometry/csr_mapping.hpp>
+#include <subsetix/geometry/csr_set_ops.hpp>
 
 // Utilitaires de tests pour les opérateurs de base sur une ligne
 // (union, intersection, différence A \ B).
