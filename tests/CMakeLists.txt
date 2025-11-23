@@ -12,7 +12,7 @@ add_executable(subsetix_test_core
     csr_mapping_smoke_test.cpp
     vtk_export_test.cpp
 )
-target_link_libraries(subsetix_test_core PRIVATE subsetix_core GTest::gtest)
+target_link_libraries(subsetix_test_core PRIVATE subsetix::core GTest::gtest)
 add_test(NAME CoreTests COMMAND subsetix_test_core)
 
 # 2. Set Algebra Tests: Union, Intersection, Difference
@@ -27,7 +27,7 @@ add_executable(subsetix_test_ops
     csr_difference_components_smoke_test.cpp
     csr_set_algebra_properties_test.cpp
 )
-target_link_libraries(subsetix_test_ops PRIVATE subsetix_core GTest::gtest)
+target_link_libraries(subsetix_test_ops PRIVATE subsetix::core GTest::gtest)
 add_test(NAME OpsTests COMMAND subsetix_test_ops)
 
 # 3. Field & Advanced Ops Tests: Field Ops, Morpho, Threshold
@@ -44,7 +44,7 @@ add_executable(subsetix_test_advanced
     csr_translation_smoke_test.cpp
     csr_field_subview_smoke_test.cpp
 )
-target_link_libraries(subsetix_test_advanced PRIVATE subsetix_core GTest::gtest)
+target_link_libraries(subsetix_test_advanced PRIVATE subsetix::core GTest::gtest)
 add_test(NAME AdvancedTests COMMAND subsetix_test_advanced)
 
 # 4. AMR & Multilevel Tests: Refine/Project, Remap, Multilevel
@@ -57,5 +57,5 @@ add_executable(subsetix_test_amr
     csr_amr_refine_project_smoke_test.cpp
     multilevel_smoke_test.cpp
 )
-target_link_libraries(subsetix_test_amr PRIVATE subsetix_core GTest::gtest)
+target_link_libraries(subsetix_test_amr PRIVATE subsetix::core GTest::gtest)
 add_test(NAME AmrTests COMMAND subsetix_test_amr)

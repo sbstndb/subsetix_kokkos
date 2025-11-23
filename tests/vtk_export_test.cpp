@@ -4,9 +4,9 @@
 #include <vector>
 #include <cstdio>
 
-#include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_field.hpp>
-#include <subsetix/vtk_export.hpp>
+#include <subsetix/geometry.hpp>
+#include <subsetix/field.hpp>
+#include <subsetix/io.hpp>
 
 namespace {
 

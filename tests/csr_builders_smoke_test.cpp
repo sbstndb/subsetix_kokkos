@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/geometry.hpp>
 
 namespace {
 

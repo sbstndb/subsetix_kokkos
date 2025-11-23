@@ -12,19 +12,16 @@
 
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/csr_field.hpp>
-#include <subsetix/csr_field_ops.hpp>
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/field.hpp>
+#include <subsetix/geometry.hpp>
 #include <subsetix/csr_ops/amr.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>
 #include <subsetix/csr_ops/field_subview.hpp>
 #include <subsetix/csr_ops/morphology.hpp>
 #include <subsetix/csr_ops/threshold.hpp>
-#include <subsetix/csr_set_ops.hpp>
 #include <subsetix/multilevel.hpp>
-#include <subsetix/vtk_export.hpp>
-#include <subsetix/csr_backend.hpp>
+#include <subsetix/io.hpp>
 
 using namespace subsetix;
 using namespace subsetix::csr;

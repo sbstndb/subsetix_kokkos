@@ -1,8 +1,7 @@
 ﻿#include <Kokkos_Core.hpp>
 #include <gtest/gtest.h>
 
-#include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_set_ops.hpp>
+#include <subsetix/geometry.hpp>
 
 using namespace subsetix::csr;
 

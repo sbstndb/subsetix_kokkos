@@ -4,7 +4,7 @@ add_executable(csr_generators_to_vtk
 
 target_link_libraries(csr_generators_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(csr_bitmap_to_vtk
@@ -13,7 +13,7 @@ add_executable(csr_bitmap_to_vtk
 
 target_link_libraries(csr_bitmap_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(csr_set_ops_to_vtk
@@ -22,7 +22,7 @@ add_executable(csr_set_ops_to_vtk
 
 target_link_libraries(csr_set_ops_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(field_mask_fill_to_vtk
@@ -31,7 +31,7 @@ add_executable(field_mask_fill_to_vtk
 
 target_link_libraries(field_mask_fill_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(field_stencil_smoothing_to_vtk
@@ -40,7 +40,7 @@ add_executable(field_stencil_smoothing_to_vtk
 
 target_link_libraries(field_stencil_smoothing_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(amr_field_restrict_prolong_to_vtk
@@ -49,7 +49,7 @@ add_executable(amr_field_restrict_prolong_to_vtk
 
 target_link_libraries(amr_field_restrict_prolong_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(set_algebra_masks_to_vtk
@@ -58,7 +58,7 @@ add_executable(set_algebra_masks_to_vtk
 
 target_link_libraries(set_algebra_masks_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(csr_morphology_to_vtk
@@ -67,7 +67,7 @@ add_executable(csr_morphology_to_vtk
 
 target_link_libraries(csr_morphology_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(threshold_to_vtk
@@ -76,7 +76,7 @@ add_executable(threshold_to_vtk
 
 target_link_libraries(threshold_to_vtk
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(multilevel_amr_demo
@@ -85,7 +85,7 @@ add_executable(multilevel_amr_demo
 
 target_link_libraries(multilevel_amr_demo
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(field_subview_workflow
@@ -94,7 +94,7 @@ add_executable(field_subview_workflow
 
 target_link_libraries(field_subview_workflow
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(field_subview_overlap_stencil
@@ -103,7 +103,7 @@ add_executable(field_subview_overlap_stencil
 
 target_link_libraries(field_subview_overlap_stencil
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(amr_advection_2d
@@ -112,7 +112,7 @@ add_executable(amr_advection_2d
 
 target_link_libraries(amr_advection_2d
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(mach2_cylinder
@@ -121,7 +121,7 @@ add_executable(mach2_cylinder
 
 target_link_libraries(mach2_cylinder
     PRIVATE
-        subsetix_core
+        subsetix::core
 )
 
 add_executable(smoke_plume
@@ -130,5 +130,5 @@ add_executable(smoke_plume
 
 target_link_libraries(smoke_plume
     PRIVATE
-        subsetix_core
+        subsetix::core
 )

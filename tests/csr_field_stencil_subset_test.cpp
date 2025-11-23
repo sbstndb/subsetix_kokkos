@@ -3,9 +3,8 @@
 
 #include <gtest/gtest.h>
 
-#include <subsetix/csr_field.hpp>
-#include <subsetix/csr_field_ops.hpp>
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/field.hpp>
+#include <subsetix/geometry.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>
 
 using namespace subsetix::csr;

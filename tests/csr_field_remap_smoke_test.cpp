@@ -2,7 +2,7 @@
 
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/csr_field.hpp>
+#include <subsetix/field.hpp>
 #include <subsetix/csr_ops/field_remap.hpp>
 
 using namespace subsetix::csr;

@@ -2,8 +2,8 @@
 
 #include "../example_output.hpp"
 
-#include <subsetix/csr_field.hpp>
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/field.hpp>
+#include <subsetix/geometry.hpp>
 #include <subsetix/csr_ops/core.hpp>
 #include <subsetix/csr_ops/field_core.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>
@@ -14,8 +14,7 @@
 #include <subsetix/csr_ops/morphology.hpp>
 #include <subsetix/detail/csr_utils.hpp>
 #include <subsetix/multilevel.hpp>
-#include <subsetix/vtk_export.hpp>
-#include <subsetix/csr_backend.hpp>
+#include <subsetix/io.hpp>
 
 #include <algorithm>
 #include <cmath>

@@ -4,7 +4,7 @@ add_executable(csr_set_algebra_benchmark
 
 target_link_libraries(csr_set_algebra_benchmark
     PRIVATE
-        subsetix_core
+        subsetix::core
         benchmark::benchmark
 )
 
@@ -14,7 +14,7 @@ add_executable(csr_set_transform_benchmark
 
 target_link_libraries(csr_set_transform_benchmark
     PRIVATE
-        subsetix_core
+        subsetix::core
         benchmark::benchmark
 )
 
@@ -24,7 +24,7 @@ add_executable(csr_field_ops_benchmark
 
 target_link_libraries(csr_field_ops_benchmark
     PRIVATE
-        subsetix_core
+        subsetix::core
         benchmark::benchmark
 )
 
@@ -34,7 +34,7 @@ add_executable(csr_morphology_benchmark
 
 target_link_libraries(csr_morphology_benchmark
     PRIVATE
-        subsetix_core
+        subsetix::core
         benchmark::benchmark
 )
 
@@ -44,7 +44,7 @@ add_executable(csr_threshold_benchmark
 
 target_link_libraries(csr_threshold_benchmark
     PRIVATE
-        subsetix_core
+        subsetix::core
         benchmark::benchmark
 )
 
@@ -54,6 +54,6 @@ add_executable(multilevel_overhead_benchmark
 
 target_link_libraries(multilevel_overhead_benchmark
     PRIVATE
-        subsetix_core
+        subsetix::core
         benchmark::benchmark
 )

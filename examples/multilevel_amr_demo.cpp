@@ -4,14 +4,12 @@
 
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_field.hpp>
+#include <subsetix/geometry.hpp>
+#include <subsetix/field.hpp>
 #include <subsetix/multilevel.hpp>
-#include <subsetix/vtk_export.hpp>
-#include <subsetix/csr_field_ops.hpp>
+#include <subsetix/io.hpp>
 #include <subsetix/csr_ops/amr.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>
-#include <subsetix/csr_set_ops.hpp> // For intersection
 
 using namespace subsetix;
 using namespace subsetix::csr;

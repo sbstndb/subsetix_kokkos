@@ -3,7 +3,7 @@
 
 #include <subsetix/multilevel.hpp>
 #include <subsetix/csr_ops/amr.hpp>
-#include <subsetix/vtk_export.hpp>
+#include <subsetix/io.hpp>
 
 using namespace subsetix;
 using namespace subsetix::csr;

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include <subsetix/csr_set_ops.hpp>
-#include <subsetix/csr_field.hpp>
+#include <subsetix/geometry.hpp>
+#include <subsetix/field.hpp>
 
 namespace {
 

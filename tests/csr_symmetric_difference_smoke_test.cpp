@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <vector>
 
-#include <subsetix/csr_set_ops.hpp>
+#include <subsetix/geometry.hpp>
 #include "csr_test_utils.hpp"
 
 using namespace subsetix::csr;

@@ -4,8 +4,8 @@
 #include <vector>
 #include <random>
 
-#include <subsetix/csr_field.hpp>
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/field.hpp>
+#include <subsetix/geometry.hpp>
 #include <subsetix/csr_ops/threshold.hpp>
 
 using namespace subsetix::csr;

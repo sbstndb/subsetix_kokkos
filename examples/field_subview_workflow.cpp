@@ -2,11 +2,10 @@
 
 #include "example_output.hpp"
 
-#include <subsetix/csr_field.hpp>
-#include <subsetix/csr_field_ops.hpp>
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/field.hpp>
+#include <subsetix/geometry.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
-#include <subsetix/vtk_export.hpp>
+#include <subsetix/io.hpp>
 
 #include <string_view>
 #include <vector>

@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_interval_subset.hpp>
+#include <subsetix/geometry.hpp>
 
 using namespace subsetix::csr;
 

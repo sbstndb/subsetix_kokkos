@@ -2,7 +2,7 @@
 
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/csr_field.hpp>
+#include <subsetix/field.hpp>
 #include <subsetix/csr_ops/field_algebra.hpp>
 #include <subsetix/csr_ops/field_core.hpp>
 

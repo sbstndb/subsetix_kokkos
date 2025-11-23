@@ -1,7 +1,7 @@
 ﻿#include <Kokkos_Core.hpp>
 #include <gtest/gtest.h>
 
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/geometry.hpp>
 
 TEST(CSRIntervalSetSmokeTest, HostDeviceRoundtrip) {
   using namespace subsetix::csr;

@@ -1,10 +1,9 @@
 ﻿#include <Kokkos_Core.hpp>
 #include <gtest/gtest.h>
 
-#include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_field.hpp>
-#include <subsetix/vtk_export.hpp>
-#include <subsetix/csr_backend.hpp>
+#include <subsetix/geometry.hpp>
+#include <subsetix/field.hpp>
+#include <subsetix/io.hpp>
 
 namespace {
 
