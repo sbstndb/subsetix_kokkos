@@ -58,7 +58,37 @@ namespace detail {
 inline Kokkos::View<int*, DeviceMemorySpace>
 build_subset_row_map(const IntervalSet2DDevice& geom,
                      const IntervalSet2DDevice& mask) {
-  return build_row_map_y(mask.row_keys, geom.row_keys, geom.num_rows);
+  auto row_map = build_row_map_y(mask.row_keys, geom.row_keys, geom.num_rows);
+
+  if (mask.num_rows == 0) {
+    return row_map;
+  }
+
+  if (geom.num_rows == 0) {
+    throw std::runtime_error(
+        "IntervalSubSet2D requires a non-empty parent geometry");
+  }
+
+  int min_val = 0;
+  Kokkos::parallel_reduce(
+      "subsetix_interval_subset_row_map_min",
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
+      KOKKOS_LAMBDA(const std::size_t i, int& lmin) {
+        const int val = row_map(i);
+        if (val < lmin) {
+          lmin = val;
+        }
+      },
+      Kokkos::Min<int>(min_val));
+
+  ExecSpace().fence();
+
+  if (min_val < 0) {
+    throw std::runtime_error(
+        "IntervalSubSet2D mask rows must exist in parent geometry");
+  }
+
+  return row_map;
 }
 
 inline Kokkos::View<std::size_t*, DeviceMemorySpace>
