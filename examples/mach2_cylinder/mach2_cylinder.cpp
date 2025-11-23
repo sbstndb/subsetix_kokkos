@@ -215,9 +215,13 @@ struct IndicatorStencil {
 struct RemeshTiming {
   double masks = 0.0;
   double mask_indicator = 0.0;
+  double mask_indicator_region = 0.0;
+  double mask_indicator_apply = 0.0;
   double mask_reduce = 0.0;
   double mask_expand = 0.0;
   double mask_constrain = 0.0;
+  double mask_threshold = 0.0;
+  double mask_fallback = 0.0;
   double geom = 0.0;
   double prolong = 0.0;
   double overlap = 0.0;
@@ -642,6 +646,7 @@ IntervalSet2DDevice build_refine_mask(const ConservedFields& U,
   const Real inv_dy = static_cast<Real>(1.0) / dy;
   const auto t_indicator_begin = Clock::now();
   IntervalSet2DDevice indicator_region;
+  const auto t_indicator_region_begin = Clock::now();
   if (fluid_dev.num_rows > 0 && fluid_dev.num_intervals > 0) {
     IntervalSet2DDevice eroded;
     shrink_device(fluid_dev, static_cast<Coord>(1), static_cast<Coord>(1),
@@ -651,12 +656,23 @@ IntervalSet2DDevice build_refine_mask(const ConservedFields& U,
   } else {
     indicator_region = ensure_subset(fluid_dev, U.rho.geometry, ctx);
   }
+  ExecSpace().fence();
+  const auto t_indicator_region_end = Clock::now();
+  if (timers) {
+    timers->mask_indicator_region += std::chrono::duration<double, std::milli>(
+                                         t_indicator_region_end - t_indicator_region_begin)
+                                         .count();
+  }
   IndicatorStencil stencil{inv_dx, inv_dy};
+  const auto t_indicator_apply_begin = Clock::now();
   apply_csr_stencil_on_set_device(indicator, U.rho, indicator_region, stencil,
                                   /*strict_check=*/false);
   ExecSpace().fence();
   const auto t_indicator_end = Clock::now();
   if (timers) {
+    timers->mask_indicator_apply += std::chrono::duration<double, std::milli>(
+                                        t_indicator_end - t_indicator_apply_begin)
+                                        .count();
     timers->mask_indicator += std::chrono::duration<double, std::milli>(
                                   t_indicator_end - t_indicator_begin)
                                   .count();
@@ -688,11 +704,29 @@ IntervalSet2DDevice build_refine_mask(const ConservedFields& U,
   if (threshold < min_thresh) {
     threshold = min_thresh;
   }
+  const auto t_threshold_begin = Clock::now();
   mask = subsetix::csr::threshold_field(indicator, threshold);
   subsetix::csr::compute_cell_offsets_device(mask);
+  ExecSpace().fence();
+  const auto t_threshold_end = Clock::now();
+  if (timers) {
+    timers->mask_threshold += std::chrono::duration<double, std::milli>(
+                                  t_threshold_end - t_threshold_begin)
+                                  .count();
+  }
 
+  bool used_fallback_mask = false;
+  const auto t_fallback_begin = Clock::now();
   if (mask.num_intervals == 0 || mask.num_rows == 0) {
+    used_fallback_mask = true;
     mask = make_central_box_mask();
+    ExecSpace().fence();
+  }
+  const auto t_fallback_end = Clock::now();
+  if (timers && used_fallback_mask) {
+    timers->mask_fallback += std::chrono::duration<double, std::milli>(
+                                 t_fallback_end - t_fallback_begin)
+                                 .count();
   }
 
   const Coord smooth = static_cast<Coord>(1);
@@ -1707,9 +1741,13 @@ int main(int argc, char* argv[]) {
     double time_remesh_ms = 0.0;
     double time_remesh_masks_ms = 0.0;
     double time_remesh_mask_indicator_ms = 0.0;
+    double time_remesh_mask_indicator_region_ms = 0.0;
+    double time_remesh_mask_indicator_apply_ms = 0.0;
     double time_remesh_mask_reduce_ms = 0.0;
     double time_remesh_mask_expand_ms = 0.0;
     double time_remesh_mask_constrain_ms = 0.0;
+    double time_remesh_mask_threshold_ms = 0.0;
+    double time_remesh_mask_fallback_ms = 0.0;
     double time_remesh_geom_ms = 0.0;
     double time_remesh_prolong_ms = 0.0;
     double time_remesh_overlap_ms = 0.0;
@@ -1845,9 +1883,13 @@ int main(int argc, char* argv[]) {
                             .count();
       time_remesh_masks_ms += remesh_timers.masks;
       time_remesh_mask_indicator_ms += remesh_timers.mask_indicator;
+      time_remesh_mask_indicator_region_ms += remesh_timers.mask_indicator_region;
+      time_remesh_mask_indicator_apply_ms += remesh_timers.mask_indicator_apply;
       time_remesh_mask_reduce_ms += remesh_timers.mask_reduce;
       time_remesh_mask_expand_ms += remesh_timers.mask_expand;
       time_remesh_mask_constrain_ms += remesh_timers.mask_constrain;
+      time_remesh_mask_threshold_ms += remesh_timers.mask_threshold;
+      time_remesh_mask_fallback_ms += remesh_timers.mask_fallback;
       time_remesh_geom_ms += remesh_timers.geom;
       time_remesh_prolong_ms += remesh_timers.prolong;
       time_remesh_overlap_ms += remesh_timers.overlap;
@@ -1950,9 +1992,13 @@ int main(int argc, char* argv[]) {
                 << " remesh=" << time_remesh_ms
                 << " remesh_masks=" << time_remesh_masks_ms
                 << " remesh_mask_indicator=" << time_remesh_mask_indicator_ms
+                << " remesh_mask_indicator_region=" << time_remesh_mask_indicator_region_ms
+                << " remesh_mask_indicator_apply=" << time_remesh_mask_indicator_apply_ms
                 << " remesh_mask_reduce=" << time_remesh_mask_reduce_ms
                 << " remesh_mask_expand=" << time_remesh_mask_expand_ms
                 << " remesh_mask_constrain=" << time_remesh_mask_constrain_ms
+                << " remesh_mask_threshold=" << time_remesh_mask_threshold_ms
+                << " remesh_mask_fallback=" << time_remesh_mask_fallback_ms
                 << " remesh_geom=" << time_remesh_geom_ms
                 << " remesh_prolong=" << time_remesh_prolong_ms
                 << " remesh_overlap=" << time_remesh_overlap_ms
