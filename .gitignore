@@ -2,3 +2,11 @@ build/
 build-*/
 
 examples_output/
+
+# Local artifacts and profiling outputs
+codex
+mach2_kokkos_profile.jsonl
+mach2_profile.ncu-rep
+ncu_mach2.log
+tools/kp_timeline/libkp_timeline.so
+*.ncu-rep
