@@ -69,6 +69,100 @@ struct Conserved {
   Real E;
 };
 
+struct ConservedViews {
+  Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> rho;
+  Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> rhou;
+  Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> rhov;
+  Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> E;
+};
+
+struct ConservedFields {
+  Field2DDevice<Real> rho;
+  Field2DDevice<Real> rhou;
+  Field2DDevice<Real> rhov;
+  Field2DDevice<Real> E;
+
+  KOKKOS_INLINE_FUNCTION
+  std::size_t size() const { return rho.size(); }
+
+  KOKKOS_INLINE_FUNCTION
+  const subsetix::csr::IntervalSet2DView<subsetix::csr::DeviceMemorySpace>&
+  geometry() const {
+    return rho.geometry;
+  }
+};
+
+KOKKOS_INLINE_FUNCTION
+Conserved gather(const ConservedViews& view, std::size_t idx) {
+  Conserved s;
+  s.rho = view.rho(idx);
+  s.rhou = view.rhou(idx);
+  s.rhov = view.rhov(idx);
+  s.E = view.E(idx);
+  return s;
+}
+
+KOKKOS_INLINE_FUNCTION
+void scatter(const Conserved& s, const ConservedViews& view, std::size_t idx) {
+  view.rho(idx) = s.rho;
+  view.rhou(idx) = s.rhou;
+  view.rhov(idx) = s.rhov;
+  view.E(idx) = s.E;
+}
+
+struct ConservedFieldAccessor {
+  Field2DDevice<Real>::RowKeyView row_keys;
+  Field2DDevice<Real>::IndexView row_ptr;
+  Field2DDevice<Real>::IntervalView intervals;
+  Kokkos::View<std::size_t*, subsetix::csr::DeviceMemorySpace> offsets;
+  Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> rho;
+  Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> rhou;
+  Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> rhov;
+  Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> E;
+  std::size_t num_rows = 0;
+
+  KOKKOS_INLINE_FUNCTION
+  bool try_get(Coord x, Coord y, Conserved& out) const {
+    const int row_idx =
+        subsetix::csr::detail::find_row_index(row_keys, num_rows, y);
+    if (row_idx < 0) {
+      return false;
+    }
+    const std::size_t begin = row_ptr(row_idx);
+    const std::size_t end = row_ptr(row_idx + 1);
+    const int interval_idx =
+        subsetix::csr::detail::find_interval_index(intervals, begin, end, x);
+    if (interval_idx < 0) {
+      return false;
+    }
+    const auto iv = intervals(interval_idx);
+    const std::size_t offset =
+        offsets(interval_idx) + static_cast<std::size_t>(x - iv.begin);
+    out.rho = rho(offset);
+    out.rhou = rhou(offset);
+    out.rhov = rhov(offset);
+    out.E = E(offset);
+    return true;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  Conserved value_at(Coord x, Coord y) const {
+    Conserved out{};
+    (void)try_get(x, y, out);
+    return out;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  Conserved value_from_linear_index(std::size_t idx) const {
+    Conserved out{};
+    out.rho = rho(idx);
+    out.rhou = rhou(idx);
+    out.rhov = rhov(idx);
+    out.E = E(idx);
+    return out;
+  }
+};
+
 struct Primitive {
   Real rho;
   Real u;
@@ -107,9 +201,9 @@ struct IndicatorStencil {
   Real inv_dy;
   KOKKOS_INLINE_FUNCTION
   Real operator()(Coord /*x*/, Coord /*y*/,
-                  const subsetix::csr::CsrStencilPoint<Conserved>& p) const {
-    const Real gx = static_cast<Real>(0.5) * (p.east().rho - p.west().rho) * inv_dx;
-    const Real gy = static_cast<Real>(0.5) * (p.north().rho - p.south().rho) * inv_dy;
+                  const subsetix::csr::CsrStencilPoint<Real>& p) const {
+    const Real gx = static_cast<Real>(0.5) * (p.east() - p.west()) * inv_dx;
+    const Real gy = static_cast<Real>(0.5) * (p.north() - p.south()) * inv_dy;
     return std::fabs(gx) + std::fabs(gy);
   }
 };
@@ -136,6 +230,34 @@ make_accessor(const Field2DDevice<T>& field) {
   acc.values = field.values;
   acc.num_rows = field.geometry.num_rows;
   return acc;
+}
+
+ConservedFieldAccessor
+make_accessor(const ConservedFields& U) {
+  ConservedFieldAccessor acc;
+  acc.row_keys = U.rho.geometry.row_keys;
+  acc.row_ptr = U.rho.geometry.row_ptr;
+  acc.intervals = U.rho.geometry.intervals;
+  acc.offsets = U.rho.geometry.cell_offsets;
+  acc.rho = U.rho.values;
+  acc.rhou = U.rhou.values;
+  acc.rhov = U.rhov.values;
+  acc.E = U.E.values;
+  acc.num_rows = U.rho.geometry.num_rows;
+  return acc;
+}
+
+ConservedFields make_conserved_fields(const IntervalSet2DDevice& geom,
+                                      const std::string& base_label) {
+  ConservedFields out;
+  const auto label = [&](const char* suffix) {
+    return base_label.empty() ? std::string() : (base_label + suffix);
+  };
+  out.rho = Field2DDevice<Real>(geom, label("_rho"));
+  out.rhou = Field2DDevice<Real>(geom, label("_rhou"));
+  out.rhov = Field2DDevice<Real>(geom, label("_rhov"));
+  out.E = Field2DDevice<Real>(geom, label("_E"));
+  return out;
 }
 
 KOKKOS_INLINE_FUNCTION
@@ -318,7 +440,7 @@ Conserved make_bc_state(BcKind kind,
   return interior;
 }
 
-void fill_ghost_cells(Field2DDevice<Conserved>& field,
+void fill_ghost_cells(ConservedFields& field,
                       const IntervalSet2DDevice& ghost_mask,
                       const IntervalSet2DDevice& base_mask,
                       const Box2D& domain,
@@ -330,11 +452,13 @@ void fill_ghost_cells(Field2DDevice<Conserved>& field,
   }
 
   const auto acc = make_accessor(field);
+  const ConservedViews views{field.rho.values, field.rhou.values,
+                             field.rhov.values, field.E.values};
 
   apply_on_set_device(
-      field, ghost_mask,
+      field.rho, ghost_mask,
       KOKKOS_LAMBDA(
-          Coord x, Coord y, Conserved& value, std::size_t /*idx*/) {
+          Coord x, Coord y, Real& rho_out, std::size_t idx) {
         const bool outside = !in_domain(x, y, domain);
 
         const auto clamp_coord = [&](Coord v, Coord vmin, Coord vmax) {
@@ -345,8 +469,11 @@ void fill_ghost_cells(Field2DDevice<Conserved>& field,
           const bool left = (x < domain.x_min);
           const bool right = (x >= domain.x_max);
           const bool bottom = (y < domain.y_min);
+          Conserved value{};
           if (left) {
             value = make_bc_state(BcKind::Inlet, value, inflow, gamma, no_slip);
+            scatter(value, views, idx);
+            rho_out = value.rho;
             return;
           }
           if (right) {
@@ -354,6 +481,8 @@ void fill_ghost_cells(Field2DDevice<Conserved>& field,
             const Conserved interior =
                 acc.value_at(static_cast<Coord>(domain.x_max - 1), yc);
             value = make_bc_state(BcKind::Outlet, interior, inflow, gamma, no_slip);
+            scatter(value, views, idx);
+            rho_out = value.rho;
             return;
           }
 
@@ -363,6 +492,8 @@ void fill_ghost_cells(Field2DDevice<Conserved>& field,
           const Conserved interior = acc.value_at(xc, yc);
           const BcKind kind = bottom ? BcKind::WallBottom : BcKind::WallTop;
           value = make_bc_state(kind, interior, inflow, gamma, no_slip);
+          scatter(value, views, idx);
+          rho_out = value.rho;
           return;
         }
 
@@ -390,18 +521,22 @@ void fill_ghost_cells(Field2DDevice<Conserved>& field,
                            try_dir(0, -1) || try_dir(0, 1);
 
         if (found) {
-          value = make_wall_from_neighbor(neigh, ndx, ndy, gamma, no_slip);
+          Conserved value = make_wall_from_neighbor(neigh, ndx, ndy, gamma, no_slip);
+          scatter(value, views, idx);
+          rho_out = value.rho;
           return;
         }
 
         // Fallback: use clamped interior as copy (should be rare)
         const Coord xc = clamp_coord(x, domain.x_min, domain.x_max);
         const Coord yc = clamp_coord(y, domain.y_min, domain.y_max);
-        value = acc.value_at(xc, yc);
+        const Conserved value = acc.value_at(xc, yc);
+        scatter(value, views, idx);
+        rho_out = value.rho;
       });
 }
 
-Real compute_dt(const Field2DDevice<Conserved>& U,
+Real compute_dt(const ConservedFields& U,
                 Real gamma,
                 Real cfl,
                 Real dx,
@@ -410,12 +545,21 @@ Real compute_dt(const Field2DDevice<Conserved>& U,
   const Real inv_dy = static_cast<Real>(1.0) / dy;
   Real max_rate = static_cast<Real>(0.0);
 
+  auto rho = U.rho.values;
+  auto rhou = U.rhou.values;
+  auto rhov = U.rhov.values;
+  auto E = U.E.values;
+
   Kokkos::parallel_reduce(
       "mach2_cylinder_dt",
       Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(U.size())),
       KOKKOS_LAMBDA(const int idx, Real& lmax) {
-        const Conserved s = U.values(idx);
+        Conserved s;
+        s.rho = rho(idx);
+        s.rhou = rhou(idx);
+        s.rhov = rhov(idx);
+        s.E = E(idx);
         const Primitive q = cons_to_prim(s, gamma);
         const Real a = sound_speed(q, gamma);
         const Real rate = std::fabs(q.u) * inv_dx +
@@ -448,7 +592,7 @@ struct AmrLayout {
   bool has_fine = false;
 };
 
-IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
+IntervalSet2DDevice build_refine_mask(const ConservedFields& U,
                                       const IntervalSet2DDevice& fluid_dev,
                                       const Box2D& domain,
                                       const RunConfig& cfg,
@@ -499,12 +643,12 @@ IntervalSet2DDevice build_refine_mask(const Field2DDevice<Conserved>& U,
     shrink_device(fluid_dev, static_cast<Coord>(1), static_cast<Coord>(1),
                   eroded, ctx);
     subsetix::csr::compute_cell_offsets_device(eroded);
-    indicator_region = ensure_subset(eroded, U.geometry, ctx);
+    indicator_region = ensure_subset(eroded, U.rho.geometry, ctx);
   } else {
-    indicator_region = ensure_subset(fluid_dev, U.geometry, ctx);
+    indicator_region = ensure_subset(fluid_dev, U.rho.geometry, ctx);
   }
   IndicatorStencil stencil{inv_dx, inv_dy};
-  apply_csr_stencil_on_set_device(indicator, U, indicator_region, stencil,
+  apply_csr_stencil_on_set_device(indicator, U.rho, indicator_region, stencil,
                                   /*strict_check=*/false);
   ExecSpace().fence();
   const auto t_indicator_end = Clock::now();
@@ -697,7 +841,7 @@ IntervalSet2DDevice ensure_subset(const IntervalSet2DDevice& region,
   return subset;
 }
 
-Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
+Real compute_dt_on_set(const ConservedFields& U,
                        const IntervalSet2DDevice& region,
                        Real gamma,
                        Real cfl,
@@ -711,7 +855,7 @@ Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
   const Real inv_dy = static_cast<Real>(1.0) / dy;
   Real max_rate = static_cast<Real>(0.0);
 
-  const auto mapping = build_mask_field_mapping(U, region);
+  const auto mapping = build_mask_field_mapping(U.rho, region);
   auto interval_to_row = mapping.interval_to_row;
   auto interval_to_field_interval = mapping.interval_to_field_interval;
   auto row_map = mapping.row_map;
@@ -719,9 +863,12 @@ Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
   auto mask_row_keys = region.row_keys;
   auto mask_intervals = region.intervals;
 
-  auto field_intervals = U.geometry.intervals;
-  auto field_offsets = U.geometry.cell_offsets;
-  auto values = U.values;
+  auto field_intervals = U.rho.geometry.intervals;
+  auto field_offsets = U.rho.geometry.cell_offsets;
+  auto rho = U.rho.values;
+  auto rhou = U.rhou.values;
+  auto rhov = U.rhov.values;
+  auto E = U.E.values;
 
   Kokkos::parallel_reduce(
       "mach2_cylinder_dt_on_set",
@@ -748,7 +895,11 @@ Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
         for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
           const std::size_t idx =
               base + static_cast<std::size_t>(x - base_begin);
-          const Conserved s = values(idx);
+          Conserved s;
+          s.rho = rho(idx);
+          s.rhou = rhou(idx);
+          s.rhov = rhov(idx);
+          s.E = E(idx);
           const Primitive q = cons_to_prim(s, gamma);
           const Real a = sound_speed(q, gamma);
           const Real rate = std::fabs(q.u) * inv_dx +
@@ -767,62 +918,83 @@ Real compute_dt_on_set(const Field2DDevice<Conserved>& U,
   return cfl / max_rate;
 }
 
-void prolong_full(Field2DDevice<Conserved>& fine_field,
+void prolong_full(ConservedFields& fine_field,
                   const IntervalSet2DDevice& fine_mask,
-                  const Field2DDevice<Conserved>& coarse_field,
+                  const ConservedFields& coarse_field,
                   CsrSetAlgebraContext& ctx) {
   (void)ctx;
   const auto coarse_acc = make_accessor(coarse_field);
+  const ConservedViews fine_views{fine_field.rho.values, fine_field.rhou.values,
+                                  fine_field.rhov.values, fine_field.E.values};
   apply_on_set_device(
-      fine_field, fine_mask,
-      KOKKOS_LAMBDA(Coord x, Coord y, Conserved& value,
-                    std::size_t /*linear_index*/) {
+      fine_field.rho, fine_mask,
+      KOKKOS_LAMBDA(Coord x, Coord y, Real& rho_out,
+                    std::size_t linear_index) {
         const Coord xc = subsetix::csr::detail::floor_div2(x);
         const Coord yc = subsetix::csr::detail::floor_div2(y);
-        value = coarse_acc.value_at(xc, yc);
+        const Conserved value = coarse_acc.value_at(xc, yc);
+        scatter(value, fine_views, linear_index);
+        rho_out = value.rho;
       });
 }
 
-[[maybe_unused]] void copy_overlap(Field2DDevice<Conserved>& fine_dst,
-                                   Field2DDevice<Conserved>& fine_src,
+[[maybe_unused]] void copy_overlap(ConservedFields& fine_dst,
+                                   ConservedFields& fine_src,
                                    const IntervalSet2DDevice& overlap,
                                    CsrSetAlgebraContext& ctx) {
   if (overlap.num_rows == 0 || overlap.num_intervals == 0) {
     return;
   }
-  auto sub_dst = make_subview(fine_dst, overlap, "mach2_overlap_dst");
-  auto sub_src = make_subview(fine_src, overlap, "mach2_overlap_src");
-  copy_subview_device(sub_dst, sub_src, ctx);
+  auto sub_dst_rho = make_subview(fine_dst.rho, overlap, "mach2_overlap_dst_rho");
+  auto sub_src_rho = make_subview(fine_src.rho, overlap, "mach2_overlap_src_rho");
+  copy_subview_device(sub_dst_rho, sub_src_rho, ctx);
+
+  auto sub_dst_rhou = make_subview(fine_dst.rhou, overlap, "mach2_overlap_dst_rhou");
+  auto sub_src_rhou = make_subview(fine_src.rhou, overlap, "mach2_overlap_src_rhou");
+  copy_subview_device(sub_dst_rhou, sub_src_rhou, ctx);
+
+  auto sub_dst_rhov = make_subview(fine_dst.rhov, overlap, "mach2_overlap_dst_rhov");
+  auto sub_src_rhov = make_subview(fine_src.rhov, overlap, "mach2_overlap_src_rhov");
+  copy_subview_device(sub_dst_rhov, sub_src_rhov, ctx);
+
+  auto sub_dst_E = make_subview(fine_dst.E, overlap, "mach2_overlap_dst_E");
+  auto sub_src_E = make_subview(fine_src.E, overlap, "mach2_overlap_src_E");
+  copy_subview_device(sub_dst_E, sub_src_E, ctx);
 }
 
 
-void prolong_guard_from_coarse(Field2DDevice<Conserved>& fine_field,
+void prolong_guard_from_coarse(ConservedFields& fine_field,
                                const IntervalSet2DDevice& guard,
-                               const FieldReadAccessor<Conserved>& coarse_acc) {
+                               const ConservedFieldAccessor& coarse_acc) {
   if (guard.num_rows == 0 || guard.num_intervals == 0) {
     return;
   }
 
-  apply_on_set_device(fine_field, guard, KOKKOS_LAMBDA(
+  const ConservedViews fine_views{fine_field.rho.values, fine_field.rhou.values,
+                                  fine_field.rhov.values, fine_field.E.values};
+
+  apply_on_set_device(fine_field.rho, guard, KOKKOS_LAMBDA(
                                              Coord x,
                                              Coord y,
-                                             Conserved& value,
-                                             std::size_t /*linear_index*/) {
+                                             Real& rho_out,
+                                             std::size_t linear_index) {
     const Coord xc = subsetix::csr::detail::floor_div2(x);
     const Coord yc = subsetix::csr::detail::floor_div2(y);
-    value = coarse_acc.value_at(xc, yc);
+    const Conserved value = coarse_acc.value_at(xc, yc);
+    scatter(value, fine_views, linear_index);
+    rho_out = value.rho;
   });
 }
 
-void restrict_fine_to_coarse(Field2DDevice<Conserved>& coarse_field,
-                             const Field2DDevice<Conserved>& fine_field,
+void restrict_fine_to_coarse(ConservedFields& coarse_field,
+                             const ConservedFields& fine_field,
                              const IntervalSet2DDevice& coarse_region) {
   if (coarse_region.num_rows == 0 || coarse_region.num_intervals == 0) {
     return;
   }
 
   const auto mapping =
-      build_mask_field_mapping(coarse_field, coarse_region);
+      build_mask_field_mapping(coarse_field.rho, coarse_region);
   auto interval_to_row = mapping.interval_to_row;
   auto interval_to_field_interval = mapping.interval_to_field_interval;
   auto row_map = mapping.row_map;
@@ -830,9 +1002,12 @@ void restrict_fine_to_coarse(Field2DDevice<Conserved>& coarse_field,
   auto mask_row_keys = coarse_region.row_keys;
   auto mask_intervals = coarse_region.intervals;
 
-  auto coarse_intervals = coarse_field.geometry.intervals;
-  auto coarse_offsets = coarse_field.geometry.cell_offsets;
-  auto coarse_values = coarse_field.values;
+  auto coarse_intervals = coarse_field.rho.geometry.intervals;
+  auto coarse_offsets = coarse_field.rho.geometry.cell_offsets;
+  auto coarse_rho = coarse_field.rho.values;
+  auto coarse_rhou = coarse_field.rhou.values;
+  auto coarse_rhov = coarse_field.rhov.values;
+  auto coarse_E = coarse_field.E.values;
 
   const auto fine_acc = make_accessor(fine_field);
 
@@ -878,29 +1053,39 @@ void restrict_fine_to_coarse(Field2DDevice<Conserved>& coarse_field,
           avg.rhov = 0.25 * (v00.rhov + v01.rhov + v10.rhov + v11.rhov);
           avg.E = 0.25 * (v00.E + v01.E + v10.E + v11.E);
 
-          coarse_values(c_idx) = avg;
+          coarse_rho(c_idx) = avg.rho;
+          coarse_rhou(c_idx) = avg.rhou;
+          coarse_rhov(c_idx) = avg.rhov;
+          coarse_E(c_idx) = avg.E;
         }
       });
   ExecSpace().fence();
 }
 
-struct CoarseEulerStencil {
+struct EulerStencilSoA {
   Real gamma;
   Real dt;
   Real dx;
   Real dy;
+  ConservedViews U_in;
+  ConservedViews U_out;
 
   KOKKOS_INLINE_FUNCTION
-  Conserved operator()(Coord /*x*/, Coord /*y*/,
-                       const subsetix::csr::CsrStencilPoint<Conserved>& p) const {
-    const Conserved center = p.center();
+  Real operator()(Coord /*x*/, Coord /*y*/,
+                  const subsetix::csr::CsrStencilPoint<Real>& p) const {
+    const std::size_t idx_center = p.idx_center;
+    const std::size_t idx_west = p.idx_west;
+    const std::size_t idx_east = p.idx_east;
+    const std::size_t idx_south = p.idx_south;
+    const std::size_t idx_north = p.idx_north;
+
+    const Conserved center = gather(U_in, idx_center);
+    const Conserved left_state = gather(U_in, idx_west);
+    const Conserved right_state = gather(U_in, idx_east);
+    const Conserved down_state = gather(U_in, idx_south);
+    const Conserved up_state = gather(U_in, idx_north);
+
     const Primitive q_center = cons_to_prim(center, gamma);
-
-    const Conserved left_state = p.west();
-    const Conserved right_state = p.east();
-    const Conserved down_state = p.south();
-    const Conserved up_state = p.north();
-
     const Primitive q_left = cons_to_prim(left_state, gamma);
     const Primitive q_right = cons_to_prim(right_state, gamma);
     const Primitive q_down = cons_to_prim(down_state, gamma);
@@ -936,72 +1121,20 @@ struct CoarseEulerStencil {
         center.E -
         (dt / dx) * (flux_e.E - flux_w.E) -
         (dt / dy) * (flux_n.E - flux_s.E);
-    return updated;
+    scatter(updated, U_out, idx_center);
+    return updated.rho;
   }
 };
 
-struct FineEulerStencil {
-  Real gamma;
-  Real dt;
-  Real dx;
-  Real dy;
-
-  KOKKOS_INLINE_FUNCTION
-  Conserved operator()(Coord /*x*/, Coord /*y*/,
-                       const subsetix::csr::CsrStencilPoint<Conserved>& p) const {
-    const Conserved center = p.center();
-    const Primitive q_center = cons_to_prim(center, gamma);
-
-    const Conserved left_state = p.west();
-    const Conserved right_state = p.east();
-    const Conserved down_state = p.south();
-    const Conserved up_state = p.north();
-
-    const Primitive q_left = cons_to_prim(left_state, gamma);
-    const Primitive q_right = cons_to_prim(right_state, gamma);
-    const Primitive q_down = cons_to_prim(down_state, gamma);
-    const Primitive q_up = cons_to_prim(up_state, gamma);
-
-    const Conserved flux_w =
-        rusanov_flux_x(left_state, center, q_left,
-                       q_center, gamma);
-    const Conserved flux_e =
-        rusanov_flux_x(center, right_state, q_center,
-                       q_right, gamma);
-    const Conserved flux_s =
-        rusanov_flux_y(down_state, center, q_down,
-                       q_center, gamma);
-    const Conserved flux_n =
-        rusanov_flux_y(center, up_state, q_center,
-                       q_up, gamma);
-
-    Conserved updated;
-    updated.rho =
-        center.rho -
-        (dt / dx) * (flux_e.rho - flux_w.rho) -
-        (dt / dy) * (flux_n.rho - flux_s.rho);
-    updated.rhou =
-        center.rhou -
-        (dt / dx) * (flux_e.rhou - flux_w.rhou) -
-        (dt / dy) * (flux_n.rhou - flux_s.rhou);
-    updated.rhov =
-        center.rhov -
-        (dt / dx) * (flux_e.rhov - flux_w.rhov) -
-        (dt / dy) * (flux_n.rhov - flux_s.rhov);
-    updated.E =
-        center.E -
-        (dt / dx) * (flux_e.E - flux_w.E) -
-        (dt / dy) * (flux_n.E - flux_s.E);
-    return updated;
-  }
-};
-
-void compute_diagnostics(const Field2DDevice<Conserved>& U,
+void compute_diagnostics(const ConservedFields& U,
                          Field2DDevice<Real>& density,
                          Field2DDevice<Real>& pressure,
                          Field2DDevice<Real>& mach,
                          Real gamma) {
-  auto u_values = U.values;
+  auto rho = U.rho.values;
+  auto rhou = U.rhou.values;
+  auto rhov = U.rhov.values;
+  auto E = U.E.values;
   auto p_out = pressure.values;
   auto m_out = mach.values;
   apply_on_set_device(
@@ -1009,7 +1142,11 @@ void compute_diagnostics(const Field2DDevice<Conserved>& U,
       KOKKOS_LAMBDA(
           Coord /*x*/, Coord /*y*/,
           Real& rho_out, std::size_t idx) {
-        const Conserved s = u_values(idx);
+        Conserved s;
+        s.rho = rho(idx);
+        s.rhou = rhou(idx);
+        s.rhov = rhov(idx);
+        s.E = E(idx);
         const Primitive q = cons_to_prim(s, gamma);
         const Real a = sound_speed(q, gamma);
         const Real vel = std::sqrt(q.u * q.u + q.v * q.v);
@@ -1020,14 +1157,15 @@ void compute_diagnostics(const Field2DDevice<Conserved>& U,
       });
 }
 
-Real compute_total_mass(const Field2DDevice<Conserved>& U) {
+Real compute_total_mass(const ConservedFields& U) {
   Real total = static_cast<Real>(0.0);
+  auto rho = U.rho.values;
   Kokkos::parallel_reduce(
       "mach2_cylinder_mass",
       Kokkos::RangePolicy<ExecSpace>(
           0, static_cast<int>(U.size())),
       KOKKOS_LAMBDA(const int idx, Real& sum) {
-        sum += U.values(idx).rho;
+        sum += rho(idx);
       },
       total);
   return total;
@@ -1213,7 +1351,7 @@ void write_multilevel_outputs(
     const std::array<Field2DDevice<Real>, MaxLevels>& density,
     const std::array<Field2DDevice<Real>, MaxLevels>& pressure,
     const std::array<Field2DDevice<Real>, MaxLevels>& mach,
-    const std::array<Field2DDevice<Conserved>, MaxLevels>& U_active,
+    const std::array<ConservedFields, MaxLevels>& U_active,
     const std::array<bool, MaxLevels>& has_level,
     int max_active_level,
     Real gamma,
@@ -1320,9 +1458,9 @@ int main(int argc, char* argv[]) {
     std::array<bool, MAX_AMR_LEVELS> has_level;
     has_level.fill(false);
 
-    std::array<Field2DDevice<Conserved>, MAX_AMR_LEVELS> U_levels;
-    std::array<Field2DDevice<Conserved>, MAX_AMR_LEVELS> U_next_levels;
-    std::array<Field2DDevice<Conserved>, MAX_AMR_LEVELS> U_active_levels;
+    std::array<ConservedFields, MAX_AMR_LEVELS> U_levels;
+    std::array<ConservedFields, MAX_AMR_LEVELS> U_next_levels;
+    std::array<ConservedFields, MAX_AMR_LEVELS> U_active_levels;
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> density_levels;
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> pressure_levels;
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> mach_levels;
@@ -1354,10 +1492,16 @@ int main(int argc, char* argv[]) {
     const Conserved inflow = build_inflow_state(cfg);
 
     {
-      Field2DDevice<Conserved> U(field_geom[0], "mach2_state");
-      Field2DDevice<Conserved> U_next(field_geom[0], "mach2_state_next");
-      fill_on_set_device(U, field_geom[0], inflow);
-      fill_on_set_device(U_next, field_geom[0], inflow);
+      ConservedFields U = make_conserved_fields(field_geom[0], "mach2_state");
+      ConservedFields U_next = make_conserved_fields(field_geom[0], "mach2_state_next");
+      fill_on_set_device(U.rho, field_geom[0], inflow.rho);
+      fill_on_set_device(U.rhou, field_geom[0], inflow.rhou);
+      fill_on_set_device(U.rhov, field_geom[0], inflow.rhov);
+      fill_on_set_device(U.E, field_geom[0], inflow.E);
+      fill_on_set_device(U_next.rho, field_geom[0], inflow.rho);
+      fill_on_set_device(U_next.rhou, field_geom[0], inflow.rhou);
+      fill_on_set_device(U_next.rhov, field_geom[0], inflow.rhov);
+      fill_on_set_device(U_next.E, field_geom[0], inflow.E);
       U_levels[0] = U;
       U_next_levels[0] = U_next;
       fill_ghost_cells(U_levels[0], ghost_mask[0], fluid_dev,
@@ -1377,15 +1521,15 @@ int main(int argc, char* argv[]) {
     density_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_density");
     pressure_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_pressure");
     mach_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_mach");
-    U_active_levels[0] = Field2DDevice<Conserved>(fluid_dev, "mach2_state_active");
+    U_active_levels[0] = make_conserved_fields(fluid_dev, "mach2_state_active");
 
     auto build_level = [&](int lvl,
                            const IntervalSet2DDevice& parent_full,
                            const IntervalSet2DDevice& parent_active,
-                           const Field2DDevice<Conserved>& parent_U,
+                           const ConservedFields& parent_U,
                            const Box2D& parent_domain,
                            const IntervalSet2DDevice* prev_active = nullptr,
-                           Field2DDevice<Conserved>* prev_U = nullptr,
+                           ConservedFields* prev_U = nullptr,
                            RemeshTiming* timers = nullptr) {
       if (!cfg.enable_amr) {
         return;
@@ -1452,11 +1596,9 @@ int main(int argc, char* argv[]) {
       subsetix::csr::compute_cell_offsets_device(ghost_lvl);
       ghost_mask[lvl] = ghost_lvl;
 
-      U_levels[lvl] = Field2DDevice<Conserved>(field_geom[lvl], "mach2_fine_lvl");
-      U_next_levels[lvl] = Field2DDevice<Conserved>(field_geom[lvl],
-                                                    "mach2_fine_lvl_next");
-      U_active_levels[lvl] = Field2DDevice<Conserved>(active_set[lvl],
-                                                      "mach2_fine_lvl_active");
+      U_levels[lvl] = make_conserved_fields(field_geom[lvl], "mach2_fine_lvl");
+      U_next_levels[lvl] = make_conserved_fields(field_geom[lvl], "mach2_fine_lvl_next");
+      U_active_levels[lvl] = make_conserved_fields(active_set[lvl], "mach2_fine_lvl_active");
       density_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_density_lvl");
       pressure_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_pressure_lvl");
       mach_levels[lvl] = Field2DDevice<Real>(active_set[lvl], "mach2_mach_lvl");
@@ -1632,9 +1774,14 @@ int main(int argc, char* argv[]) {
         continue;
       }
       const auto t0 = Clock::now();
-      FineEulerStencil fine_stencil{cfg.gamma, dt,
-                                    dx_levels[lvl], dy_levels[lvl]};
-      apply_csr_stencil_on_set_device(U_next_levels[lvl], U_levels[lvl],
+      ConservedViews U_in{U_levels[lvl].rho.values, U_levels[lvl].rhou.values,
+                          U_levels[lvl].rhov.values, U_levels[lvl].E.values};
+      ConservedViews U_out{U_next_levels[lvl].rho.values, U_next_levels[lvl].rhou.values,
+                           U_next_levels[lvl].rhov.values, U_next_levels[lvl].E.values};
+      EulerStencilSoA fine_stencil{cfg.gamma, dt,
+                                   dx_levels[lvl], dy_levels[lvl],
+                                   U_in, U_out};
+      apply_csr_stencil_on_set_device(U_next_levels[lvl].rho, U_levels[lvl].rho,
                                       active_set[lvl], fine_stencil,
                                       /*strict_check=*/false);
       const auto t1 = Clock::now();
@@ -1643,18 +1790,30 @@ int main(int argc, char* argv[]) {
     }
 
     const auto t0_coarse = Clock::now();
-    CoarseEulerStencil coarse_stencil{cfg.gamma, dt,
-                                      dx_levels[0], dy_levels[0]};
-    apply_csr_stencil_on_set_device(U_next_levels[0], U_levels[0],
+    ConservedViews U_in0{U_levels[0].rho.values, U_levels[0].rhou.values,
+                         U_levels[0].rhov.values, U_levels[0].E.values};
+    ConservedViews U_out0{U_next_levels[0].rho.values, U_next_levels[0].rhou.values,
+                          U_next_levels[0].rhov.values, U_next_levels[0].E.values};
+    EulerStencilSoA coarse_stencil{cfg.gamma, dt,
+                                   dx_levels[0], dy_levels[0],
+                                   U_in0, U_out0};
+    apply_csr_stencil_on_set_device(U_next_levels[0].rho, U_levels[0].rho,
                                     fluid_dev, coarse_stencil,
                                     /*strict_check=*/false);
     const auto t1_coarse = Clock::now();
     time_coarse_ms +=
         std::chrono::duration<double, std::milli>(t1_coarse - t0_coarse).count();
 
+    auto swap_fields = [](ConservedFields& a, ConservedFields& b) {
+      std::swap(a.rho.values, b.rho.values);
+      std::swap(a.rhou.values, b.rhou.values);
+      std::swap(a.rhov.values, b.rhov.values);
+      std::swap(a.E.values, b.E.values);
+    };
+
     for (int lvl = 0; lvl <= finest_level; ++lvl) {
       if (has_level[lvl]) {
-        std::swap(U_levels[lvl].values, U_next_levels[lvl].values);
+        swap_fields(U_levels[lvl], U_next_levels[lvl]);
       }
     }
 
@@ -1664,7 +1823,7 @@ int main(int argc, char* argv[]) {
       }
       const auto t0 = Clock::now();
       projection_down[lvl] = ensure_subset(
-          projection_down[lvl], U_levels[lvl - 1].geometry, ctx);
+          projection_down[lvl], U_levels[lvl - 1].rho.geometry, ctx);
       restrict_fine_to_coarse(U_levels[lvl - 1], U_levels[lvl],
                               projection_down[lvl]);
       const auto t1 = Clock::now();
@@ -1717,21 +1876,57 @@ int main(int argc, char* argv[]) {
         const auto t_out_begin = Clock::now();
         const int active_finest = max_active_level();
         {
-          auto src0 = make_subview(U_levels[0], active_set[0],
-                                   "coarse_active_src");
-          auto dst0 = make_subview(U_active_levels[0], active_set[0],
-                                   "coarse_active_dst");
-          copy_subview_device(dst0, src0, ctx);
+          auto src0_rho = make_subview(U_levels[0].rho, active_set[0],
+                                       "coarse_active_src_rho");
+          auto dst0_rho = make_subview(U_active_levels[0].rho, active_set[0],
+                                       "coarse_active_dst_rho");
+          copy_subview_device(dst0_rho, src0_rho, ctx);
+
+          auto src0_rhou = make_subview(U_levels[0].rhou, active_set[0],
+                                        "coarse_active_src_rhou");
+          auto dst0_rhou = make_subview(U_active_levels[0].rhou, active_set[0],
+                                        "coarse_active_dst_rhou");
+          copy_subview_device(dst0_rhou, src0_rhou, ctx);
+
+          auto src0_rhov = make_subview(U_levels[0].rhov, active_set[0],
+                                        "coarse_active_src_rhov");
+          auto dst0_rhov = make_subview(U_active_levels[0].rhov, active_set[0],
+                                        "coarse_active_dst_rhov");
+          copy_subview_device(dst0_rhov, src0_rhov, ctx);
+
+          auto src0_E = make_subview(U_levels[0].E, active_set[0],
+                                     "coarse_active_src_E");
+          auto dst0_E = make_subview(U_active_levels[0].E, active_set[0],
+                                     "coarse_active_dst_E");
+          copy_subview_device(dst0_E, src0_E, ctx);
         }
         for (int lvl = 1; lvl <= active_finest; ++lvl) {
           if (!has_level[lvl]) {
             continue;
           }
-          auto src = make_subview(U_levels[lvl], active_set[lvl],
-                                  "fine_active_src_lvl");
-          auto dst = make_subview(U_active_levels[lvl], active_set[lvl],
-                                  "fine_active_dst_lvl");
-          copy_subview_device(dst, src, ctx);
+          auto src_rho = make_subview(U_levels[lvl].rho, active_set[lvl],
+                                      "fine_active_src_lvl_rho");
+          auto dst_rho = make_subview(U_active_levels[lvl].rho, active_set[lvl],
+                                      "fine_active_dst_lvl_rho");
+          copy_subview_device(dst_rho, src_rho, ctx);
+
+          auto src_rhou = make_subview(U_levels[lvl].rhou, active_set[lvl],
+                                       "fine_active_src_lvl_rhou");
+          auto dst_rhou = make_subview(U_active_levels[lvl].rhou, active_set[lvl],
+                                       "fine_active_dst_lvl_rhou");
+          copy_subview_device(dst_rhou, src_rhou, ctx);
+
+          auto src_rhov = make_subview(U_levels[lvl].rhov, active_set[lvl],
+                                       "fine_active_src_lvl_rhov");
+          auto dst_rhov = make_subview(U_active_levels[lvl].rhov, active_set[lvl],
+                                       "fine_active_dst_lvl_rhov");
+          copy_subview_device(dst_rhov, src_rhov, ctx);
+
+          auto src_E = make_subview(U_levels[lvl].E, active_set[lvl],
+                                    "fine_active_src_lvl_E");
+          auto dst_E = make_subview(U_active_levels[lvl].E, active_set[lvl],
+                                    "fine_active_dst_lvl_E");
+          copy_subview_device(dst_E, src_E, ctx);
         }
 
         write_multilevel_outputs<MAX_AMR_LEVELS>(
