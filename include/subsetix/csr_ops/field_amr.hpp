@@ -532,5 +532,161 @@ inline void prolong_field_prediction_device(
   prolong_field_generic_device(fine_field, coarse_field, fine_mask, op);
 }
 
+// ---------------------------------------------------------------------------
+// Coordinate-based AMR helpers (for clipped / obstacle geometries)
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Restrict fine field values onto a coarse mask using coordinate-based
+ *        2x2 averaging.
+ *
+ * This variant does not rely on the internal AMR interval mapping and can be
+ * used when the fine geometry is a clipped / intersected refinement of the
+ * coarse geometry (e.g. obstacle masks, ghost layers).
+ *
+ * For each coarse cell (x_c, y_c) in coarse_mask, we sample the four fine
+ * cells (2*x_c + i, 2*y_c + j), i,j in {0,1}. If all four fine cells exist
+ * in fine_field.geometry, we write their arithmetic mean into the coarse
+ * cell. If any of the four fine samples is missing, the coarse value is left
+ * unchanged.
+ *
+ * Requirements on T:
+ *   - default-constructible
+ *   - supports operator+, operator-, and multiplication by scalar literals
+ *     convertible via static_cast<T>(...)
+ */
+template <typename T>
+inline void restrict_field_on_set_coords_device(
+    Field2DDevice<T>& coarse_field,
+    const Field2DDevice<T>& fine_field,
+    const IntervalSet2DDevice& coarse_mask) {
+  if (coarse_mask.num_rows == 0 ||
+      coarse_mask.num_intervals == 0) {
+    return;
+  }
+
+  detail::FieldReadAccessor<T> fine_acc;
+  fine_acc.row_keys = fine_field.geometry.row_keys;
+  fine_acc.row_ptr = fine_field.geometry.row_ptr;
+  fine_acc.intervals = fine_field.geometry.intervals;
+  fine_acc.offsets = fine_field.geometry.cell_offsets;
+  fine_acc.values = fine_field.values;
+  fine_acc.num_rows = fine_field.geometry.num_rows;
+
+  apply_on_set_device(
+      coarse_field, coarse_mask,
+      KOKKOS_LAMBDA(Coord x_c, Coord y_c,
+                    T& coarse_value, std::size_t /*idx*/) {
+        const Coord x_f0 = static_cast<Coord>(2 * x_c);
+        const Coord x_f1 = static_cast<Coord>(2 * x_c + 1);
+        const Coord y_f0 = static_cast<Coord>(2 * y_c);
+        const Coord y_f1 = static_cast<Coord>(2 * y_c + 1);
+
+        T v00 = T();
+        T v01 = T();
+        T v10 = T();
+        T v11 = T();
+
+        const bool ok00 = fine_acc.try_get(x_f0, y_f0, v00);
+        const bool ok01 = fine_acc.try_get(x_f1, y_f0, v01);
+        const bool ok10 = fine_acc.try_get(x_f0, y_f1, v10);
+        const bool ok11 = fine_acc.try_get(x_f1, y_f1, v11);
+
+        if (ok00 && ok01 && ok10 && ok11) {
+          const T avg =
+              static_cast<T>(0.25) *
+              (v00 + v01 + v10 + v11);
+          coarse_value = avg;
+        }
+      });
+}
+
+/**
+ * @brief Prolong coarse field values onto a fine mask using a coordinate-based
+ *        linear prediction stencil.
+ *
+ * This variant mirrors the behavior of LinearPredictionReconstructor but does
+ * not rely on AMR interval mappings. It only requires that the fine grid is a
+ * 2x refinement of the coarse grid in coordinates; the fine geometry may be
+ * clipped or intersected by obstacles.
+ *
+ * For each fine cell (x_f, y_f), we compute its parent coarse cell
+ * (x_c, y_c) = (floor_div2(x_f), floor_div2(y_f)), then reconstruct from
+ * the coarse center and its four von-Neumann neighbours:
+ *
+ *   grad_x ~ 0.125 * (u_right - u_left)
+ *   grad_y ~ 0.125 * (u_up    - u_down)
+ *
+ * using fallbacks to the center value when neighbours are missing.
+ *
+ * Requirements on T:
+ *   - default-constructible
+ *   - supports operator+, operator-, and multiplication by scalar literals
+ *     convertible via static_cast<T>(...)
+ */
+template <typename T>
+inline void prolong_field_prediction_coords_device(
+    Field2DDevice<T>& fine_field,
+    const Field2DDevice<T>& coarse_field,
+    const IntervalSet2DDevice& fine_mask) {
+  if (fine_mask.num_rows == 0 ||
+      fine_mask.num_intervals == 0) {
+    return;
+  }
+
+  detail::FieldReadAccessor<T> coarse_acc;
+  coarse_acc.row_keys = coarse_field.geometry.row_keys;
+  coarse_acc.row_ptr = coarse_field.geometry.row_ptr;
+  coarse_acc.intervals = coarse_field.geometry.intervals;
+  coarse_acc.offsets = coarse_field.geometry.cell_offsets;
+  coarse_acc.values = coarse_field.values;
+  coarse_acc.num_rows = coarse_field.geometry.num_rows;
+
+  apply_on_set_device(
+      fine_field, fine_mask,
+      KOKKOS_LAMBDA(Coord x_f, Coord y_f,
+                    T& fine_value, std::size_t /*idx*/) {
+        const Coord x_c = detail::floor_div2(x_f);
+        const Coord y_c = detail::floor_div2(y_f);
+
+        T u_center = coarse_acc.value_at(x_c, y_c);
+
+        T u_left = u_center;
+        T u_right = u_center;
+        T u_up = u_center;
+        T u_down = u_center;
+
+        T tmp = T();
+        if (coarse_acc.try_get(static_cast<Coord>(x_c - 1), y_c, tmp)) {
+          u_left = tmp;
+        }
+        if (coarse_acc.try_get(static_cast<Coord>(x_c + 1), y_c, tmp)) {
+          u_right = tmp;
+        }
+        if (coarse_acc.try_get(x_c, static_cast<Coord>(y_c + 1), tmp)) {
+          u_up = tmp;
+        }
+        if (coarse_acc.try_get(x_c, static_cast<Coord>(y_c - 1), tmp)) {
+          u_down = tmp;
+        }
+
+        const T grad_x =
+            static_cast<T>(0.125) * (u_right - u_left);
+        const T grad_y =
+            static_cast<T>(0.125) * (u_up - u_down);
+
+        const bool even_x = (x_f % 2 == 0);
+        const bool even_y = (y_f % 2 == 0);
+
+        const T sign_x =
+            even_x ? static_cast<T>(-1.0) : static_cast<T>(1.0);
+        const T sign_y =
+            even_y ? static_cast<T>(-1.0) : static_cast<T>(1.0);
+
+        fine_value =
+            u_center + sign_x * grad_x + sign_y * grad_y;
+      });
+}
+
 } // namespace csr
 } // namespace subsetix

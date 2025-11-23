@@ -254,3 +254,114 @@ TEST(CSRFieldAmrOpsSmokeTest, ProlongWithPredictionLinearReconstruction) {
     }
   }
 }
+
+TEST(CSRFieldAmrOpsSmokeTest,
+     RestrictCoordsMatchesStandardOnFullRefinement) {
+  auto coarse_geom = make_box_mask(0, 3, 0, 3);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine_geom;
+  refine_level_up_device(coarse_geom, fine_geom, ctx);
+
+  auto coarse_geom_host = build_host_from_device(coarse_geom);
+  auto fine_geom_host = build_host_from_device(fine_geom);
+
+  auto coarse_field_host =
+      make_field_like_geometry<double>(coarse_geom_host, 0.0);
+  auto fine_field_host =
+      make_field_like_geometry<double>(fine_geom_host, 0.0);
+
+  fill_field_with_pattern<double>(
+      fine_field_host,
+      [](Coord x, Coord y) {
+        return static_cast<double>(x + 10 * y);
+      });
+
+  auto fine_field_dev =
+      build_device_field_from_host(fine_field_host);
+
+  auto coarse_field_standard =
+      build_device_field_from_host(coarse_field_host);
+  auto coarse_field_coords =
+      build_device_field_from_host(coarse_field_host);
+
+  auto mask_dev = coarse_geom;
+
+  restrict_field_on_set_device(coarse_field_standard,
+                               fine_field_dev, mask_dev);
+  restrict_field_on_set_coords_device(coarse_field_coords,
+                                      fine_field_dev, mask_dev);
+
+  auto restricted_standard =
+      build_host_field_from_device(coarse_field_standard);
+  auto restricted_coords =
+      build_host_field_from_device(coarse_field_coords);
+
+  ASSERT_EQ(restricted_standard.row_keys.size(),
+            restricted_coords.row_keys.size());
+  ASSERT_EQ(restricted_standard.intervals.size(),
+            restricted_coords.intervals.size());
+  ASSERT_EQ(restricted_standard.values.size(),
+            restricted_coords.values.size());
+
+  for (std::size_t i = 0; i < restricted_standard.values.size(); ++i) {
+    EXPECT_DOUBLE_EQ(restricted_standard.values[i],
+                     restricted_coords.values[i]);
+  }
+}
+
+TEST(CSRFieldAmrOpsSmokeTest,
+     ProlongPredictionCoordsMatchesStandardOnFullRefinement) {
+  auto coarse_geom = make_box_mask(0, 4, 0, 4);
+  CsrSetAlgebraContext ctx;
+  IntervalSet2DDevice fine_geom;
+  refine_level_up_device(coarse_geom, fine_geom, ctx);
+
+  auto coarse_geom_host = build_host_from_device(coarse_geom);
+  auto fine_geom_host = build_host_from_device(fine_geom);
+
+  auto coarse_field_host =
+      make_field_like_geometry<double>(coarse_geom_host, 0.0);
+
+  // Linear polynomial P(x,y) = 2x + 4y
+  fill_field_with_pattern<double>(
+      coarse_field_host,
+      [](Coord x, Coord y) {
+        return static_cast<double>(2 * x + 4 * y);
+      });
+
+  auto coarse_field_dev =
+      build_device_field_from_host(coarse_field_host);
+
+  auto fine_field_host_standard =
+      make_field_like_geometry<double>(fine_geom_host, 0.0);
+  auto fine_field_host_coords =
+      make_field_like_geometry<double>(fine_geom_host, 0.0);
+
+  auto fine_field_standard =
+      build_device_field_from_host(fine_field_host_standard);
+  auto fine_field_coords =
+      build_device_field_from_host(fine_field_host_coords);
+
+  prolong_field_prediction_device(fine_field_standard,
+                                  coarse_field_dev, fine_geom);
+  prolong_field_prediction_coords_device(fine_field_coords,
+                                         coarse_field_dev, fine_geom);
+
+  auto prolonged_standard =
+      build_host_field_from_device(fine_field_standard);
+  auto prolonged_coords =
+      build_host_field_from_device(fine_field_coords);
+
+  ASSERT_EQ(prolonged_standard.row_keys.size(),
+            prolonged_coords.row_keys.size());
+  ASSERT_EQ(prolonged_standard.intervals.size(),
+            prolonged_coords.intervals.size());
+  ASSERT_EQ(prolonged_standard.values.size(),
+            prolonged_coords.values.size());
+
+  for (std::size_t i = 0; i < prolonged_standard.values.size(); ++i) {
+    EXPECT_NEAR(prolonged_standard.values[i],
+                prolonged_coords.values[i],
+                1e-12);
+  }
+}

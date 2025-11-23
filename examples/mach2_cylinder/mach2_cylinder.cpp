@@ -993,73 +993,14 @@ void restrict_fine_to_coarse(ConservedFields& coarse_field,
     return;
   }
 
-  const auto mapping =
-      build_mask_field_mapping(coarse_field.rho, coarse_region);
-  auto interval_to_row = mapping.interval_to_row;
-  auto interval_to_field_interval = mapping.interval_to_field_interval;
-  auto row_map = mapping.row_map;
-
-  auto mask_row_keys = coarse_region.row_keys;
-  auto mask_intervals = coarse_region.intervals;
-
-  auto coarse_intervals = coarse_field.rho.geometry.intervals;
-  auto coarse_offsets = coarse_field.rho.geometry.cell_offsets;
-  auto coarse_rho = coarse_field.rho.values;
-  auto coarse_rhou = coarse_field.rhou.values;
-  auto coarse_rhov = coarse_field.rhov.values;
-  auto coarse_E = coarse_field.E.values;
-
-  const auto fine_acc = make_accessor(fine_field);
-
-  Kokkos::parallel_for(
-      "mach2_cylinder_restrict",
-      Kokkos::RangePolicy<ExecSpace>(
-          0, static_cast<int>(coarse_region.num_intervals)),
-      KOKKOS_LAMBDA(const int interval_idx) {
-        const int row_idx = interval_to_row(interval_idx);
-        const int field_row = row_map(row_idx);
-        if (row_idx < 0 || field_row < 0) {
-          return;
-        }
-
-        const int coarse_interval_idx =
-            interval_to_field_interval(interval_idx);
-        if (coarse_interval_idx < 0) {
-          return;
-        }
-
-        const Interval mask_iv = mask_intervals(interval_idx);
-        const Interval civ = coarse_intervals(coarse_interval_idx);
-        const std::size_t base_offset = coarse_offsets(coarse_interval_idx);
-        const Coord base_begin = civ.begin;
-        const Coord y = mask_row_keys(row_idx).y;
-        const Coord y_f0 = static_cast<Coord>(2 * y);
-        const Coord y_f1 = static_cast<Coord>(2 * y + 1);
-
-        for (Coord x = mask_iv.begin; x < mask_iv.end; ++x) {
-          const std::size_t c_idx =
-              base_offset + static_cast<std::size_t>(x - base_begin);
-          const Coord x_f0 = static_cast<Coord>(2 * x);
-          const Coord x_f1 = static_cast<Coord>(2 * x + 1);
-
-          const Conserved v00 = fine_acc.value_at(x_f0, y_f0);
-          const Conserved v01 = fine_acc.value_at(x_f1, y_f0);
-          const Conserved v10 = fine_acc.value_at(x_f0, y_f1);
-          const Conserved v11 = fine_acc.value_at(x_f1, y_f1);
-
-          Conserved avg;
-          avg.rho = 0.25 * (v00.rho + v01.rho + v10.rho + v11.rho);
-          avg.rhou = 0.25 * (v00.rhou + v01.rhou + v10.rhou + v11.rhou);
-          avg.rhov = 0.25 * (v00.rhov + v01.rhov + v10.rhov + v11.rhov);
-          avg.E = 0.25 * (v00.E + v01.E + v10.E + v11.E);
-
-          coarse_rho(c_idx) = avg.rho;
-          coarse_rhou(c_idx) = avg.rhou;
-          coarse_rhov(c_idx) = avg.rhov;
-          coarse_E(c_idx) = avg.E;
-        }
-      });
-  ExecSpace().fence();
+  restrict_field_on_set_coords_device(coarse_field.rho, fine_field.rho,
+                                      coarse_region);
+  restrict_field_on_set_coords_device(coarse_field.rhou, fine_field.rhou,
+                                      coarse_region);
+  restrict_field_on_set_coords_device(coarse_field.rhov, fine_field.rhov,
+                                      coarse_region);
+  restrict_field_on_set_coords_device(coarse_field.E, fine_field.E,
+                                      coarse_region);
 }
 
 struct EulerStencilSoA {
