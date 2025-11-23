@@ -3,9 +3,9 @@
 ## Project Structure & Module Organization
 
 - Root: `CMakeLists.txt`, `CMakePresets.json`, `AGENTS.md`.
-- Public headers: `include/subsetix/` (CSR geometry, fields, VTK export).
+- Public headers now live in modular folders: `include/subsetix/geometry/`, `field/`, `io/`, `multilevel/` (legacy root `csr_*.hpp` or `multilevel.hpp` stubs are removed).
 - Implementation headers: `include/subsetix/csr_ops/` (Parallel kernels) and `include/subsetix/detail/`.
-- Library target: `subsetix_core` in `src/` (INTERFACE, links to Kokkos).
+- Library targets: INTERFACE `subsetix::geometry`, `subsetix::field`, `subsetix::multilevel`, `subsetix::vtk`, and aggregate `subsetix::core` (legacy alias `subsetix_core` remains).
 - Tests: `tests/` (standalone executables registered via CTest).
 - Examples: `examples/` (VTK generation and usage demos).
 - Benchmarks: `benchmarks/` (lightweight performance checks).
