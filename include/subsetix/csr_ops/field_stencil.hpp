@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <stdexcept>
 
 #include <Kokkos_Core.hpp>
 
@@ -396,13 +397,18 @@ build_subset_stencil_vertical_mapping(
   return out;
 }
 
+template <typename View>
+inline void assert_no_negative_entries(const View& v, const char* what) {
+  auto h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, v);
+  for (std::size_t i = 0; i < h.extent(0); ++i) {
+    if (h(i) < 0) {
+      throw std::runtime_error(what);
+    }
+  }
+}
+
 } // namespace detail
 
-template <typename T>
-struct FieldStencilMapping {
-  FieldMaskMapping mask;
-  detail::SubsetStencilVerticalMapping<T> vertical;
-};
 
 // ---------------------------------------------------------------------------
 // Phase 2 – Simple stencils restricted to a set
@@ -425,17 +431,18 @@ inline void apply_stencil_on_set_device(
     Field2DDevice<T>& field_out,
     const Field2DDevice<T>& field_in,
     const IntervalSet2DDevice& mask,
-    const FieldMaskMapping& mapping,
-    const detail::VerticalIntervalMapping& vertical,
     StencilFunctor stencil) {
   if (mask.num_rows == 0 || mask.num_intervals == 0) {
     return;
   }
 
   if (field_out.geometry.num_rows == 0 || field_in.geometry.num_rows == 0) {
-    return;
+    throw std::runtime_error(
+        "fields must be initialized before applying a stencil");
   }
 
+  const auto mapping =
+      detail::build_mask_field_mapping(field_out, mask);
   auto interval_to_row = mapping.interval_to_row;
   auto interval_to_field_interval =
       mapping.interval_to_field_interval;
@@ -446,6 +453,10 @@ inline void apply_stencil_on_set_device(
   auto field_out_intervals = field_out.geometry.intervals;
   auto field_out_offsets = field_out.geometry.cell_offsets;
   auto field_out_values = field_out.values;
+
+  const detail::VerticalIntervalMapping vertical =
+      detail::build_vertical_interval_mapping(
+          field_in);
 
   detail::FieldStencilContext<T> ctx;
   ctx.intervals = field_in.geometry.intervals;
@@ -493,29 +504,6 @@ inline void apply_stencil_on_set_device(
   ExecSpace().fence();
 }
 
-template <typename T, class StencilFunctor>
-inline void apply_stencil_on_set_device(
-    Field2DDevice<T>& field_out,
-    const Field2DDevice<T>& field_in,
-    const IntervalSet2DDevice& mask,
-    StencilFunctor stencil) {
-  if (mask.num_rows == 0 || mask.num_intervals == 0) {
-    return;
-  }
-
-  if (field_out.geometry.num_rows == 0 || field_in.geometry.num_rows == 0) {
-    return;
-  }
-
-  const auto mapping =
-      detail::build_mask_field_mapping(field_out, mask);
-  const detail::VerticalIntervalMapping vertical =
-      detail::build_vertical_interval_mapping(
-          field_in);
-  apply_stencil_on_set_device(field_out, field_in, mask, mapping, vertical,
-                              stencil);
-}
-
 // ---------------------------------------------------------------------------
 // CSR-friendly stencils restricted to a set/subset
 // ---------------------------------------------------------------------------
@@ -537,9 +525,6 @@ inline void apply_csr_stencil_on_set_device(
     Field2DDevice<OutT>& field_out,
     const Field2DDevice<InT>& field_in,
     const IntervalSet2DDevice& mask,
-    const FieldMaskMapping& mapping_out,
-    const FieldMaskMapping& mapping_in,
-    const detail::SubsetStencilVerticalMapping<InT>& vertical,
     StencilFunctor stencil,
     bool strict_check = false) {
   if (mask.num_rows == 0 || mask.num_intervals == 0) {
@@ -547,8 +532,16 @@ inline void apply_csr_stencil_on_set_device(
   }
 
   if (field_out.geometry.num_rows == 0 || field_in.geometry.num_rows == 0) {
-    return;
+    throw std::runtime_error(
+        "fields must be initialized before applying a stencil");
   }
+
+  const auto mapping_out =
+      detail::build_mask_field_mapping(field_out, mask);
+  const auto mapping_in =
+      detail::build_mask_field_mapping(field_in, mask);
+  const auto vertical = detail::build_subset_stencil_vertical_mapping(
+      field_in, mask, mapping_in);
 
   (void)strict_check;
 
@@ -678,24 +671,6 @@ inline void apply_csr_stencil_on_set_device(
         }
       });
   ExecSpace().fence();
-}
-
-template <typename OutT, typename InT, class StencilFunctor>
-inline void apply_csr_stencil_on_set_device(
-    Field2DDevice<OutT>& field_out,
-    const Field2DDevice<InT>& field_in,
-    const IntervalSet2DDevice& mask,
-    StencilFunctor stencil,
-    bool strict_check = false) {
-  const auto mapping_out =
-      detail::build_mask_field_mapping(field_out, mask);
-  const auto mapping_in =
-      detail::build_mask_field_mapping(field_in, mask);
-  const auto vertical = detail::build_subset_stencil_vertical_mapping(
-      field_in, mask, mapping_in);
-  apply_csr_stencil_on_set_device(field_out, field_in, mask,
-                                  mapping_out, mapping_in, vertical,
-                                  stencil, strict_check);
 }
 
 } // namespace csr

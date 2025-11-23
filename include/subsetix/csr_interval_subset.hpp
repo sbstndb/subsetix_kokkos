@@ -1,12 +1,11 @@
 #pragma once
 
-#include <type_traits>
 #include <stdexcept>
+#include <type_traits>
 
 #include <Kokkos_Core.hpp>
 
 #include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_mapping.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
 #include <subsetix/csr_ops/core.hpp>
 
@@ -58,7 +57,64 @@ namespace detail {
 inline Kokkos::View<int*, DeviceMemorySpace>
 build_subset_row_map(const IntervalSet2DDevice& geom,
                      const IntervalSet2DDevice& mask) {
-  return build_row_map_y(mask.row_keys, geom.row_keys, geom.num_rows);
+  Kokkos::View<int*, DeviceMemorySpace> row_map(
+      "subsetix_interval_subset_row_map", mask.num_rows);
+  if (mask.num_rows == 0) {
+    return row_map;
+  }
+
+  if (geom.num_rows == 0) {
+    throw std::runtime_error(
+        "IntervalSubSet2D requires a non-empty parent geometry");
+  }
+
+  auto mask_rows = mask.row_keys;
+  auto geom_rows = geom.row_keys;
+  const std::size_t num_geom_rows = geom.num_rows;
+
+  Kokkos::parallel_for(
+      "subsetix_interval_subset_row_map",
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const Coord ym = mask_rows(i).y;
+
+        std::size_t lo = 0;
+        std::size_t hi = num_geom_rows;
+        while (lo < hi) {
+          const std::size_t mid = lo + (hi - lo) / 2;
+          if (geom_rows(mid).y < ym) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
+          }
+        }
+
+        if (lo < num_geom_rows && geom_rows(lo).y == ym) {
+          row_map(i) = static_cast<int>(lo);
+        } else {
+          row_map(i) = -1;
+        }
+      });
+
+  ExecSpace().fence();
+
+  int min_val = 0;
+  Kokkos::parallel_reduce(
+      "subsetix_interval_subset_row_map_min",
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
+      KOKKOS_LAMBDA(const std::size_t i, int& lmin) {
+        if (row_map(i) < lmin) {
+          lmin = row_map(i);
+        }
+      },
+      Kokkos::Min<int>(min_val));
+
+  if (min_val < 0) {
+    throw std::runtime_error(
+        "IntervalSubSet2D mask rows must exist in parent geometry");
+  }
+
+  return row_map;
 }
 
 inline Kokkos::View<std::size_t*, DeviceMemorySpace>
@@ -94,8 +150,8 @@ inline void build_interval_subset_device(
   }
 
   if (geom.num_rows == 0) {
-    reset_interval_subset(subset);
-    return;
+    throw std::runtime_error(
+        "parent geometry must not be empty when building IntervalSubSet2D");
   }
 
   const auto row_map = detail::build_subset_row_map(geom, mask);

@@ -1,12 +1,12 @@
 #pragma once
 
 #include <cstddef>
+#include <stdexcept>
 
 #include <Kokkos_Core.hpp>
 
 #include <subsetix/csr_field.hpp>
 #include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_mapping.hpp>
 #include <subsetix/detail/csr_utils.hpp>
 
 namespace subsetix {
@@ -39,14 +39,7 @@ build_remap_mapping(const Field2DDevice<T>& dst,
   RemapMapping<T> mapping;
 
   const std::size_t num_dst_intervals = dst.geometry.num_intervals;
-  const std::size_t num_dst_rows = dst.geometry.num_rows;
-  const std::size_t num_src_rows = src.geometry.num_rows;
-
   if (num_dst_intervals == 0) {
-    return mapping;
-  }
-
-  if (num_dst_rows == 0 || num_src_rows == 0) {
     return mapping;
   }
 
@@ -71,17 +64,36 @@ build_remap_mapping(const Field2DDevice<T>& dst,
   auto src_intervals = src.geometry.intervals;
   auto src_offsets = src.geometry.cell_offsets;
 
+  const std::size_t num_dst_rows = dst.geometry.num_rows;
+  const std::size_t num_src_rows = src.geometry.num_rows;
+
   auto dst_to_src_row = mapping.dst_interval_to_src_row;
   auto dst_to_src_start = mapping.dst_interval_to_src_interval_start;
   auto dst_to_src_count = mapping.dst_interval_to_src_interval_count;
 
   // Step 1: For each dst row, find corresponding src row
-  auto row_map = build_row_map_y(dst_row_keys, src_row_keys, num_src_rows);
   Kokkos::parallel_for(
       "subsetix_remap_find_src_rows",
       Kokkos::RangePolicy<ExecSpace>(0, num_dst_rows),
       KOKKOS_LAMBDA(const std::size_t dst_row_idx) {
-        const int src_row_idx = row_map(dst_row_idx);
+        const Coord y_dst = dst_row_keys(dst_row_idx).y;
+
+        // Binary search in src rows
+        std::size_t lo = 0;
+        std::size_t hi = num_src_rows;
+        while (lo < hi) {
+          const std::size_t mid = lo + (hi - lo) / 2;
+          if (src_row_keys(mid).y < y_dst) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
+          }
+        }
+
+        int src_row_idx = -1;
+        if (lo < num_src_rows && src_row_keys(lo).y == y_dst) {
+          src_row_idx = static_cast<int>(lo);
+        }
 
         // Mark all intervals in this dst row
         const std::size_t dst_begin = dst_row_ptr(dst_row_idx);

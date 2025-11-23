@@ -1,12 +1,12 @@
 #pragma once
 
 #include <cstddef>
+#include <stdexcept>
 
 #include <Kokkos_Core.hpp>
 
 #include <subsetix/csr_field.hpp>
 #include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_mapping.hpp>
 #include <subsetix/detail/csr_utils.hpp>
 
 namespace subsetix {
@@ -19,30 +19,88 @@ namespace detail {
 // ---------------------------------------------------------------------------
 
 template <typename T>
-using MaskFieldMapping = FieldMaskMapping;
+struct MaskFieldMapping {
+  Kokkos::View<int*, DeviceMemorySpace> row_map;
+  Kokkos::View<int*, DeviceMemorySpace> interval_to_row;
+  Kokkos::View<int*, DeviceMemorySpace> interval_to_field_interval;
+};
 
 template <typename T>
 inline Kokkos::View<int*, DeviceMemorySpace>
 build_mask_row_to_field_row_mapping(const IntervalSet2DDevice& mask,
                                     const Field2DDevice<T>& field) {
-  return build_row_map_y(mask.row_keys, field.geometry.row_keys,
-                         field.geometry.num_rows);
+  Kokkos::View<int*, DeviceMemorySpace> mapping(
+      "subsetix_mask_row_to_field2d_row", mask.num_rows);
+  if (mask.num_rows == 0) {
+    return mapping;
+  }
+
+  if (field.geometry.num_rows == 0) {
+    throw std::runtime_error(
+        "field has no rows but the mask is non-empty");
+  }
+
+  auto mask_rows = mask.row_keys;
+  auto field_rows = field.geometry.row_keys;
+  const std::size_t num_field_rows = field.geometry.num_rows;
+
+  Kokkos::parallel_for(
+      "subsetix_mask_row_map_field2d_kernel",
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        const Coord ym = mask_rows(i).y;
+
+        std::size_t lo = 0;
+        std::size_t hi = num_field_rows;
+        while (lo < hi) {
+          const std::size_t mid = lo + (hi - lo) / 2;
+          if (field_rows(mid).y < ym) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
+          }
+        }
+
+        if (lo < num_field_rows && field_rows(lo).y == ym) {
+          mapping(i) = static_cast<int>(lo);
+        } else {
+          mapping(i) = -1;
+        }
+      });
+
+  ExecSpace().fence();
+
+  int min_val = 0;
+  Kokkos::parallel_reduce(
+      "subsetix_check_mask_mapping_validity_field2d",
+      Kokkos::RangePolicy<ExecSpace>(0, mask.num_rows),
+      KOKKOS_LAMBDA(const std::size_t i, int& lmin) {
+        if (mapping(i) < lmin) lmin = mapping(i);
+      },
+      Kokkos::Min<int>(min_val));
+
+  if (min_val < 0) {
+    throw std::runtime_error(
+        "mask row not found in field geometry; "
+        "mask must be a subset of the field geometry");
+  }
+
+  return mapping;
 }
 
 inline Kokkos::View<int*, DeviceMemorySpace>
 build_mask_interval_to_row_mapping(const IntervalSet2DDevice& mask) {
-  if (mask.num_rows == 0 || mask.num_intervals == 0) {
-    return Kokkos::View<int*, DeviceMemorySpace>(
-        "subsetix_mask_interval_rows", mask.num_intervals);
-  }
-
   Kokkos::View<int*, DeviceMemorySpace> interval_rows(
       "subsetix_mask_interval_rows", mask.num_intervals);
+  if (mask.num_rows == 0 || mask.num_intervals == 0) {
+    return interval_rows;
+  }
+
   auto mask_row_ptr = mask.row_ptr;
   Kokkos::parallel_for(
       "subsetix_fill_mask_interval_rows",
-      Kokkos::RangePolicy<ExecSpace>(
-          0, static_cast<int>(mask.num_rows)),
+      Kokkos::RangePolicy<ExecSpace>(0,
+                                     static_cast<int>(mask.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const std::size_t begin = mask_row_ptr(row_idx);
         const std::size_t end = mask_row_ptr(row_idx + 1);
@@ -60,15 +118,14 @@ build_mask_interval_to_field_interval_mapping(
     const IntervalSet2DDevice& mask,
     const Field2DDevice<T>& field,
     const Kokkos::View<int*, DeviceMemorySpace>& row_map) {
-  if (mask.num_rows == 0 || mask.num_intervals == 0) {
-    return Kokkos::View<int*, DeviceMemorySpace>(
-        "subsetix_mask_interval_to_field2d_interval",
-        mask.num_intervals);
-  }
-
   Kokkos::View<int*, DeviceMemorySpace> mapping(
       "subsetix_mask_interval_to_field2d_interval",
       mask.num_intervals);
+
+  if (mask.num_rows == 0 || mask.num_intervals == 0) {
+    return mapping;
+  }
+
   Kokkos::deep_copy(mapping, -1);
 
   auto mask_row_ptr = mask.row_ptr;
@@ -78,8 +135,8 @@ build_mask_interval_to_field_interval_mapping(
 
   Kokkos::parallel_for(
       "subsetix_fill_mask_interval_field2d_interval",
-      Kokkos::RangePolicy<ExecSpace>(
-          0, static_cast<int>(mask.num_rows)),
+      Kokkos::RangePolicy<ExecSpace>(0,
+                                     static_cast<int>(mask.num_rows)),
       KOKKOS_LAMBDA(const int row_idx) {
         const int field_row = row_map(row_idx);
         if (field_row < 0) {
@@ -106,6 +163,7 @@ build_mask_interval_to_field_interval_mapping(
         }
       });
   ExecSpace().fence();
+
   return mapping;
 }
 
@@ -114,11 +172,13 @@ inline MaskFieldMapping<T>
 build_mask_field_mapping(const Field2DDevice<T>& field,
                          const IntervalSet2DDevice& mask) {
   MaskFieldMapping<T> mapping;
-  const FieldMaskMapping base =
-      build_field_mask_mapping(mask, field.geometry);
-  mapping.row_map = base.row_map;
-  mapping.interval_to_row = base.interval_to_row;
-  mapping.interval_to_field_interval = base.interval_to_field_interval;
+  mapping.row_map =
+      build_mask_row_to_field_row_mapping(mask, field);
+  mapping.interval_to_row =
+      build_mask_interval_to_row_mapping(mask);
+  mapping.interval_to_field_interval =
+      build_mask_interval_to_field_interval_mapping(
+          mask, field, mapping.row_map);
   return mapping;
 }
 
@@ -142,14 +202,16 @@ build_mask_field_mapping(const Field2DDevice<T>& field,
 template <typename T, class Functor>
 inline void apply_on_set_device(Field2DDevice<T>& field,
                                 const IntervalSet2DDevice& mask,
-                                const FieldMaskMapping& mapping,
                                 Functor func) {
   if (mask.num_rows == 0 || mask.num_intervals == 0) {
     return;
   }
 
+  const auto mapping =
+      detail::build_mask_field_mapping(field, mask);
   auto interval_to_row = mapping.interval_to_row;
-  auto interval_to_field_interval = mapping.interval_to_field_interval;
+  auto interval_to_field_interval =
+      mapping.interval_to_field_interval;
   auto row_map = mapping.row_map;
 
   auto mask_row_keys = mask.row_keys;
@@ -206,14 +268,6 @@ inline void apply_on_set_device(Field2DDevice<T>& field,
   ExecSpace().fence();
 }
 
-template <typename T, class Functor>
-inline void apply_on_set_device(Field2DDevice<T>& field,
-                                const IntervalSet2DDevice& mask,
-                                Functor func) {
-  const auto mapping = detail::build_mask_field_mapping(field, mask);
-  apply_on_set_device(field, mask, mapping, func);
-}
-
 template <typename T>
 inline void fill_on_set_device(Field2DDevice<T>& field,
                                const IntervalSet2DDevice& mask,
@@ -243,12 +297,13 @@ inline void scale_on_set_device(Field2DDevice<T>& field,
 template <typename T>
 inline void copy_on_set_device(Field2DDevice<T>& dst,
                                const Field2DDevice<T>& src,
-                               const IntervalSet2DDevice& mask,
-                               const FieldMaskMapping& dst_mapping,
-                               const FieldMaskMapping& src_mapping) {
+                               const IntervalSet2DDevice& mask) {
   if (mask.num_rows == 0 || mask.num_intervals == 0) {
     return;
   }
+
+  auto dst_mapping = detail::build_mask_field_mapping(dst, mask);
+  auto src_mapping = detail::build_mask_field_mapping(src, mask);
 
   auto interval_to_row = dst_mapping.interval_to_row;
   auto dst_row_map = dst_mapping.row_map;
@@ -324,15 +379,6 @@ inline void copy_on_set_device(Field2DDevice<T>& dst,
         }
       });
   ExecSpace().fence();
-}
-
-template <typename T>
-inline void copy_on_set_device(Field2DDevice<T>& dst,
-                               const Field2DDevice<T>& src,
-                               const IntervalSet2DDevice& mask) {
-  const auto dst_mapping = detail::build_mask_field_mapping(dst, mask);
-  const auto src_mapping = detail::build_mask_field_mapping(src, mask);
-  copy_on_set_device(dst, src, mask, dst_mapping, src_mapping);
 }
 
 } // namespace csr
