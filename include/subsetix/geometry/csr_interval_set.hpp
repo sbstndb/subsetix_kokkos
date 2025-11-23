@@ -9,7 +9,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Random.hpp>
-#include <subsetix/csr_backend.hpp>
+#include <subsetix/geometry/csr_backend.hpp>
 
 namespace subsetix {
 namespace csr {

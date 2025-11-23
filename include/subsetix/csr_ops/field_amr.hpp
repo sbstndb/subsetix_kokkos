@@ -5,8 +5,8 @@
 
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/csr_field.hpp>
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/field/csr_field.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/csr_ops/field_core.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>
 #include <subsetix/detail/csr_utils.hpp>

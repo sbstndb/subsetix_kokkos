@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/multilevel.hpp>
+#include <subsetix/multilevel/multilevel.hpp>
 #include <subsetix/csr_ops/amr.hpp>
 #include <subsetix/io.hpp>
 

@@ -20,7 +20,7 @@
 #include <subsetix/csr_ops/field_subview.hpp>
 #include <subsetix/csr_ops/morphology.hpp>
 #include <subsetix/csr_ops/threshold.hpp>
-#include <subsetix/multilevel.hpp>
+#include <subsetix/multilevel/multilevel.hpp>
 #include <subsetix/io.hpp>
 
 using namespace subsetix;

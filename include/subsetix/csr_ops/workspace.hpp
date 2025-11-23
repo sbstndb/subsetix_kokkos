@@ -2,7 +2,7 @@
 
 #include <vector>
 #include <Kokkos_Core.hpp>
-#include <subsetix/csr_interval_set.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/detail/memory_utils.hpp>
 
 namespace subsetix {

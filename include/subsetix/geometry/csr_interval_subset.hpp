@@ -5,8 +5,8 @@
 
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_mapping.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/geometry/csr_mapping.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
 #include <subsetix/csr_ops/core.hpp>
 

@@ -6,7 +6,7 @@
 
 #include <subsetix/geometry.hpp>
 #include <subsetix/field.hpp>
-#include <subsetix/multilevel.hpp>
+#include <subsetix/multilevel/multilevel.hpp>
 #include <subsetix/io.hpp>
 #include <subsetix/csr_ops/amr.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>

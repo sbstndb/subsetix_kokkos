@@ -1,7 +1,7 @@
 #pragma once
 
-#include <subsetix/csr_field.hpp>
-#include <subsetix/csr_interval_subset.hpp>
+#include <subsetix/field/csr_field.hpp>
+#include <subsetix/geometry/csr_interval_subset.hpp>
 #include <subsetix/csr_ops/field_core.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>

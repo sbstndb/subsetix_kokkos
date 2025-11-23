@@ -1,7 +1,7 @@
 #include <benchmark/benchmark.h>
 #include <Kokkos_Core.hpp>
 
-#include <subsetix/multilevel.hpp>
+#include <subsetix/multilevel/multilevel.hpp>
 #include <subsetix/geometry.hpp>
 
 using namespace subsetix;

@@ -13,7 +13,7 @@
 #include <subsetix/csr_ops/threshold.hpp>
 #include <subsetix/csr_ops/morphology.hpp>
 #include <subsetix/detail/csr_utils.hpp>
-#include <subsetix/multilevel.hpp>
+#include <subsetix/multilevel/multilevel.hpp>
 #include <subsetix/io.hpp>
 
 #include <algorithm>

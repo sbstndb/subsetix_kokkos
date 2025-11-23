@@ -9,9 +9,9 @@
 #include <cstring>
 #include <type_traits>
 
-#include <subsetix/csr_interval_set.hpp>
-#include <subsetix/csr_field.hpp>
-#include <subsetix/multilevel.hpp>
+#include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/field/csr_field.hpp>
+#include <subsetix/multilevel/multilevel.hpp>
 
 namespace subsetix {
 namespace vtk {
