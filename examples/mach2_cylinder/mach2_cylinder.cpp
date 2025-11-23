@@ -843,6 +843,7 @@ IntervalSet2DDevice ensure_subset(const IntervalSet2DDevice& region,
 
 Real compute_dt_on_set(const ConservedFields& U,
                        const IntervalSet2DDevice& region,
+                       const subsetix::csr::FieldMaskMapping& mapping,
                        Real gamma,
                        Real cfl,
                        Real dx,
@@ -855,7 +856,6 @@ Real compute_dt_on_set(const ConservedFields& U,
   const Real inv_dy = static_cast<Real>(1.0) / dy;
   Real max_rate = static_cast<Real>(0.0);
 
-  const auto mapping = build_mask_field_mapping(U.rho, region);
   auto interval_to_row = mapping.interval_to_row;
   auto interval_to_field_interval = mapping.interval_to_field_interval;
   auto row_map = mapping.row_map;
@@ -916,6 +916,16 @@ Real compute_dt_on_set(const ConservedFields& U,
     return cfl * std::min(dx, dy);
   }
   return cfl / max_rate;
+}
+
+Real compute_dt_on_set(const ConservedFields& U,
+                       const IntervalSet2DDevice& region,
+                       Real gamma,
+                       Real cfl,
+                       Real dx,
+                       Real dy) {
+  const auto mapping = build_mask_field_mapping(U.rho, region);
+  return compute_dt_on_set(U, region, mapping, gamma, cfl, dx, dy);
 }
 
 void prolong_full(ConservedFields& fine_field,
@@ -1405,6 +1415,7 @@ int main(int argc, char* argv[]) {
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> density_levels;
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> pressure_levels;
     std::array<Field2DDevice<Real>, MAX_AMR_LEVELS> mach_levels;
+    std::array<subsetix::csr::FieldStencilMapping<Real>, MAX_AMR_LEVELS> stencil_maps;
 
     IntervalSet2DDevice field0_expanded;
     expand_device(fluid_dev,
@@ -1464,6 +1475,23 @@ int main(int argc, char* argv[]) {
     mach_levels[0] = Field2DDevice<Real>(fluid_dev, "mach2_mach");
     U_active_levels[0] = make_conserved_fields(fluid_dev, "mach2_state_active");
 
+    auto refresh_mapping_for_level = [&](int lvl) {
+      if (!has_level[lvl] ||
+          active_set[lvl].num_rows == 0 ||
+          field_geom[lvl].num_rows == 0) {
+        stencil_maps[lvl] = subsetix::csr::FieldStencilMapping<Real>();
+        return;
+      }
+      stencil_maps[lvl].mask =
+          subsetix::csr::build_field_mask_mapping(active_set[lvl],
+                                                  field_geom[lvl]);
+      stencil_maps[lvl].vertical =
+          subsetix::csr::detail::build_subset_stencil_vertical_mapping(
+              U_levels[lvl].rho, active_set[lvl], stencil_maps[lvl].mask);
+    };
+
+    refresh_mapping_for_level(0);
+
     auto build_level = [&](int lvl,
                            const IntervalSet2DDevice& parent_full,
                            const IntervalSet2DDevice& parent_active,
@@ -1472,6 +1500,7 @@ int main(int argc, char* argv[]) {
                            const IntervalSet2DDevice* prev_active = nullptr,
                            ConservedFields* prev_U = nullptr,
                            RemeshTiming* timers = nullptr) {
+      stencil_maps[lvl] = subsetix::csr::FieldStencilMapping<Real>();
       if (!cfg.enable_amr) {
         return;
       }
@@ -1580,6 +1609,7 @@ int main(int argc, char* argv[]) {
                        domains[lvl], inflow, cfg.gamma, cfg.no_slip);
       fill_ghost_cells(U_next_levels[lvl], ghost_mask[lvl], with_guard_set[lvl],
                        domains[lvl], inflow, cfg.gamma, cfg.no_slip);
+      refresh_mapping_for_level(lvl);
     };
 
     // Initial hierarchy build up to MAX_AMR_LEVELS-1
@@ -1661,6 +1691,7 @@ int main(int argc, char* argv[]) {
     const int finest_level = max_active_level();
 
     Real dt = compute_dt_on_set(U_levels[0], active_set[0],
+                                stencil_maps[0].mask,
                                 cfg.gamma, cfg.cfl,
                                 dx_levels[0], dy_levels[0]);
 
@@ -1691,7 +1722,9 @@ int main(int argc, char* argv[]) {
       time_prolong_ms +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
       const Real dt_lvl = compute_dt_on_set(
-          U_levels[lvl], active_set[lvl], cfg.gamma, cfg.cfl,
+          U_levels[lvl], active_set[lvl],
+          stencil_maps[lvl].mask,
+          cfg.gamma, cfg.cfl,
           dx_levels[lvl], dy_levels[lvl]);
       dt = std::min(dt, dt_lvl);
     }
@@ -1723,7 +1756,11 @@ int main(int argc, char* argv[]) {
                                    dx_levels[lvl], dy_levels[lvl],
                                    U_in, U_out};
       apply_csr_stencil_on_set_device(U_next_levels[lvl].rho, U_levels[lvl].rho,
-                                      active_set[lvl], fine_stencil,
+                                      active_set[lvl],
+                                      stencil_maps[lvl].mask,
+                                      stencil_maps[lvl].mask,
+                                      stencil_maps[lvl].vertical,
+                                      fine_stencil,
                                       /*strict_check=*/false);
       const auto t1 = Clock::now();
       time_fine_ms +=
@@ -1739,7 +1776,11 @@ int main(int argc, char* argv[]) {
                                    dx_levels[0], dy_levels[0],
                                    U_in0, U_out0};
     apply_csr_stencil_on_set_device(U_next_levels[0].rho, U_levels[0].rho,
-                                    fluid_dev, coarse_stencil,
+                                    fluid_dev,
+                                    stencil_maps[0].mask,
+                                    stencil_maps[0].mask,
+                                    stencil_maps[0].vertical,
+                                    coarse_stencil,
                                     /*strict_check=*/false);
     const auto t1_coarse = Clock::now();
     time_coarse_ms +=
