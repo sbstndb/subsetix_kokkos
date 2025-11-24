@@ -5,6 +5,7 @@
 #include <Kokkos_Core.hpp>
 
 #include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/detail/csr_utils.hpp>
 
 namespace subsetix {
 namespace csr {
@@ -43,25 +44,7 @@ build_row_map_y(const IntervalSet2DDevice::RowKeyView& mask_rows,
       "subsetix_row_map_y_kernel",
       Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(mask_rows.extent(0))),
       KOKKOS_LAMBDA(const int i) {
-        const Coord ym = mask_rows(i).y;
-
-        std::size_t lo = 0;
-        std::size_t hi = num_parent_rows;
-        while (lo < hi) {
-          const std::size_t mid = lo + (hi - lo) / 2;
-          const Coord y_parent = parent_rows(mid).y;
-          if (y_parent < ym) {
-            lo = mid + 1;
-          } else {
-            hi = mid;
-          }
-        }
-
-        if (lo < num_parent_rows && parent_rows(lo).y == ym) {
-          mapping(i) = static_cast<int>(lo);
-        } else {
-          mapping(i) = -1;
-        }
+        mapping(i) = detail::find_row_by_y(parent_rows, num_parent_rows, mask_rows(i).y);
       });
 
   ExecSpace().fence();

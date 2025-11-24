@@ -579,25 +579,7 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
       "subsetix_csr_union_map_a_to_b",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
       KOKKOS_LAMBDA(const std::size_t ia) {
-        const Coord ya = rows_a(ia).y;
-
-        std::size_t lo = 0;
-        std::size_t hi = num_rows_b;
-        while (lo < hi) {
-          const std::size_t mid = (lo + hi) / 2;
-          const Coord yb = rows_b(mid).y;
-          if (yb < ya) {
-            lo = mid + 1;
-          } else {
-            hi = mid;
-          }
-        }
-
-        if (lo < num_rows_b && rows_b(lo).y == ya) {
-          map_a_to_b(ia) = static_cast<int>(lo);
-        } else {
-          map_a_to_b(ia) = -1;
-        }
+        map_a_to_b(ia) = find_row_by_y(rows_b, num_rows_b, rows_a(ia).y);
       });
 
   ExecSpace().fence();
@@ -607,25 +589,7 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
       "subsetix_csr_union_map_b_to_a",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
       KOKKOS_LAMBDA(const std::size_t ib) {
-        const Coord yb = rows_b(ib).y;
-
-        std::size_t lo = 0;
-        std::size_t hi = num_rows_a;
-        while (lo < hi) {
-          const std::size_t mid = (lo + hi) / 2;
-          const Coord ya = rows_a(mid).y;
-          if (ya < yb) {
-            lo = mid + 1;
-          } else {
-            hi = mid;
-          }
-        }
-
-        if (lo < num_rows_a && rows_a(lo).y == yb) {
-          map_b_to_a(ib) = static_cast<int>(lo);
-        } else {
-          map_b_to_a(ib) = -1;
-        }
+        map_b_to_a(ib) = find_row_by_y(rows_a, num_rows_a, rows_b(ib).y);
       });
 
   ExecSpace().fence();
@@ -821,30 +785,11 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
       "subsetix_csr_intersection_row_map_binary",
       Kokkos::RangePolicy<ExecSpace>(0, n_small),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const Coord y = rows_small(i).y;
-
-        std::size_t lo = 0;
-        std::size_t hi = n_big;
-        while (lo < hi) {
-          const std::size_t mid = (lo + hi) / 2;
-          const Coord ymid = rows_big(mid).y;
-          if (ymid < y) {
-            lo = mid + 1;
-          } else {
-            hi = mid;
-          }
-        }
-
-        if (lo < n_big && rows_big(lo).y == y) {
+        const int idx_big = find_row_by_y(rows_big, n_big, rows_small(i).y);
+        if (idx_big >= 0) {
           flags(i) = 1;
-          const int ia =
-              small_is_a ? static_cast<int>(i)
-                         : static_cast<int>(lo);
-          const int ib =
-              small_is_a ? static_cast<int>(lo)
-                         : static_cast<int>(i);
-          tmp_idx_a(i) = ia;
-          tmp_idx_b(i) = ib;
+          tmp_idx_a(i) = small_is_a ? static_cast<int>(i) : idx_big;
+          tmp_idx_b(i) = small_is_a ? idx_big : static_cast<int>(i);
         } else {
           flags(i) = 0;
           tmp_idx_a(i) = -1;
@@ -977,25 +922,7 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
       "subsetix_csr_difference_row_mapping",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
       KOKKOS_LAMBDA(const std::size_t ia) {
-        const Coord ya = rows_a(ia).y;
-
-        std::size_t lo = 0;
-        std::size_t hi = num_rows_b;
-        while (lo < hi) {
-          const std::size_t mid = (lo + hi) / 2;
-          const Coord yb = rows_b(mid).y;
-          if (yb < ya) {
-            lo = mid + 1;
-          } else {
-            hi = mid;
-          }
-        }
-
-        if (lo < num_rows_b && rows_b(lo).y == ya) {
-          out_idx_b(ia) = static_cast<int>(lo);
-        } else {
-          out_idx_b(ia) = -1;
-        }
+        out_idx_b(ia) = find_row_by_y(rows_b, num_rows_b, rows_a(ia).y);
       });
 
   ExecSpace().fence();

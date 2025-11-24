@@ -149,26 +149,10 @@ build_vertical_interval_mapping(
 
         if (count == 0) return;
 
-        // Find up row (y + 1)
-        int row_up = -1;
-        // Optimization: check next row first
-        if (r + 1 < num_rows && row_keys(r + 1).y == y + 1) {
-          row_up = static_cast<int>(r + 1);
-        } else {
-          std::size_t lo = 0;
-          std::size_t hi = num_rows;
-          while (lo < hi) {
-            const std::size_t mid = lo + (hi - lo) / 2;
-            if (row_keys(mid).y < y + 1) {
-              lo = mid + 1;
-            } else {
-              hi = mid;
-            }
-          }
-          if (lo < num_rows && row_keys(lo).y == y + 1) {
-            row_up = static_cast<int>(lo);
-          }
-        }
+        // Find up row (y + 1) - optimization: check adjacent row first
+        const int row_up = (r + 1 < num_rows && row_keys(r + 1).y == y + 1)
+            ? static_cast<int>(r + 1)
+            : find_row_by_y(row_keys, num_rows, y + 1);
 
         if (row_up >= 0) {
           const std::size_t up_begin = row_ptr(row_up);
@@ -180,26 +164,10 @@ build_vertical_interval_mapping(
           }
         }
 
-        // Find down row (y - 1)
-        int row_down = -1;
-        // Optimization: check prev row first
-        if (r > 0 && row_keys(r - 1).y == y - 1) {
-          row_down = static_cast<int>(r - 1);
-        } else {
-          std::size_t lo = 0;
-          std::size_t hi = num_rows;
-          while (lo < hi) {
-            const std::size_t mid = lo + (hi - lo) / 2;
-            if (row_keys(mid).y < y - 1) {
-              lo = mid + 1;
-            } else {
-              hi = mid;
-            }
-          }
-          if (lo < num_rows && row_keys(lo).y == y - 1) {
-            row_down = static_cast<int>(lo);
-          }
-        }
+        // Find down row (y - 1) - optimization: check adjacent row first
+        const int row_down = (r > 0 && row_keys(r - 1).y == y - 1)
+            ? static_cast<int>(r - 1)
+            : find_row_by_y(row_keys, num_rows, y - 1);
 
         if (row_down >= 0) {
           const std::size_t down_begin = row_ptr(row_down);
@@ -345,25 +313,6 @@ build_subset_stencil_vertical_mapping(
         const Coord y = subset_row_keys(subset_row).y;
         const auto mask_iv = subset_intervals(interval_idx);
 
-        auto find_row = [&](Coord target_y) -> int {
-          std::size_t lo = 0;
-          std::size_t hi = num_field_rows;
-          while (lo < hi) {
-            const std::size_t mid = lo + (hi - lo) / 2;
-            const Coord my = field_row_keys(mid).y;
-            if (my < target_y) {
-              lo = mid + 1;
-            } else {
-              hi = mid;
-            }
-          }
-          if (lo < num_field_rows &&
-              field_row_keys(lo).y == target_y) {
-            return static_cast<int>(lo);
-          }
-          return -1;
-        };
-
         auto find_interval_containing = [&](int row_idx) -> int {
           const std::size_t begin = field_row_ptr(row_idx);
           const std::size_t end = field_row_ptr(row_idx + 1);
@@ -376,7 +325,7 @@ build_subset_stencil_vertical_mapping(
           return -1;
         };
 
-        const int row_up = find_row(static_cast<Coord>(y + 1));
+        const int row_up = find_row_by_y(field_row_keys, num_field_rows, y + 1);
         if (row_up >= 0) {
           const int up_interval = find_interval_containing(row_up);
           if (up_interval >= 0) {
@@ -384,7 +333,7 @@ build_subset_stencil_vertical_mapping(
           }
         }
 
-        const int row_down = find_row(static_cast<Coord>(y - 1));
+        const int row_down = find_row_by_y(field_row_keys, num_field_rows, y - 1);
         if (row_down >= 0) {
           const int down_interval = find_interval_containing(row_down);
           if (down_interval >= 0) {

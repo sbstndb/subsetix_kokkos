@@ -20,6 +20,34 @@ Coord ceil_div2(Coord x) {
 }
 
 /**
+ * @brief Find a row index by y-coordinate using binary search.
+ *
+ * @tparam RowKeyView A Kokkos view of RowKey elements (must have .y member)
+ * @param rows The view of row keys (sorted by y)
+ * @param num_rows Number of rows in the view
+ * @param y The y-coordinate to search for
+ * @return The index of the row if found, -1 otherwise
+ */
+template <class RowKeyView>
+KOKKOS_INLINE_FUNCTION
+int find_row_by_y(const RowKeyView& rows, std::size_t num_rows, Coord y) {
+  std::size_t lo = 0;
+  std::size_t hi = num_rows;
+  while (lo < hi) {
+    const std::size_t mid = lo + (hi - lo) / 2;
+    if (rows(mid).y < y) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  if (lo < num_rows && rows(lo).y == y) {
+    return static_cast<int>(lo);
+  }
+  return -1;
+}
+
+/**
  * @brief Reset a preallocated IntervalSet2DDevice buffer.
  *
  * For now we simply fill the full capacity with zeros for all views.
