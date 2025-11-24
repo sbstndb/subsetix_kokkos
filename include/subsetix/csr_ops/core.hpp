@@ -570,9 +570,7 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
   // b_only_indices is output of compaction.
   
   // Let's reuse map_b_to_a for b_only_indices.
-  auto b_only_indices = map_b_to_a; 
-  
-  auto d_num_b_only = workspace.get_scalar_size_t_buf_0();
+  auto b_only_indices = map_b_to_a;
 
   // 1) For each row of A, binary-search its Y in B.
   Kokkos::parallel_for(
@@ -604,27 +602,11 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  Kokkos::parallel_scan(
+  std::size_t num_b_only = detail::exclusive_scan_with_total<std::size_t>(
       "subsetix_csr_union_b_only_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_b),
-      KOKKOS_LAMBDA(const std::size_t ib,
-                    std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t flag =
-            static_cast<std::size_t>(b_only_flags(ib));
-        if (final_pass) {
-          b_only_positions(ib) = update;
-          if (ib + 1 == num_rows_b) {
-            d_num_b_only() = update + flag;
-          }
-        }
-        update += flag;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_b_only = 0;
-  Kokkos::deep_copy(num_b_only, d_num_b_only);
+      num_rows_b,
+      b_only_flags,
+      b_only_positions);
 
   if (num_b_only > 0) {
     Kokkos::parallel_for(
@@ -770,13 +752,11 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
   // row_keys: row_key_buf_0 [n_small]
   // row_index_a: int_buf_3 [n_small]
   // row_index_b: int_buf_4 [n_small]
-  // d_num_rows: scalar_size_t_buf_0
-  
+
   auto flags = workspace.get_int_buf_0(n_small);
   auto tmp_idx_a = workspace.get_int_buf_1(n_small);
   auto tmp_idx_b = workspace.get_int_buf_2(n_small);
   auto positions = workspace.get_size_t_buf_0(n_small);
-  auto d_num_rows = workspace.get_scalar_size_t_buf_0();
 
   // 1) For each row of the smaller set, binary-search its Y in the
   //    larger set and record matches.
@@ -801,28 +781,11 @@ build_row_intersection_mapping(const IntervalSet2DDevice& A,
 
   // 2) Exclusive scan on flags to compute positions and number of
   //    intersection rows.
-
-  Kokkos::parallel_scan(
+  std::size_t num_rows_out = detail::exclusive_scan_with_total<std::size_t>(
       "subsetix_csr_intersection_row_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, n_small),
-      KOKKOS_LAMBDA(const std::size_t i,
-                    std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t flag =
-            static_cast<std::size_t>(flags(i));
-        if (final_pass) {
-          positions(i) = update;
-          if (i + 1 == n_small) {
-            d_num_rows() = update + flag;
-          }
-        }
-        update += flag;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_rows_out = 0;
-  Kokkos::deep_copy(num_rows_out, d_num_rows);
+      n_small,
+      flags,
+      positions);
 
   result.num_rows = num_rows_out;
   if (num_rows_out == 0) {
@@ -1033,31 +996,12 @@ set_union_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  auto total_intervals = ctx.workspace.get_scalar_size_t_buf_0();
-
   auto row_ptr_out = out.row_ptr;
-
-  Kokkos::parallel_scan(
+  std::size_t num_intervals_out = detail::exclusive_scan_csr_row_ptr<std::size_t>(
       "subsetix_csr_union_scan_prealloc",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i,
-                    std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c = row_counts(i);
-        if (final_pass) {
-          row_ptr_out(i) = update;
-          if (i + 1 == num_rows_out) {
-            row_ptr_out(num_rows_out) = update + c;
-            total_intervals() = update + c;
-          }
-        }
-        update += c;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_intervals_out = 0;
-  Kokkos::deep_copy(num_intervals_out, total_intervals);
+      num_rows_out,
+      row_counts,
+      row_ptr_out);
 
   const std::size_t intervals_cap = out.intervals.extent(0);
   if (num_intervals_out > intervals_cap) {
@@ -1192,31 +1136,12 @@ set_intersection_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  auto total_intervals = ctx.workspace.get_scalar_size_t_buf_0();
-
   auto row_ptr_out = out.row_ptr;
-
-  Kokkos::parallel_scan(
+  std::size_t num_intervals_out = detail::exclusive_scan_csr_row_ptr<std::size_t>(
       "subsetix_csr_intersection_scan_prealloc",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i,
-                    std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c = row_counts(i);
-        if (final_pass) {
-          row_ptr_out(i) = update;
-          if (i + 1 == num_rows_out) {
-            row_ptr_out(num_rows_out) = update + c;
-            total_intervals() = update + c;
-          }
-        }
-        update += c;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_intervals_out = 0;
-  Kokkos::deep_copy(num_intervals_out, total_intervals);
+      num_rows_out,
+      row_counts,
+      row_ptr_out);
 
   const std::size_t intervals_cap = out.intervals.extent(0);
   if (num_intervals_out > intervals_cap) {
@@ -1347,30 +1272,12 @@ set_difference_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  auto total_intervals = ctx.workspace.get_scalar_size_t_buf_0();
   auto row_ptr_out = out.row_ptr;
-
-  Kokkos::parallel_scan(
+  std::size_t num_intervals_out = detail::exclusive_scan_csr_row_ptr<std::size_t>(
       "subsetix_csr_difference_scan_prealloc",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i,
-                    std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c = row_counts(i);
-        if (final_pass) {
-          row_ptr_out(i) = update;
-          if (i + 1 == num_rows_out) {
-            row_ptr_out(num_rows_out) = update + c;
-            total_intervals() = update + c;
-          }
-        }
-        update += c;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_intervals_out = 0;
-  Kokkos::deep_copy(num_intervals_out, total_intervals);
+      num_rows_out,
+      row_counts,
+      row_ptr_out);
 
   const std::size_t intervals_cap = out.intervals.extent(0);
   if (num_intervals_out > intervals_cap) {
@@ -1512,30 +1419,12 @@ set_symmetric_difference_device(const IntervalSet2DDevice& A,
 
   ExecSpace().fence();
 
-  auto total_intervals = ctx.workspace.get_scalar_size_t_buf_0();
   auto row_ptr_out = out.row_ptr;
-
-  Kokkos::parallel_scan(
+  std::size_t num_intervals_out = detail::exclusive_scan_csr_row_ptr<std::size_t>(
       "subsetix_csr_xor_scan_prealloc",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i,
-                    std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c = row_counts(i);
-        if (final_pass) {
-          row_ptr_out(i) = update;
-          if (i + 1 == num_rows_out) {
-            row_ptr_out(num_rows_out) = update + c;
-            total_intervals() = update + c;
-          }
-        }
-        update += c;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_intervals_out = 0;
-  Kokkos::deep_copy(num_intervals_out, total_intervals);
+      num_rows_out,
+      row_counts,
+      row_ptr_out);
 
   const std::size_t intervals_cap = out.intervals.extent(0);
   if (num_intervals_out > intervals_cap) {

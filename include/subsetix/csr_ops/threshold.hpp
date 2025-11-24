@@ -111,29 +111,11 @@ IntervalSet2DDevice threshold_field(const Field2DDevice<T>& field,
   // -------------------------------------------------------------------------
   // Exclusive scan to compute row pointers
   // -------------------------------------------------------------------------
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals_view(
-      "subsetix_threshold_total_intervals");
-
-  Kokkos::parallel_scan(
+  std::size_t num_intervals = detail::exclusive_scan_csr_row_ptr<std::size_t>(
       "subsetix_threshold_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c = row_counts(i);
-        if (final_pass) {
-          row_ptr(i) = update;
-          if (i + 1 == num_rows) {
-            row_ptr(num_rows) = update + c;
-            total_intervals_view() = update + c;
-          }
-        }
-        update += c;
-      });
-  
-  ExecSpace().fence();
-
-  std::size_t num_intervals = 0;
-  Kokkos::deep_copy(num_intervals, total_intervals_view);
+      num_rows,
+      row_counts,
+      row_ptr);
   result_set.num_intervals = num_intervals;
 
   // -------------------------------------------------------------------------

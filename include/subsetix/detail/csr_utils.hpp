@@ -2,6 +2,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/detail/scan_utils.hpp>
 
 namespace subsetix {
 namespace csr {
