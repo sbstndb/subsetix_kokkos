@@ -580,8 +580,6 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
         map_a_to_b(ia) = find_row_by_y(rows_b, num_rows_b, rows_a(ia).y);
       });
 
-  ExecSpace().fence();
-
   // 2) For each row of B, binary-search its Y in A.
   Kokkos::parallel_for(
       "subsetix_csr_union_map_b_to_a",
@@ -589,8 +587,6 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
       KOKKOS_LAMBDA(const std::size_t ib) {
         map_b_to_a(ib) = find_row_by_y(rows_a, num_rows_a, rows_b(ib).y);
       });
-
-  ExecSpace().fence();
 
   // 3) Extract rows of B that are not present in A.
   Kokkos::parallel_for(
@@ -600,7 +596,7 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
         b_only_flags(ib) = (map_b_to_a(ib) < 0) ? 1 : 0;
       });
 
-  ExecSpace().fence();
+  ExecSpace().fence();  // Required before scan
 
   std::size_t num_b_only = detail::exclusive_scan_with_total<std::size_t>(
       "subsetix_csr_union_b_only_scan",
@@ -619,8 +615,7 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
           const std::size_t pos = b_only_positions(ib);
           b_only_indices(pos) = static_cast<int>(ib);
         });
-
-    ExecSpace().fence();
+    // No fence needed - implicit ordering with subsequent kernels
   }
 
   const std::size_t num_rows_out =
@@ -665,8 +660,7 @@ build_row_union_mapping(const IntervalSet2DDevice& A,
         out_idx_a(pos) = static_cast<int>(ia);
         out_idx_b(pos) = map_a_to_b(ia);
       });
-
-  ExecSpace().fence();
+  // No fence needed - write_from_b_only writes to non-overlapping positions
 
   // 5) Write rows that exist only in B. For each such row we count how
   // many A rows precede it using a binary search in A, and place it at
@@ -870,7 +864,7 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
   auto rows_a = A.row_keys;
   auto rows_b = B.row_keys;
 
-  // Copy row keys from A.
+  // Copy row keys from A and build mapping A.rows -> B.rows (independent ops)
   Kokkos::parallel_for(
       "subsetix_csr_difference_row_copy_keys",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
@@ -878,9 +872,6 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
         out_rows(i) = rows_a(i);
       });
 
-  ExecSpace().fence();
-
-  // Build mapping A.rows -> B.rows using binary search on B.
   Kokkos::parallel_for(
       "subsetix_csr_difference_row_mapping",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
@@ -888,7 +879,7 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
         out_idx_b(ia) = find_row_by_y(rows_b, num_rows_b, rows_a(ia).y);
       });
 
-  ExecSpace().fence();
+  ExecSpace().fence();  // Required before return
 
   return result;
 }
@@ -951,8 +942,7 @@ set_union_device(const IntervalSet2DDevice& A,
       KOKKOS_LAMBDA(const std::size_t i) {
         row_keys_out(i) = row_keys_out_tmp(i);
       });
-
-  ExecSpace().fence();
+  // No fence needed - count kernel doesn't depend on row_keys
 
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
 
@@ -1232,8 +1222,7 @@ set_difference_device(const IntervalSet2DDevice& A,
       KOKKOS_LAMBDA(const std::size_t i) {
         row_keys_out(i) = row_keys_out_tmp(i);
       });
-
-  ExecSpace().fence();
+  // No fence needed - count kernel doesn't depend on row_keys
 
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
 
@@ -1374,8 +1363,7 @@ set_symmetric_difference_device(const IntervalSet2DDevice& A,
       KOKKOS_LAMBDA(const std::size_t i) {
         row_keys_out(i) = row_keys_out_tmp(i);
       });
-
-  ExecSpace().fence();
+  // No fence needed - count kernel doesn't depend on row_keys
 
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
 
