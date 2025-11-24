@@ -21,22 +21,33 @@ struct RowMergeResult {
   std::size_t num_rows = 0;
 };
 
+// ============================================================================
+// Unified row operations: count and fill combined via CountOnly template param
+// ============================================================================
+
 /**
- * @brief Count the number of intervals in the union of two sorted,
- *        non-overlapping interval lists on a single row.
+ * @brief Unified implementation for row union operation.
+ *
+ * When CountOnly=true, only counts intervals without writing.
+ * When CountOnly=false, writes intervals to intervals_out.
+ *
+ * @return Number of intervals in the union.
  */
-template <class IntervalView>
+template <bool CountOnly, class IntervalViewIn, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
-std::size_t row_union_count(const IntervalView& intervals_a,
-                            std::size_t begin_a,
-                            std::size_t end_a,
-                            const IntervalView& intervals_b,
-                            std::size_t begin_b,
-                            std::size_t end_b) {
+std::size_t row_union_impl(const IntervalViewIn& intervals_a,
+                           std::size_t begin_a,
+                           std::size_t end_a,
+                           const IntervalViewIn& intervals_b,
+                           std::size_t begin_b,
+                           std::size_t end_b,
+                           const IntervalViewOut& intervals_out,
+                           std::size_t out_offset) {
   std::size_t ia = begin_a;
   std::size_t ib = begin_b;
 
   bool have_current = false;
+  Coord current_begin = 0;
   Coord current_end = 0;
   std::size_t count = 0;
 
@@ -45,73 +56,8 @@ std::size_t row_union_count(const IntervalView& intervals_a,
     Coord e = 0;
 
     const bool take_a =
-        (ib >= end_b) || (ia < end_a &&
-                          intervals_a(ia).begin <= intervals_b(ib).begin);
-
-    if (take_a) {
-      const auto iv = intervals_a(ia);
-      b = iv.begin;
-      e = iv.end;
-      ++ia;
-    } else {
-      const auto iv = intervals_b(ib);
-      b = iv.begin;
-      e = iv.end;
-      ++ib;
-    }
-
-    if (!have_current) {
-      current_end = e;
-      have_current = true;
-    } else {
-      if (b <= current_end) {
-        current_end = (e > current_end) ? e : current_end;
-      } else {
-        ++count;
-        current_end = e;
-      }
-    }
-  }
-
-  if (have_current) {
-    ++count;
-  }
-
-  return count;
-}
-
-/**
- * @brief Fill the union intervals for a single row into an output view.
- *
- * The layout and merge rules are identical to row_union_count; this
- * function must be kept in sync with it.
- */
-template <class IntervalViewIn, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_union_fill(const IntervalViewIn& intervals_a,
-                    std::size_t begin_a,
-                    std::size_t end_a,
-                    const IntervalViewIn& intervals_b,
-                    std::size_t begin_b,
-                    std::size_t end_b,
-                    const IntervalViewOut& intervals_out,
-                    std::size_t out_offset) {
-  std::size_t ia = begin_a;
-  std::size_t ib = begin_b;
-
-  bool have_current = false;
-  Coord current_begin = 0;
-  Coord current_end = 0;
-  std::size_t write_idx = 0;
-
-  while (ia < end_a || ib < end_b) {
-    Coord b = 0;
-    Coord e = 0;
-
-    const bool take_a =
         (ib >= end_b) ||
-        (ia < end_a &&
-         intervals_a(ia).begin <= intervals_b(ib).begin);
+        (ia < end_a && intervals_a(ia).begin <= intervals_b(ib).begin);
 
     if (take_a) {
       const auto iv = intervals_a(ia);
@@ -133,9 +79,10 @@ void row_union_fill(const IntervalViewIn& intervals_a,
       if (b <= current_end) {
         current_end = (e > current_end) ? e : current_end;
       } else {
-        intervals_out(out_offset + write_idx) = Interval{current_begin,
-                                                         current_end};
-        ++write_idx;
+        if constexpr (!CountOnly) {
+          intervals_out(out_offset + count) = Interval{current_begin, current_end};
+        }
+        ++count;
         current_begin = b;
         current_end = e;
       }
@@ -143,23 +90,33 @@ void row_union_fill(const IntervalViewIn& intervals_a,
   }
 
   if (have_current) {
-    intervals_out(out_offset + write_idx) = Interval{current_begin,
-                                                     current_end};
+    if constexpr (!CountOnly) {
+      intervals_out(out_offset + count) = Interval{current_begin, current_end};
+    }
+    ++count;
   }
+
+  return count;
 }
 
 /**
- * @brief Count the number of intervals in the intersection of two sorted,
- *        non-overlapping interval lists on a single row.
+ * @brief Unified implementation for row intersection operation.
+ *
+ * When CountOnly=true, only counts intervals without writing.
+ * When CountOnly=false, writes intervals to intervals_out.
+ *
+ * @return Number of intervals in the intersection.
  */
-template <class IntervalView>
+template <bool CountOnly, class IntervalViewIn, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
-std::size_t row_intersection_count(const IntervalView& intervals_a,
-                                   std::size_t begin_a,
-                                   std::size_t end_a,
-                                   const IntervalView& intervals_b,
-                                   std::size_t begin_b,
-                                   std::size_t end_b) {
+std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
+                                  std::size_t begin_a,
+                                  std::size_t end_a,
+                                  const IntervalViewIn& intervals_b,
+                                  std::size_t begin_b,
+                                  std::size_t end_b,
+                                  const IntervalViewOut& intervals_out,
+                                  std::size_t out_offset) {
   std::size_t ia = begin_a;
   std::size_t ib = begin_b;
   std::size_t count = 0;
@@ -168,12 +125,13 @@ std::size_t row_intersection_count(const IntervalView& intervals_a,
     const auto a = intervals_a(ia);
     const auto b = intervals_b(ib);
 
-    const Coord start =
-        (a.begin > b.begin) ? a.begin : b.begin;
-    const Coord end =
-        (a.end < b.end) ? a.end : b.end;
+    const Coord start = (a.begin > b.begin) ? a.begin : b.begin;
+    const Coord end = (a.end < b.end) ? a.end : b.end;
 
     if (start < end) {
+      if constexpr (!CountOnly) {
+        intervals_out(out_offset + count) = Interval{start, end};
+      }
       ++count;
     }
 
@@ -191,69 +149,36 @@ std::size_t row_intersection_count(const IntervalView& intervals_a,
 }
 
 /**
- * @brief Fill the intersection intervals for a single row into an
- *        output view.
+ * @brief Unified implementation for row difference (A \ B) operation.
  *
- * Must stay in sync with row_intersection_count.
- */
-template <class IntervalViewIn, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_intersection_fill(const IntervalViewIn& intervals_a,
-                           std::size_t begin_a,
-                           std::size_t end_a,
-                           const IntervalViewIn& intervals_b,
-                           std::size_t begin_b,
-                           std::size_t end_b,
-                           const IntervalViewOut& intervals_out,
-                           std::size_t out_offset) {
-  std::size_t ia = begin_a;
-  std::size_t ib = begin_b;
-  std::size_t write_idx = 0;
-
-  while (ia < end_a && ib < end_b) {
-    const auto a = intervals_a(ia);
-    const auto b = intervals_b(ib);
-
-    const Coord start =
-        (a.begin > b.begin) ? a.begin : b.begin;
-    const Coord end =
-        (a.end < b.end) ? a.end : b.end;
-
-    if (start < end) {
-      intervals_out(out_offset + write_idx) = Interval{start, end};
-      ++write_idx;
-    }
-
-    if (a.end < b.end) {
-      ++ia;
-    } else if (b.end < a.end) {
-      ++ib;
-    } else {
-      ++ia;
-      ++ib;
-    }
-  }
-}
-
-/**
- * @brief Count the number of intervals in the difference A \ B on a
- *        single row.
+ * When CountOnly=true, only counts intervals without writing.
+ * When CountOnly=false, writes intervals to intervals_out.
  *
- * Intervals are assumed sorted and non-overlapping within each list.
+ * @return Number of intervals in the difference.
  */
-template <class IntervalView>
+template <bool CountOnly, class IntervalViewIn, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
-std::size_t row_difference_count(const IntervalView& intervals_a,
-                                 std::size_t begin_a,
-                                 std::size_t end_a,
-                                 const IntervalView& intervals_b,
-                                 std::size_t begin_b,
-                                 std::size_t end_b) {
+std::size_t row_difference_impl(const IntervalViewIn& intervals_a,
+                                std::size_t begin_a,
+                                std::size_t end_a,
+                                const IntervalViewIn& intervals_b,
+                                std::size_t begin_b,
+                                std::size_t end_b,
+                                const IntervalViewOut& intervals_out,
+                                std::size_t out_offset) {
   if (begin_a == end_a) {
     return 0;
   }
+
   if (begin_b == end_b) {
-    return end_a - begin_a;
+    // Fast path: A unchanged (no B to subtract)
+    const std::size_t n = end_a - begin_a;
+    if constexpr (!CountOnly) {
+      for (std::size_t i = 0; i < n; ++i) {
+        intervals_out(out_offset + i) = intervals_a(begin_a + i);
+      }
+    }
+    return n;
   }
 
   std::size_t ia = begin_a;
@@ -273,6 +198,9 @@ std::size_t row_difference_count(const IntervalView& intervals_a,
       const auto b = intervals_b(ib);
 
       if (b.begin > cur) {
+        if constexpr (!CountOnly) {
+          intervals_out(out_offset + count) = Interval{cur, b.begin};
+        }
         ++count;
       }
 
@@ -286,6 +214,9 @@ std::size_t row_difference_count(const IntervalView& intervals_a,
     }
 
     if (cur < a.end) {
+      if constexpr (!CountOnly) {
+        intervals_out(out_offset + count) = Interval{cur, a.end};
+      }
       ++count;
     }
 
@@ -296,177 +227,26 @@ std::size_t row_difference_count(const IntervalView& intervals_a,
 }
 
 /**
- * @brief Fill the difference intervals A \ B for a single row into an
- *        output view.
+ * @brief Unified implementation for row symmetric difference (A XOR B).
  *
- * Must stay in sync with row_difference_count.
+ * When CountOnly=true, only counts intervals without writing.
+ * When CountOnly=false, writes intervals to intervals_out.
+ *
+ * @return Number of intervals in the symmetric difference.
  */
-template <class IntervalViewIn, class IntervalViewOut>
+template <bool CountOnly, class IntervalViewIn, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
-void row_difference_fill(const IntervalViewIn& intervals_a,
-                         std::size_t begin_a,
-                         std::size_t end_a,
-                         const IntervalViewIn& intervals_b,
-                         std::size_t begin_b,
-                         std::size_t end_b,
-                         const IntervalViewOut& intervals_out,
-                         std::size_t out_offset) {
-  if (begin_a == end_a) {
-    return;
-  }
-
-  if (begin_b == end_b) {
-    // Fast path: just copy A.
-    std::size_t write_idx = 0;
-    for (std::size_t ia = begin_a; ia < end_a; ++ia) {
-      intervals_out(out_offset + write_idx) = intervals_a(ia);
-      ++write_idx;
-    }
-    return;
-  }
-
-  std::size_t ia = begin_a;
-  std::size_t ib = begin_b;
-  std::size_t write_idx = 0;
-
-  while (ia < end_a) {
-    const auto a = intervals_a(ia);
-    Coord cur = a.begin;
-
-    // Skip B intervals that end before the current A interval.
-    while (ib < end_b && intervals_b(ib).end <= a.begin) {
-      ++ib;
-    }
-
-    while (ib < end_b && intervals_b(ib).begin < a.end) {
-      const auto b = intervals_b(ib);
-
-      if (b.begin > cur) {
-        intervals_out(out_offset + write_idx) =
-            Interval{cur, b.begin};
-        ++write_idx;
-      }
-
-      if (b.end >= a.end) {
-        cur = a.end;
-        break;
-      } else {
-        cur = b.end;
-        ++ib;
-      }
-    }
-
-    if (cur < a.end) {
-      intervals_out(out_offset + write_idx) =
-          Interval{cur, a.end};
-      ++write_idx;
-    }
-
-    ++ia;
-  }
-}
-
-/**
- * @brief Count the number of intervals in the symmetric difference
- *        (A XOR B) = (A \ B) U (B \ A) on a single row.
- */
-template <class IntervalView>
-KOKKOS_INLINE_FUNCTION
-std::size_t row_symmetric_difference_count(const IntervalView& intervals_a,
-                                           std::size_t begin_a,
-                                           std::size_t end_a,
-                                           const IntervalView& intervals_b,
-                                           std::size_t begin_b,
-                                           std::size_t end_b) {
+std::size_t row_symmetric_difference_impl(const IntervalViewIn& intervals_a,
+                                          std::size_t begin_a,
+                                          std::size_t end_a,
+                                          const IntervalViewIn& intervals_b,
+                                          std::size_t begin_b,
+                                          std::size_t end_b,
+                                          const IntervalViewOut& intervals_out,
+                                          std::size_t out_offset) {
   std::size_t ia = begin_a;
   std::size_t ib = begin_b;
   std::size_t count = 0;
-
-  bool in_a = false;
-  bool in_b = false;
-  bool xor_active = false;
-
-  while (ia < end_a || ib < end_b || in_a || in_b) {
-    Coord next_a_pos = 0;
-    bool has_next_a = false;
-    if (in_a) {
-      next_a_pos = intervals_a(ia).end; 
-      has_next_a = true;
-    } else if (ia < end_a) {
-      next_a_pos = intervals_a(ia).begin; 
-      has_next_a = true;
-    }
-
-    Coord next_b_pos = 0;
-    bool has_next_b = false;
-    if (in_b) {
-      next_b_pos = intervals_b(ib).end; 
-      has_next_b = true;
-    } else if (ib < end_b) {
-      next_b_pos = intervals_b(ib).begin; 
-      has_next_b = true;
-    }
-
-    if (!has_next_a && !has_next_b) {
-      break;
-    }
-
-    Coord p = 0;
-    if (has_next_a && has_next_b) {
-      p = (next_a_pos < next_b_pos) ? next_a_pos : next_b_pos;
-    } else if (has_next_a) {
-      p = next_a_pos;
-    } else {
-      p = next_b_pos;
-    }
-
-    if (has_next_a && next_a_pos == p) {
-      if (in_a) {
-        in_a = false;
-        ++ia; 
-      } else {
-        in_a = true;
-      }
-    }
-
-    if (has_next_b && next_b_pos == p) {
-      if (in_b) {
-        in_b = false;
-        ++ib; 
-      } else {
-        in_b = true;
-      }
-    }
-
-    const bool new_xor = (in_a != in_b);
-    if (xor_active != new_xor) {
-      if (!new_xor) {
-        ++count;
-      }
-      xor_active = new_xor;
-    }
-  }
-
-  return count;
-}
-
-/**
- * @brief Fill the symmetric difference intervals for a single row.
- *        Must be kept in sync with row_symmetric_difference_count.
- */
-template <class IntervalViewIn, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_symmetric_difference_fill(const IntervalViewIn& intervals_a,
-                                   std::size_t begin_a,
-                                   std::size_t end_a,
-                                   const IntervalViewIn& intervals_b,
-                                   std::size_t begin_b,
-                                   std::size_t end_b,
-                                   const IntervalViewOut& intervals_out,
-                                   std::size_t out_offset) {
-  std::size_t ia = begin_a;
-  std::size_t ib = begin_b;
-  std::size_t write_idx = 0;
 
   bool in_a = false;
   bool in_b = false;
@@ -530,12 +310,141 @@ void row_symmetric_difference_fill(const IntervalViewIn& intervals_a,
       if (new_xor) {
         start_pos = p;
       } else {
-        intervals_out(out_offset + write_idx) = Interval{start_pos, p};
-        ++write_idx;
+        if constexpr (!CountOnly) {
+          intervals_out(out_offset + count) = Interval{start_pos, p};
+        }
+        ++count;
       }
       xor_active = new_xor;
     }
   }
+
+  return count;
+}
+
+// ============================================================================
+// Backward-compatible wrappers: row_*_count and row_*_fill
+// ============================================================================
+
+// Dummy view type for count-only operations
+struct NullIntervalView {
+  KOKKOS_INLINE_FUNCTION Interval& operator()(std::size_t) const {
+    // This should never be called in CountOnly=true mode
+    static Interval dummy{0, 0};
+    return dummy;
+  }
+};
+
+template <class IntervalView>
+KOKKOS_INLINE_FUNCTION
+std::size_t row_union_count(const IntervalView& intervals_a,
+                            std::size_t begin_a,
+                            std::size_t end_a,
+                            const IntervalView& intervals_b,
+                            std::size_t begin_b,
+                            std::size_t end_b) {
+  return row_union_impl<true>(intervals_a, begin_a, end_a,
+                              intervals_b, begin_b, end_b,
+                              NullIntervalView{}, 0);
+}
+
+template <class IntervalViewIn, class IntervalViewOut>
+KOKKOS_INLINE_FUNCTION
+void row_union_fill(const IntervalViewIn& intervals_a,
+                    std::size_t begin_a,
+                    std::size_t end_a,
+                    const IntervalViewIn& intervals_b,
+                    std::size_t begin_b,
+                    std::size_t end_b,
+                    const IntervalViewOut& intervals_out,
+                    std::size_t out_offset) {
+  row_union_impl<false>(intervals_a, begin_a, end_a,
+                        intervals_b, begin_b, end_b,
+                        intervals_out, out_offset);
+}
+
+template <class IntervalView>
+KOKKOS_INLINE_FUNCTION
+std::size_t row_intersection_count(const IntervalView& intervals_a,
+                                   std::size_t begin_a,
+                                   std::size_t end_a,
+                                   const IntervalView& intervals_b,
+                                   std::size_t begin_b,
+                                   std::size_t end_b) {
+  return row_intersection_impl<true>(intervals_a, begin_a, end_a,
+                                     intervals_b, begin_b, end_b,
+                                     NullIntervalView{}, 0);
+}
+
+template <class IntervalViewIn, class IntervalViewOut>
+KOKKOS_INLINE_FUNCTION
+void row_intersection_fill(const IntervalViewIn& intervals_a,
+                           std::size_t begin_a,
+                           std::size_t end_a,
+                           const IntervalViewIn& intervals_b,
+                           std::size_t begin_b,
+                           std::size_t end_b,
+                           const IntervalViewOut& intervals_out,
+                           std::size_t out_offset) {
+  row_intersection_impl<false>(intervals_a, begin_a, end_a,
+                               intervals_b, begin_b, end_b,
+                               intervals_out, out_offset);
+}
+
+template <class IntervalView>
+KOKKOS_INLINE_FUNCTION
+std::size_t row_difference_count(const IntervalView& intervals_a,
+                                 std::size_t begin_a,
+                                 std::size_t end_a,
+                                 const IntervalView& intervals_b,
+                                 std::size_t begin_b,
+                                 std::size_t end_b) {
+  return row_difference_impl<true>(intervals_a, begin_a, end_a,
+                                   intervals_b, begin_b, end_b,
+                                   NullIntervalView{}, 0);
+}
+
+template <class IntervalViewIn, class IntervalViewOut>
+KOKKOS_INLINE_FUNCTION
+void row_difference_fill(const IntervalViewIn& intervals_a,
+                         std::size_t begin_a,
+                         std::size_t end_a,
+                         const IntervalViewIn& intervals_b,
+                         std::size_t begin_b,
+                         std::size_t end_b,
+                         const IntervalViewOut& intervals_out,
+                         std::size_t out_offset) {
+  row_difference_impl<false>(intervals_a, begin_a, end_a,
+                             intervals_b, begin_b, end_b,
+                             intervals_out, out_offset);
+}
+
+template <class IntervalView>
+KOKKOS_INLINE_FUNCTION
+std::size_t row_symmetric_difference_count(const IntervalView& intervals_a,
+                                           std::size_t begin_a,
+                                           std::size_t end_a,
+                                           const IntervalView& intervals_b,
+                                           std::size_t begin_b,
+                                           std::size_t end_b) {
+  return row_symmetric_difference_impl<true>(intervals_a, begin_a, end_a,
+                                             intervals_b, begin_b, end_b,
+                                             NullIntervalView{}, 0);
+}
+
+template <class IntervalViewIn, class IntervalViewOut>
+KOKKOS_INLINE_FUNCTION
+void row_symmetric_difference_fill(const IntervalViewIn& intervals_a,
+                                   std::size_t begin_a,
+                                   std::size_t end_a,
+                                   const IntervalViewIn& intervals_b,
+                                   std::size_t begin_b,
+                                   std::size_t end_b,
+                                   const IntervalViewOut& intervals_out,
+                                   std::size_t out_offset) {
+  row_symmetric_difference_impl<false>(intervals_a, begin_a, end_a,
+                                       intervals_b, begin_b, end_b,
+                                       intervals_out, out_offset);
 }
 
 /**
