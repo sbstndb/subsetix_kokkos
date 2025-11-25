@@ -14,7 +14,7 @@ add_executable(subsetix_test_core
 target_link_libraries(subsetix_test_core PRIVATE subsetix::core GTest::gtest)
 add_test(NAME CoreTests COMMAND subsetix_test_core)
 
-# 2. Set Algebra Tests: Union, Intersection, Difference
+# 2. Set Algebra Tests: Union, Intersection, Difference, Fluent API
 add_executable(subsetix_test_ops
     test_main.cpp
     csr_union_smoke_test.cpp
@@ -25,6 +25,7 @@ add_executable(subsetix_test_ops
     csr_symmetric_difference_smoke_test.cpp
     csr_difference_components_smoke_test.cpp
     csr_set_algebra_properties_test.cpp
+    csr_fluent_ops_smoke_test.cpp
 )
 target_link_libraries(subsetix_test_ops PRIVATE subsetix::core GTest::gtest)
 add_test(NAME OpsTests COMMAND subsetix_test_ops)
