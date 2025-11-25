@@ -264,22 +264,10 @@ struct Box2D {
   Coord y_max = 0; // half-open: [y_min, y_max)
 };
 
-struct HollowBox2D {
-  Box2D outer;
-  Box2D inner; // must be inside outer; empty frame if not.
-};
-
 struct Disk2D {
   Coord cx = 0;
   Coord cy = 0;
   Coord radius = 0; // radius in cell units (integer)
-};
-
-struct HollowDisk2D {
-  Coord cx = 0;
-  Coord cy = 0;
-  Coord outer_radius = 0;
-  Coord inner_radius = 0; // hole radius; if <= 0 behaves like a solid disk.
 };
 
 struct Domain2D {
@@ -414,104 +402,6 @@ make_box_device(const Box2D& box) {
   return dev;
 }
 
-inline IntervalSet2DDevice
-make_hollow_box_device(const HollowBox2D& frame) {
-  IntervalSet2DDevice dev;
-
-  const Box2D& outer = frame.outer;
-  const Box2D& inner = frame.inner;
-
-  if (outer.x_min >= outer.x_max || outer.y_min >= outer.y_max) {
-    return dev;
-  }
-
-  // Inner box must be strictly inside to produce a frame; otherwise fall back to solid box.
-  const bool inner_valid =
-      (inner.x_min > outer.x_min && inner.x_max < outer.x_max &&
-       inner.y_min > outer.y_min && inner.y_max < outer.y_max &&
-       inner.x_min < inner.x_max && inner.y_min < inner.y_max);
-
-  if (!inner_valid) {
-    return make_box_device(outer);
-  }
-
-  const std::size_t num_rows =
-      static_cast<std::size_t>(outer.y_max - outer.y_min);
-
-  const Coord x_min = outer.x_min;
-  const Coord x_max = outer.x_max;
-  const Coord y_min = outer.y_min;
-  const Coord inner_x_min = inner.x_min;
-  const Coord inner_x_max = inner.x_max;
-  const Coord inner_y_min = inner.y_min;
-  const Coord inner_y_max = inner.y_max;
-  const std::string prefix = "subsetix_csr_hollow_box";
-
-  Kokkos::View<Coord*, DeviceMemorySpace> left_begin(
-      (prefix + "_left_begin"), num_rows);
-  Kokkos::View<Coord*, DeviceMemorySpace> left_end(
-      (prefix + "_left_end"), num_rows);
-  Kokkos::View<Coord*, DeviceMemorySpace> right_begin(
-      (prefix + "_right_begin"), num_rows);
-  Kokkos::View<Coord*, DeviceMemorySpace> right_end(
-      (prefix + "_right_end"), num_rows);
-
-  auto compute_row = [=] KOKKOS_FUNCTION(const std::size_t i,
-                                         RowKey2D& key,
-                                         std::size_t& count) {
-    const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
-    key = RowKey2D{y};
-
-    const bool in_vertical_hole = (y >= inner_y_min && y < inner_y_max);
-
-    if (!in_vertical_hole) {
-      left_begin(i) = x_min;
-      left_end(i) = x_max;
-      count = 1;
-      return;
-    }
-
-    std::size_t local_count = 0;
-    if (x_min < inner_x_min) {
-      left_begin(i) = x_min;
-      left_end(i) = inner_x_min;
-      ++local_count;
-    }
-    if (inner_x_max < x_max) {
-      right_begin(i) = inner_x_max;
-      right_end(i) = x_max;
-      ++local_count;
-    }
-
-    count = local_count;
-  };
-
-  auto fill_row = [=] KOKKOS_FUNCTION(
-                       const std::size_t i,
-                       const std::size_t count,
-                       const std::size_t offset,
-                       IntervalSet2DDevice::IntervalView intervals) {
-    if (count == 0) {
-      return;
-    }
-
-    std::size_t idx = 0;
-    const bool has_left = (left_end(i) > left_begin(i));
-    if (has_left) {
-      intervals(offset + idx) = Interval{left_begin(i), left_end(i)};
-      ++idx;
-    }
-
-    const bool has_right = (count > idx);
-    if (has_right) {
-      intervals(offset + idx) = Interval{right_begin(i), right_end(i)};
-    }
-  };
-
-  return build_interval_set_from_rows(
-      num_rows, prefix, compute_row, fill_row);
-}
-
 /**
  * @brief Build a discrete disk (filled circle) on device.
  *
@@ -572,116 +462,6 @@ make_disk_device(const Disk2D& disk) {
                        IntervalSet2DDevice::IntervalView intervals) {
     (void)count;
     intervals(offset) = Interval{x_begin(i), x_end(i)};
-  };
-
-  return build_interval_set_from_rows(
-      num_rows, prefix, compute_row, fill_row);
-}
-
-inline IntervalSet2DDevice
-make_hollow_disk_device(const HollowDisk2D& disk) {
-  IntervalSet2DDevice dev;
-
-  if (disk.outer_radius <= 0) {
-    return dev;
-  }
-
-  const Coord inner_radius = (disk.inner_radius < 0) ? 0 : disk.inner_radius;
-  if (inner_radius >= disk.outer_radius) {
-    return dev;
-  }
-
-  const Coord y_min = disk.cy - disk.outer_radius;
-  const Coord y_max = disk.cy + disk.outer_radius + 1;
-  const std::size_t num_rows =
-      static_cast<std::size_t>(y_max - y_min);
-
-  Kokkos::View<Coord*, DeviceMemorySpace> left_begin(
-      "subsetix_csr_hollow_disk_left_begin", num_rows);
-  Kokkos::View<Coord*, DeviceMemorySpace> left_end(
-      "subsetix_csr_hollow_disk_left_end", num_rows);
-  Kokkos::View<Coord*, DeviceMemorySpace> right_begin(
-      "subsetix_csr_hollow_disk_right_begin", num_rows);
-  Kokkos::View<Coord*, DeviceMemorySpace> right_end(
-      "subsetix_csr_hollow_disk_right_end", num_rows);
-
-  const Coord cx = disk.cx;
-  const Coord cy = disk.cy;
-  const Coord outer_radius = disk.outer_radius;
-  const std::string prefix = "subsetix_csr_hollow_disk";
-
-  auto compute_row = [=] KOKKOS_FUNCTION(const std::size_t i,
-                                         RowKey2D& key,
-                                         std::size_t& count) {
-    const Coord y = static_cast<Coord>(y_min + static_cast<Coord>(i));
-    key = RowKey2D{y};
-
-    const Coord dy = y - cy;
-    const long long dy2 =
-        static_cast<long long>(dy) * static_cast<long long>(dy);
-    const long long outer2 =
-        static_cast<long long>(outer_radius) * static_cast<long long>(outer_radius);
-
-    if (dy2 > outer2) {
-      count = 0;
-      return;
-    }
-
-    const long long inner2 =
-        static_cast<long long>(inner_radius) * static_cast<long long>(inner_radius);
-
-    const Coord outer_half =
-        static_cast<Coord>(std::sqrt(static_cast<double>(outer2 - dy2)));
-    const Coord outer_x0 = cx - outer_half;
-    const Coord outer_x1 = cx + outer_half + 1;
-
-    if (inner_radius == 0 || dy2 >= inner2) {
-      left_begin(i) = outer_x0;
-      left_end(i) = outer_x1;
-      count = 1;
-      return;
-    }
-
-    const Coord inner_half =
-        static_cast<Coord>(std::sqrt(static_cast<double>(inner2 - dy2)));
-    const Coord inner_x0 = cx - inner_half;
-    const Coord inner_x1 = cx + inner_half + 1;
-
-    std::size_t local_count = 0;
-    if (outer_x0 < inner_x0) {
-      left_begin(i) = outer_x0;
-      left_end(i) = inner_x0;
-      ++local_count;
-    }
-    if (inner_x1 < outer_x1) {
-      right_begin(i) = inner_x1;
-      right_end(i) = outer_x1;
-      ++local_count;
-    }
-
-    count = local_count;
-  };
-
-  auto fill_row = [=] KOKKOS_FUNCTION(
-                       const std::size_t i,
-                       const std::size_t count,
-                       const std::size_t offset,
-                       IntervalSet2DDevice::IntervalView intervals) {
-    if (count == 0) {
-      return;
-    }
-
-    std::size_t idx = 0;
-    const bool has_left = (left_end(i) > left_begin(i));
-    if (has_left) {
-      intervals(offset + idx) = Interval{left_begin(i), left_end(i)};
-      ++idx;
-    }
-
-    const bool has_right = (count > idx);
-    if (has_right) {
-      intervals(offset + idx) = Interval{right_begin(i), right_end(i)};
-    }
   };
 
   return build_interval_set_from_rows(
