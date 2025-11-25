@@ -50,6 +50,9 @@ using subsetix::csr::Field2DDevice;
 using subsetix::csr::IntervalField2DHost;
 using subsetix::csr::IntervalSet2DDevice;
 using subsetix::csr::IntervalSet2DHost;
+using subsetix::csr::IntervalSubSet2DDevice;
+using subsetix::csr::build_interval_subset_device;
+using subsetix::csr::fill_on_subset_device;
 using subsetix::csr::shrink_device;
 using subsetix::csr::make_box_device;
 using subsetix::csr::make_disk_device;
@@ -1484,14 +1487,17 @@ int main(int argc, char* argv[]) {
     {
       ConservedFields U = make_conserved_fields(field_geom[0], "mach2_state");
       ConservedFields U_next = make_conserved_fields(field_geom[0], "mach2_state_next");
-      fill_on_set_device(U.rho, field_geom[0], inflow.rho);
-      fill_on_set_device(U.rhou, field_geom[0], inflow.rhou);
-      fill_on_set_device(U.rhov, field_geom[0], inflow.rhov);
-      fill_on_set_device(U.E, field_geom[0], inflow.E);
-      fill_on_set_device(U_next.rho, field_geom[0], inflow.rho);
-      fill_on_set_device(U_next.rhou, field_geom[0], inflow.rhou);
-      fill_on_set_device(U_next.rhov, field_geom[0], inflow.rhov);
-      fill_on_set_device(U_next.E, field_geom[0], inflow.E);
+      // Build subset once, reuse for all 8 fills
+      IntervalSubSet2DDevice init_subset;
+      build_interval_subset_device(U.rho.geometry, field_geom[0], init_subset);
+      fill_on_subset_device(U.rho, init_subset, inflow.rho);
+      fill_on_subset_device(U.rhou, init_subset, inflow.rhou);
+      fill_on_subset_device(U.rhov, init_subset, inflow.rhov);
+      fill_on_subset_device(U.E, init_subset, inflow.E);
+      fill_on_subset_device(U_next.rho, init_subset, inflow.rho);
+      fill_on_subset_device(U_next.rhou, init_subset, inflow.rhou);
+      fill_on_subset_device(U_next.rhov, init_subset, inflow.rhov);
+      fill_on_subset_device(U_next.E, init_subset, inflow.E);
       U_levels[0] = U;
       U_next_levels[0] = U_next;
       fill_ghost_cells(U_levels[0], ghost_mask[0], fluid_dev,
