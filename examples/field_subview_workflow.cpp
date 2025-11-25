@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
         make_subview(filtered_field_dev, patch_mask, "patch_filtered");
 
     CsrSetAlgebraContext patch_ctx;
-    fill_subview_device(patch_view, 5.0, patch_ctx);
+    fill_subview_device(patch_view, 5.0, &patch_ctx);
     scale_subview_device(patch_view, 1.2);
 
     // Run a smoothing stencil on the interior region via subviews.
@@ -112,10 +112,10 @@ int main(int argc, char* argv[]) {
     apply_stencil_on_subview_device(interior_dst,
                                     interior_src,
                                     FivePointAverage{},
-                                    interior_ctx);
+                                    &interior_ctx);
 
     // Restore the high-frequency patch inside the filtered field.
-    copy_subview_device(patch_filtered_view, patch_view, patch_ctx);
+    copy_subview_device(patch_filtered_view, patch_view, &patch_ctx);
 
     auto output_original =
         build_host_field_from_device(field_dev);

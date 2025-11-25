@@ -995,19 +995,19 @@ void prolong_full(ConservedFields& fine_field,
   }
   auto sub_dst_rho = make_subview(fine_dst.rho, overlap, "mach2_overlap_dst_rho");
   auto sub_src_rho = make_subview(fine_src.rho, overlap, "mach2_overlap_src_rho");
-  copy_subview_device(sub_dst_rho, sub_src_rho, ctx);
+  copy_subview_device(sub_dst_rho, sub_src_rho, &ctx);
 
   auto sub_dst_rhou = make_subview(fine_dst.rhou, overlap, "mach2_overlap_dst_rhou");
   auto sub_src_rhou = make_subview(fine_src.rhou, overlap, "mach2_overlap_src_rhou");
-  copy_subview_device(sub_dst_rhou, sub_src_rhou, ctx);
+  copy_subview_device(sub_dst_rhou, sub_src_rhou, &ctx);
 
   auto sub_dst_rhov = make_subview(fine_dst.rhov, overlap, "mach2_overlap_dst_rhov");
   auto sub_src_rhov = make_subview(fine_src.rhov, overlap, "mach2_overlap_src_rhov");
-  copy_subview_device(sub_dst_rhov, sub_src_rhov, ctx);
+  copy_subview_device(sub_dst_rhov, sub_src_rhov, &ctx);
 
   auto sub_dst_E = make_subview(fine_dst.E, overlap, "mach2_overlap_dst_E");
   auto sub_src_E = make_subview(fine_src.E, overlap, "mach2_overlap_src_E");
-  copy_subview_device(sub_dst_E, sub_src_E, ctx);
+  copy_subview_device(sub_dst_E, sub_src_E, &ctx);
 }
 
 
@@ -1908,25 +1908,25 @@ int main(int argc, char* argv[]) {
                                        "coarse_active_src_rho");
           auto dst0_rho = make_subview(U_active_levels[0].rho, active_set[0],
                                        "coarse_active_dst_rho");
-          copy_subview_device(dst0_rho, src0_rho, ctx);
+          copy_subview_device(dst0_rho, src0_rho, &ctx);
 
           auto src0_rhou = make_subview(U_levels[0].rhou, active_set[0],
                                         "coarse_active_src_rhou");
           auto dst0_rhou = make_subview(U_active_levels[0].rhou, active_set[0],
                                         "coarse_active_dst_rhou");
-          copy_subview_device(dst0_rhou, src0_rhou, ctx);
+          copy_subview_device(dst0_rhou, src0_rhou, &ctx);
 
           auto src0_rhov = make_subview(U_levels[0].rhov, active_set[0],
                                         "coarse_active_src_rhov");
           auto dst0_rhov = make_subview(U_active_levels[0].rhov, active_set[0],
                                         "coarse_active_dst_rhov");
-          copy_subview_device(dst0_rhov, src0_rhov, ctx);
+          copy_subview_device(dst0_rhov, src0_rhov, &ctx);
 
           auto src0_E = make_subview(U_levels[0].E, active_set[0],
                                      "coarse_active_src_E");
           auto dst0_E = make_subview(U_active_levels[0].E, active_set[0],
                                      "coarse_active_dst_E");
-          copy_subview_device(dst0_E, src0_E, ctx);
+          copy_subview_device(dst0_E, src0_E, &ctx);
         }
         for (int lvl = 1; lvl <= active_finest; ++lvl) {
           if (!has_level[lvl]) {
@@ -1936,25 +1936,25 @@ int main(int argc, char* argv[]) {
                                       "fine_active_src_lvl_rho");
           auto dst_rho = make_subview(U_active_levels[lvl].rho, active_set[lvl],
                                       "fine_active_dst_lvl_rho");
-          copy_subview_device(dst_rho, src_rho, ctx);
+          copy_subview_device(dst_rho, src_rho, &ctx);
 
           auto src_rhou = make_subview(U_levels[lvl].rhou, active_set[lvl],
                                        "fine_active_src_lvl_rhou");
           auto dst_rhou = make_subview(U_active_levels[lvl].rhou, active_set[lvl],
                                        "fine_active_dst_lvl_rhou");
-          copy_subview_device(dst_rhou, src_rhou, ctx);
+          copy_subview_device(dst_rhou, src_rhou, &ctx);
 
           auto src_rhov = make_subview(U_levels[lvl].rhov, active_set[lvl],
                                        "fine_active_src_lvl_rhov");
           auto dst_rhov = make_subview(U_active_levels[lvl].rhov, active_set[lvl],
                                        "fine_active_dst_lvl_rhov");
-          copy_subview_device(dst_rhov, src_rhov, ctx);
+          copy_subview_device(dst_rhov, src_rhov, &ctx);
 
           auto src_E = make_subview(U_levels[lvl].E, active_set[lvl],
                                     "fine_active_src_lvl_E");
           auto dst_E = make_subview(U_active_levels[lvl].E, active_set[lvl],
                                     "fine_active_dst_lvl_E");
-          copy_subview_device(dst_E, src_E, ctx);
+          copy_subview_device(dst_E, src_E, &ctx);
         }
 
         write_multilevel_outputs<MAX_AMR_LEVELS>(

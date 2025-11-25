@@ -138,12 +138,12 @@ void run_demo() {
   std::cout << "Prolonging to Level 1..." << std::endl;
   // We treat the geometry of L1 as the "mask" where we want values
   auto level1_sub = make_subview(field.levels[1], geo.levels[1], "level1");
-  prolong_field_subview_device(level1_sub, field.levels[0], ctx);
+  prolong_field_subview_device(level1_sub, field.levels[0], &ctx);
   
   // 5. Prolong to L2
   std::cout << "Prolonging to Level 2..." << std::endl;
   auto level2_sub = make_subview(field.levels[2], geo.levels[2], "level2");
-  prolong_field_subview_device(level2_sub, field.levels[1], ctx);
+  prolong_field_subview_device(level2_sub, field.levels[1], &ctx);
   
   // 6. Export
   std::cout << "Exporting to VTK..." << std::endl;

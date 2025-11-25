@@ -132,7 +132,7 @@ int main(int argc, char* argv[]) {
 
     CsrSetAlgebraContext ctx;
     apply_stencil_on_subview_device(dst_view, src_view,
-                                    FivePointAverage{}, ctx);
+                                    FivePointAverage{}, &ctx);
 
     auto src_result = build_host_field_from_device(source_field);
     auto dst_result = build_host_field_from_device(sink_field);

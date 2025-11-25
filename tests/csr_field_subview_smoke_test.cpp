@@ -198,7 +198,7 @@ TEST(CsrFieldSubViewTest, FillOnSubregionWithSubsetCaching) {
   EXPECT_FALSE(sub.has_subset());
 
   CsrSetAlgebraContext ctx;
-  fill_subview_device(sub, 77, ctx);
+  fill_subview_device(sub, 77, &ctx);
   EXPECT_TRUE(sub.has_subset());
 
   fill_subview_device(sub, 88); // reuse cached subset
@@ -272,7 +272,7 @@ TEST(CsrFieldSubViewTest, StencilOnSubregionWithSubset) {
 
   CsrSetAlgebraContext ctx;
   apply_stencil_on_subview_device(output_sub, input_sub, FivePointAverage{},
-                                  ctx);
+                                  &ctx);
   EXPECT_TRUE(output_sub.has_subset());
 
   auto result = build_host_field_from_device(output_dev);
@@ -314,7 +314,7 @@ TEST(CsrFieldSubViewTest, CopySubViewHandlesDifferentLayoutsWithSubset) {
   auto dst_sub = make_subview(dst_dev, mask_dev, "copy_dst");
 
   CsrSetAlgebraContext ctx;
-  copy_subview_device(dst_sub, src_sub, ctx);
+  copy_subview_device(dst_sub, src_sub, &ctx);
 
   auto copied = build_host_field_from_device(dst_dev);
 
@@ -351,7 +351,7 @@ TEST(CsrFieldSubViewTest, StencilOnSubregionHandlesDifferentLayouts) {
 
   CsrSetAlgebraContext ctx;
   apply_stencil_on_subview_device(dst_sub, src_sub,
-                                  FivePointAverage{}, ctx);
+                                  FivePointAverage{}, &ctx);
 
   auto result = build_host_field_from_device(dst_dev);
   double value = 0.0;
@@ -463,7 +463,7 @@ TEST(CsrFieldSubViewTest, RestrictSubViewSubsetMatchesAverages) {
       build_device_field_from_host(fine_field_host);
 
   auto coarse_sub = make_subview(coarse_field_dev, coarse_geom, "coarse_subset");
-  restrict_field_subview_device(coarse_sub, fine_field_dev, ctx);
+  restrict_field_subview_device(coarse_sub, fine_field_dev, &ctx);
   EXPECT_TRUE(coarse_sub.has_subset());
 
   auto restricted = build_host_field_from_device(coarse_field_dev);
@@ -585,7 +585,7 @@ TEST(CsrFieldSubViewTest, ProlongSubViewSubsetCopiesCoarseValues) {
       build_device_field_from_host(fine_field_host);
 
   auto fine_sub = make_subview(fine_field_dev, fine_geom, "fine_subset");
-  prolong_field_subview_device(fine_sub, coarse_field_dev, ctx);
+  prolong_field_subview_device(fine_sub, coarse_field_dev, &ctx);
   EXPECT_TRUE(fine_sub.has_subset());
 
   auto prolonged = build_host_field_from_device(fine_field_dev);

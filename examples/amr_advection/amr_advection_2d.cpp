@@ -326,7 +326,7 @@ void copy_overlap(Field2DDevice<double>& fine_dst,
   }
   auto sub_dst = make_subview(fine_dst, overlap, "overlap_dst");
   auto sub_src = make_subview(fine_src, overlap, "overlap_src");
-  copy_subview_device(sub_dst, sub_src, ctx);
+  copy_subview_device(sub_dst, sub_src, &ctx);
 }
 
 void write_vtk_step(int step, const MultilevelGeoDevice& geo,
@@ -455,7 +455,7 @@ void run_demo(bool write_vtk) {
       auto t_fine0 = Clock::now();
       auto sub_src = make_subview(u1, geo.levels[1], "fine_src");
       auto sub_dst = make_subview(u1_tmp, geo.levels[1], "fine_dst");
-      apply_stencil_on_subview_device(sub_dst, sub_src, fine_stencil, ctx);
+      apply_stencil_on_subview_device(sub_dst, sub_src, fine_stencil, &ctx);
       auto t_fine1 = Clock::now();
       t_stencil_fine += std::chrono::duration<double>(t_fine1 - t_fine0).count();
     }
