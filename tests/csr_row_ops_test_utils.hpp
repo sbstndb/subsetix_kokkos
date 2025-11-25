@@ -261,8 +261,9 @@ inline void run_row_union_case(const RowOpCase& c,
       Kokkos::RangePolicy<ExecSpace>(0, 1),
       KOKKOS_LAMBDA(const int) {
         const std::size_t count =
-            detail::row_union_count(intervals_a, 0, nA,
-                                    intervals_b, 0, nB);
+            detail::row_union_impl<true>(intervals_a, 0, nA,
+                                         intervals_b, 0, nB,
+                                         detail::NullIntervalView{}, 0);
         d_count() = count;
       });
 
@@ -280,7 +281,7 @@ inline void run_row_union_case(const RowOpCase& c,
       "subsetix_csr_row_union_fill_kernel",
       Kokkos::RangePolicy<ExecSpace>(0, 1),
       KOKKOS_LAMBDA(const int) {
-        detail::row_union_fill(
+        detail::row_union_impl<false>(
             intervals_a, 0, nA,
             intervals_b, 0, nB,
             intervals_out, 0);
@@ -336,8 +337,9 @@ inline void run_row_intersection_case(const RowOpCase& c,
       Kokkos::RangePolicy<ExecSpace>(0, 1),
       KOKKOS_LAMBDA(const int) {
         const std::size_t count =
-            detail::row_intersection_count(intervals_a, 0, nA,
-                                           intervals_b, 0, nB);
+            detail::row_intersection_impl<true>(intervals_a, 0, nA,
+                                                intervals_b, 0, nB,
+                                                detail::NullIntervalView{}, 0);
         d_count() = count;
       });
 
@@ -355,7 +357,7 @@ inline void run_row_intersection_case(const RowOpCase& c,
       "subsetix_csr_row_intersection_fill_kernel",
       Kokkos::RangePolicy<ExecSpace>(0, 1),
       KOKKOS_LAMBDA(const int) {
-        detail::row_intersection_fill(
+        detail::row_intersection_impl<false>(
             intervals_a, 0, nA,
             intervals_b, 0, nB,
             intervals_out, 0);
@@ -412,8 +414,9 @@ inline void run_row_difference_case(const RowOpCase& c,
       Kokkos::RangePolicy<ExecSpace>(0, 1),
       KOKKOS_LAMBDA(const int) {
         const std::size_t count =
-            detail::row_difference_count(intervals_a, 0, nA,
-                                         intervals_b, 0, nB);
+            detail::row_difference_impl<true>(intervals_a, 0, nA,
+                                              intervals_b, 0, nB,
+                                              detail::NullIntervalView{}, 0);
         d_count() = count;
       });
 
@@ -431,7 +434,7 @@ inline void run_row_difference_case(const RowOpCase& c,
       "subsetix_csr_row_difference_fill_kernel",
       Kokkos::RangePolicy<ExecSpace>(0, 1),
       KOKKOS_LAMBDA(const int) {
-        detail::row_difference_fill(
+        detail::row_difference_impl<false>(
             intervals_a, 0, nA,
             intervals_b, 0, nB,
             intervals_out, 0);

@@ -323,129 +323,15 @@ std::size_t row_symmetric_difference_impl(const IntervalViewIn& intervals_a,
 }
 
 // ============================================================================
-// Backward-compatible wrappers: row_*_count and row_*_fill
+// Dummy view for count-only operations
 // ============================================================================
 
-// Dummy view type for count-only operations
 struct NullIntervalView {
   KOKKOS_INLINE_FUNCTION Interval& operator()(std::size_t) const {
-    // This should never be called in CountOnly=true mode
     static Interval dummy{0, 0};
     return dummy;
   }
 };
-
-template <class IntervalView>
-KOKKOS_INLINE_FUNCTION
-std::size_t row_union_count(const IntervalView& intervals_a,
-                            std::size_t begin_a,
-                            std::size_t end_a,
-                            const IntervalView& intervals_b,
-                            std::size_t begin_b,
-                            std::size_t end_b) {
-  return row_union_impl<true>(intervals_a, begin_a, end_a,
-                              intervals_b, begin_b, end_b,
-                              NullIntervalView{}, 0);
-}
-
-template <class IntervalViewIn, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_union_fill(const IntervalViewIn& intervals_a,
-                    std::size_t begin_a,
-                    std::size_t end_a,
-                    const IntervalViewIn& intervals_b,
-                    std::size_t begin_b,
-                    std::size_t end_b,
-                    const IntervalViewOut& intervals_out,
-                    std::size_t out_offset) {
-  row_union_impl<false>(intervals_a, begin_a, end_a,
-                        intervals_b, begin_b, end_b,
-                        intervals_out, out_offset);
-}
-
-template <class IntervalView>
-KOKKOS_INLINE_FUNCTION
-std::size_t row_intersection_count(const IntervalView& intervals_a,
-                                   std::size_t begin_a,
-                                   std::size_t end_a,
-                                   const IntervalView& intervals_b,
-                                   std::size_t begin_b,
-                                   std::size_t end_b) {
-  return row_intersection_impl<true>(intervals_a, begin_a, end_a,
-                                     intervals_b, begin_b, end_b,
-                                     NullIntervalView{}, 0);
-}
-
-template <class IntervalViewIn, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_intersection_fill(const IntervalViewIn& intervals_a,
-                           std::size_t begin_a,
-                           std::size_t end_a,
-                           const IntervalViewIn& intervals_b,
-                           std::size_t begin_b,
-                           std::size_t end_b,
-                           const IntervalViewOut& intervals_out,
-                           std::size_t out_offset) {
-  row_intersection_impl<false>(intervals_a, begin_a, end_a,
-                               intervals_b, begin_b, end_b,
-                               intervals_out, out_offset);
-}
-
-template <class IntervalView>
-KOKKOS_INLINE_FUNCTION
-std::size_t row_difference_count(const IntervalView& intervals_a,
-                                 std::size_t begin_a,
-                                 std::size_t end_a,
-                                 const IntervalView& intervals_b,
-                                 std::size_t begin_b,
-                                 std::size_t end_b) {
-  return row_difference_impl<true>(intervals_a, begin_a, end_a,
-                                   intervals_b, begin_b, end_b,
-                                   NullIntervalView{}, 0);
-}
-
-template <class IntervalViewIn, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_difference_fill(const IntervalViewIn& intervals_a,
-                         std::size_t begin_a,
-                         std::size_t end_a,
-                         const IntervalViewIn& intervals_b,
-                         std::size_t begin_b,
-                         std::size_t end_b,
-                         const IntervalViewOut& intervals_out,
-                         std::size_t out_offset) {
-  row_difference_impl<false>(intervals_a, begin_a, end_a,
-                             intervals_b, begin_b, end_b,
-                             intervals_out, out_offset);
-}
-
-template <class IntervalView>
-KOKKOS_INLINE_FUNCTION
-std::size_t row_symmetric_difference_count(const IntervalView& intervals_a,
-                                           std::size_t begin_a,
-                                           std::size_t end_a,
-                                           const IntervalView& intervals_b,
-                                           std::size_t begin_b,
-                                           std::size_t end_b) {
-  return row_symmetric_difference_impl<true>(intervals_a, begin_a, end_a,
-                                             intervals_b, begin_b, end_b,
-                                             NullIntervalView{}, 0);
-}
-
-template <class IntervalViewIn, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_symmetric_difference_fill(const IntervalViewIn& intervals_a,
-                                   std::size_t begin_a,
-                                   std::size_t end_a,
-                                   const IntervalViewIn& intervals_b,
-                                   std::size_t begin_b,
-                                   std::size_t end_b,
-                                   const IntervalViewOut& intervals_out,
-                                   std::size_t out_offset) {
-  row_symmetric_difference_impl<false>(intervals_a, begin_a, end_a,
-                                       intervals_b, begin_b, end_b,
-                                       intervals_out, out_offset);
-}
 
 /**
  * @brief Build the union of row keys between two IntervalSet2DDevice sets.
@@ -965,33 +851,13 @@ set_union_device(const IntervalSet2DDevice& A,
       "subsetix_csr_union_count_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const int ia = row_index_a(i);
-        const int ib = row_index_b(i);
-
-        std::size_t begin_a = 0;
-        std::size_t end_a = 0;
-        std::size_t begin_b = 0;
-        std::size_t end_b = 0;
-
-        if (ia >= 0) {
-          const std::size_t row_a = static_cast<std::size_t>(ia);
-          begin_a = row_ptr_a(row_a);
-          end_a = row_ptr_a(row_a + 1);
-        }
-        if (ib >= 0) {
-          const std::size_t row_b = static_cast<std::size_t>(ib);
-          begin_b = row_ptr_b(row_b);
-          end_b = row_ptr_b(row_b + 1);
-        }
-
-        if (begin_a == end_a && begin_b == end_b) {
-          row_counts(i) = 0;
-          return;
-        }
-
-        row_counts(i) = detail::row_union_count(
-            intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+        const auto r = detail::extract_row_ranges(
+            row_index_a(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        row_counts(i) = r.both_empty() ? 0
+            : detail::row_union_impl<true>(
+                intervals_a, r.begin_a, r.end_a,
+                intervals_b, r.begin_b, r.end_b,
+                detail::NullIntervalView{}, 0);
       });
 
   ExecSpace().fence();
@@ -1023,33 +889,14 @@ set_union_device(const IntervalSet2DDevice& A,
       "subsetix_csr_union_fill_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const int ia = row_index_a(i);
-        const int ib = row_index_b(i);
-
-        std::size_t begin_a = 0;
-        std::size_t end_a = 0;
-        std::size_t begin_b = 0;
-        std::size_t end_b = 0;
-
-        if (ia >= 0) {
-          const std::size_t row_a = static_cast<std::size_t>(ia);
-          begin_a = row_ptr_a(row_a);
-          end_a = row_ptr_a(row_a + 1);
+        const auto r = detail::extract_row_ranges(
+            row_index_a(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        if (!r.both_empty()) {
+          detail::row_union_impl<false>(
+              intervals_a, r.begin_a, r.end_a,
+              intervals_b, r.begin_b, r.end_b,
+              intervals_out, row_ptr_out(i));
         }
-        if (ib >= 0) {
-          const std::size_t row_b = static_cast<std::size_t>(ib);
-          begin_b = row_ptr_b(row_b);
-          end_b = row_ptr_b(row_b + 1);
-        }
-
-        if (begin_a == end_a && begin_b == end_b) {
-          return;
-        }
-
-        const std::size_t out_offset = row_ptr_out(i);
-        detail::row_union_fill(intervals_a, begin_a, end_a,
-                               intervals_b, begin_b, end_b,
-                               intervals_out, out_offset);
       });
 
   ExecSpace().fence();
@@ -1107,31 +954,14 @@ set_intersection_device(const IntervalSet2DDevice& A,
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
         row_keys_out(i) = row_keys_out_tmp(i);
-
-        const int ia = row_index_a(i);
-        const int ib = row_index_b(i);
-
-        if (ia < 0 || ib < 0) {
-          row_counts(i) = 0;
-          return;
-        }
-
-        const std::size_t row_a = static_cast<std::size_t>(ia);
-        const std::size_t row_b = static_cast<std::size_t>(ib);
-
-        const std::size_t begin_a = row_ptr_a(row_a);
-        const std::size_t end_a = row_ptr_a(row_a + 1);
-        const std::size_t begin_b = row_ptr_b(row_b);
-        const std::size_t end_b = row_ptr_b(row_b + 1);
-
-        if (begin_a == end_a || begin_b == end_b) {
-          row_counts(i) = 0;
-          return;
-        }
-
-        row_counts(i) = detail::row_intersection_count(
-            intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+        const auto r = detail::extract_row_ranges(
+            row_index_a(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        // Intersection requires both rows non-empty
+        row_counts(i) = (r.a_empty() || r.b_empty()) ? 0
+            : detail::row_intersection_impl<true>(
+                intervals_a, r.begin_a, r.end_a,
+                intervals_b, r.begin_b, r.end_b,
+                detail::NullIntervalView{}, 0);
       });
 
   ExecSpace().fence();
@@ -1163,26 +993,14 @@ set_intersection_device(const IntervalSet2DDevice& A,
       "subsetix_csr_intersection_fill_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const int ia = row_index_a(i);
-        const int ib = row_index_b(i);
-
-        if (ia < 0 || ib < 0) {
-          return;
+        const auto r = detail::extract_row_ranges(
+            row_index_a(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        if (!r.a_empty() && !r.b_empty()) {
+          detail::row_intersection_impl<false>(
+              intervals_a, r.begin_a, r.end_a,
+              intervals_b, r.begin_b, r.end_b,
+              intervals_out, row_ptr_out(i));
         }
-
-        const std::size_t row_a = static_cast<std::size_t>(ia);
-        const std::size_t row_b = static_cast<std::size_t>(ib);
-
-        const std::size_t begin_a = row_ptr_a(row_a);
-        const std::size_t end_a = row_ptr_a(row_a + 1);
-        const std::size_t begin_b = row_ptr_b(row_b);
-        const std::size_t end_b = row_ptr_b(row_b + 1);
-
-        const std::size_t out_offset = row_ptr_out(i);
-        detail::row_intersection_fill(
-            intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b,
-            intervals_out, out_offset);
       });
 
   ExecSpace().fence();
@@ -1246,28 +1064,14 @@ set_difference_device(const IntervalSet2DDevice& A,
       "subsetix_csr_difference_count_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const std::size_t row_a = i;
-        const std::size_t begin_a = row_ptr_a(row_a);
-        const std::size_t end_a = row_ptr_a(row_a + 1);
-
-        if (begin_a == end_a) {
-          row_counts(i) = 0;
-          return;
-        }
-
-        const int ib = row_index_b(i);
-        std::size_t begin_b = 0;
-        std::size_t end_b = 0;
-
-        if (ib >= 0) {
-          const std::size_t row_b = static_cast<std::size_t>(ib);
-          begin_b = row_ptr_b(row_b);
-          end_b = row_ptr_b(row_b + 1);
-        }
-
-        row_counts(i) = detail::row_difference_count(
-            intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+        const auto r = detail::extract_row_ranges(
+            static_cast<int>(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        // Difference: if A row is empty, result is empty
+        row_counts(i) = r.a_empty() ? 0
+            : detail::row_difference_impl<true>(
+                intervals_a, r.begin_a, r.end_a,
+                intervals_b, r.begin_b, r.end_b,
+                detail::NullIntervalView{}, 0);
       });
 
   ExecSpace().fence();
@@ -1299,29 +1103,14 @@ set_difference_device(const IntervalSet2DDevice& A,
       "subsetix_csr_difference_fill_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const std::size_t row_a = i;
-        const std::size_t begin_a = row_ptr_a(row_a);
-        const std::size_t end_a = row_ptr_a(row_a + 1);
-
-        if (begin_a == end_a) {
-          return;
+        const auto r = detail::extract_row_ranges(
+            static_cast<int>(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        if (!r.a_empty()) {
+          detail::row_difference_impl<false>(
+              intervals_a, r.begin_a, r.end_a,
+              intervals_b, r.begin_b, r.end_b,
+              intervals_out, row_ptr_out(i));
         }
-
-        const int ib = row_index_b(i);
-        std::size_t begin_b = 0;
-        std::size_t end_b = 0;
-
-        if (ib >= 0) {
-          const std::size_t row_b = static_cast<std::size_t>(ib);
-          begin_b = row_ptr_b(row_b);
-          end_b = row_ptr_b(row_b + 1);
-        }
-
-        const std::size_t out_offset = row_ptr_out(i);
-        detail::row_difference_fill(
-            intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b,
-            intervals_out, out_offset);
       });
 
   ExecSpace().fence();
@@ -1388,33 +1177,13 @@ set_symmetric_difference_device(const IntervalSet2DDevice& A,
       "subsetix_csr_xor_count_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const int ia = row_index_a(i);
-        const int ib = row_index_b(i);
-
-        std::size_t begin_a = 0;
-        std::size_t end_a = 0;
-        std::size_t begin_b = 0;
-        std::size_t end_b = 0;
-
-        if (ia >= 0) {
-          const std::size_t row_a = static_cast<std::size_t>(ia);
-          begin_a = row_ptr_a(row_a);
-          end_a = row_ptr_a(row_a + 1);
-        }
-        if (ib >= 0) {
-          const std::size_t row_b = static_cast<std::size_t>(ib);
-          begin_b = row_ptr_b(row_b);
-          end_b = row_ptr_b(row_b + 1);
-        }
-
-        if (begin_a == end_a && begin_b == end_b) {
-          row_counts(i) = 0;
-          return;
-        }
-
-        row_counts(i) = detail::row_symmetric_difference_count(
-            intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+        const auto r = detail::extract_row_ranges(
+            row_index_a(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        row_counts(i) = r.both_empty() ? 0
+            : detail::row_symmetric_difference_impl<true>(
+                intervals_a, r.begin_a, r.end_a,
+                intervals_b, r.begin_b, r.end_b,
+                detail::NullIntervalView{}, 0);
       });
 
   ExecSpace().fence();
@@ -1446,34 +1215,14 @@ set_symmetric_difference_device(const IntervalSet2DDevice& A,
       "subsetix_csr_xor_fill_prealloc",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const int ia = row_index_a(i);
-        const int ib = row_index_b(i);
-
-        std::size_t begin_a = 0;
-        std::size_t end_a = 0;
-        std::size_t begin_b = 0;
-        std::size_t end_b = 0;
-
-        if (ia >= 0) {
-          const std::size_t row_a = static_cast<std::size_t>(ia);
-          begin_a = row_ptr_a(row_a);
-          end_a = row_ptr_a(row_a + 1);
+        const auto r = detail::extract_row_ranges(
+            row_index_a(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        if (!r.both_empty()) {
+          detail::row_symmetric_difference_impl<false>(
+              intervals_a, r.begin_a, r.end_a,
+              intervals_b, r.begin_b, r.end_b,
+              intervals_out, row_ptr_out(i));
         }
-        if (ib >= 0) {
-          const std::size_t row_b = static_cast<std::size_t>(ib);
-          begin_b = row_ptr_b(row_b);
-          end_b = row_ptr_b(row_b + 1);
-        }
-
-        if (begin_a == end_a && begin_b == end_b) {
-          return;
-        }
-
-        const std::size_t out_offset = row_ptr_out(i);
-        detail::row_symmetric_difference_fill(
-            intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b,
-            intervals_out, out_offset);
       });
 
   ExecSpace().fence();

@@ -515,9 +515,10 @@ void bench_row_count(benchmark::State& state, Coord extent) {
             row_counts(i) = 0;
             return;
           }
-          row_counts(i) = detail::row_intersection_count(
+          row_counts(i) = detail::row_intersection_impl<true>(
               intervals_a, begin_a, end_a,
-              intervals_b, begin_b, end_b);
+              intervals_b, begin_b, end_b,
+              detail::NullIntervalView{}, 0);
         });
   }, "ns_per_row");
 }
@@ -548,25 +549,13 @@ void bench_scan(benchmark::State& state, Coord extent) {
       "subsetix_csr_intersection_bench_prep_count",
       Kokkos::RangePolicy<ExecSpace>(0, rows),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const int ia = row_index_a(i);
-        const int ib = row_index_b(i);
-        if (ia < 0 || ib < 0) {
-          row_counts(i) = 0;
-          return;
-        }
-        const std::size_t row_a = static_cast<std::size_t>(ia);
-        const std::size_t row_b = static_cast<std::size_t>(ib);
-        const std::size_t begin_a = row_ptr_a(row_a);
-        const std::size_t end_a = row_ptr_a(row_a + 1);
-        const std::size_t begin_b = row_ptr_b(row_b);
-        const std::size_t end_b = row_ptr_b(row_b + 1);
-        if (begin_a == end_a || begin_b == end_b) {
-          row_counts(i) = 0;
-          return;
-        }
-        row_counts(i) = detail::row_intersection_count(
-            intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+        const auto r = detail::extract_row_ranges(
+            row_index_a(i), row_index_b(i), row_ptr_a, row_ptr_b);
+        row_counts(i) = (r.a_empty() || r.b_empty()) ? 0
+            : detail::row_intersection_impl<true>(
+                intervals_a, r.begin_a, r.end_a,
+                intervals_b, r.begin_b, r.end_b,
+                detail::NullIntervalView{}, 0);
       });
   Kokkos::fence();
 
@@ -638,9 +627,10 @@ void bench_fill(benchmark::State& state, Coord extent) {
           row_counts(i) = 0;
           return;
         }
-        row_counts(i) = detail::row_intersection_count(
+        row_counts(i) = detail::row_intersection_impl<true>(
             intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+            intervals_b, begin_b, end_b,
+            detail::NullIntervalView{}, 0);
       });
   Kokkos::fence();
 
@@ -700,7 +690,7 @@ void bench_fill(benchmark::State& state, Coord extent) {
             return;
           }
           const std::size_t out_offset = row_ptr_out(i);
-          detail::row_intersection_fill(
+          detail::row_intersection_impl<false>(
               intervals_a, begin_a, end_a,
               intervals_b, begin_b, end_b,
               intervals_out, out_offset);
@@ -791,9 +781,10 @@ void bench_union_row_count(benchmark::State& state, Coord extent) {
             return;
           }
 
-          row_counts(i) = detail::row_union_count(
+          row_counts(i) = detail::row_union_impl<true>(
               intervals_a, begin_a, end_a,
-              intervals_b, begin_b, end_b);
+              intervals_b, begin_b, end_b,
+              detail::NullIntervalView{}, 0);
         });
   }, "ns_per_row");
 }
@@ -848,9 +839,10 @@ void bench_union_scan(benchmark::State& state, Coord extent) {
           return;
         }
 
-        row_counts(i) = detail::row_union_count(
+        row_counts(i) = detail::row_union_impl<true>(
             intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+            intervals_b, begin_b, end_b,
+            detail::NullIntervalView{}, 0);
       });
   Kokkos::fence();
 
@@ -930,9 +922,10 @@ void bench_union_fill(benchmark::State& state, Coord extent) {
           return;
         }
 
-        row_counts(i) = detail::row_union_count(
+        row_counts(i) = detail::row_union_impl<true>(
             intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+            intervals_b, begin_b, end_b,
+            detail::NullIntervalView{}, 0);
       });
   Kokkos::fence();
 
@@ -1001,7 +994,7 @@ void bench_union_fill(benchmark::State& state, Coord extent) {
           }
 
           const std::size_t out_offset = row_ptr_out(i);
-          detail::row_union_fill(
+          detail::row_union_impl<false>(
               intervals_a, begin_a, end_a,
               intervals_b, begin_b, end_b,
               intervals_out, out_offset);
@@ -1085,9 +1078,10 @@ void bench_difference_row_count(benchmark::State& state, Coord extent) {
             end_b = row_ptr_b(row_b + 1);
           }
 
-          row_counts(i) = detail::row_difference_count(
+          row_counts(i) = detail::row_difference_impl<true>(
               intervals_a, begin_a, end_a,
-              intervals_b, begin_b, end_b);
+              intervals_b, begin_b, end_b,
+              detail::NullIntervalView{}, 0);
         });
   }, "ns_per_row");
 }
@@ -1136,9 +1130,10 @@ void bench_difference_scan(benchmark::State& state, Coord extent) {
           end_b = row_ptr_b(row_b + 1);
         }
 
-        row_counts(i) = detail::row_difference_count(
+        row_counts(i) = detail::row_difference_impl<true>(
             intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+            intervals_b, begin_b, end_b,
+            detail::NullIntervalView{}, 0);
       });
   Kokkos::fence();
 
@@ -1212,9 +1207,10 @@ void bench_difference_fill(benchmark::State& state, Coord extent) {
           end_b = row_ptr_b(row_b + 1);
         }
 
-        row_counts(i) = detail::row_difference_count(
+        row_counts(i) = detail::row_difference_impl<true>(
             intervals_a, begin_a, end_a,
-            intervals_b, begin_b, end_b);
+            intervals_b, begin_b, end_b,
+            detail::NullIntervalView{}, 0);
       });
   Kokkos::fence();
 
@@ -1278,7 +1274,7 @@ void bench_difference_fill(benchmark::State& state, Coord extent) {
           }
 
           const std::size_t out_offset = row_ptr_out(i);
-          detail::row_difference_fill(
+          detail::row_difference_impl<false>(
               intervals_a, begin_a, end_a,
               intervals_b, begin_b, end_b,
               intervals_out, out_offset);

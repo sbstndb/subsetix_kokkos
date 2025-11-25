@@ -164,9 +164,10 @@ inline void build_interval_subset_device(
         const std::size_t geom_begin = geom_row_ptr(geom_row);
         const std::size_t geom_end = geom_row_ptr(geom_row + 1);
 
-        row_counts(row_idx) = detail::row_intersection_count(
-            mask_intervals, mask_begin, mask_end, geom_intervals, geom_begin,
-            geom_end);
+        row_counts(row_idx) = detail::row_intersection_impl<true>(
+            mask_intervals, mask_begin, mask_end,
+            geom_intervals, geom_begin, geom_end,
+            detail::NullIntervalView{}, 0);
       });
 
   ExecSpace().fence();

@@ -285,33 +285,13 @@ project_level_down_device(const IntervalSet2DDevice& fine,
       "subsetix_csr_project_count",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_coarse),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const int ia = row_index_first(i);
-        const int ib = row_index_second(i);
-
-        std::size_t begin_a = 0;
-        std::size_t end_a = 0;
-        std::size_t begin_b = 0;
-        std::size_t end_b = 0;
-
-        if (ia >= 0) {
-          const std::size_t row_a = static_cast<std::size_t>(ia);
-          begin_a = row_ptr_fine(row_a);
-          end_a = row_ptr_fine(row_a + 1);
-        }
-        if (ib >= 0) {
-          const std::size_t row_b = static_cast<std::size_t>(ib);
-          begin_b = row_ptr_fine(row_b);
-          end_b = row_ptr_fine(row_b + 1);
-        }
-
-        if (begin_a == end_a && begin_b == end_b) {
-          row_counts(i) = 0;
-          return;
-        }
-
-        row_counts(i) = detail::row_union_count(
-            coarsen_view, begin_a, end_a,
-            coarsen_view, begin_b, end_b);
+        const auto r = detail::extract_row_ranges(
+            row_index_first(i), row_index_second(i), row_ptr_fine, row_ptr_fine);
+        row_counts(i) = r.both_empty() ? 0
+            : detail::row_union_impl<true>(
+                coarsen_view, r.begin_a, r.end_a,
+                coarsen_view, r.begin_b, r.end_b,
+                detail::NullIntervalView{}, 0);
       });
 
   ExecSpace().fence();
@@ -348,33 +328,14 @@ project_level_down_device(const IntervalSet2DDevice& fine,
       "subsetix_csr_project_fill",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_coarse),
       KOKKOS_LAMBDA(const std::size_t i) {
-        const int ia = row_index_first(i);
-        const int ib = row_index_second(i);
-
-        std::size_t begin_a = 0;
-        std::size_t end_a = 0;
-        std::size_t begin_b = 0;
-        std::size_t end_b = 0;
-
-        if (ia >= 0) {
-          const std::size_t row_a = static_cast<std::size_t>(ia);
-          begin_a = row_ptr_fine(row_a);
-          end_a = row_ptr_fine(row_a + 1);
+        const auto r = detail::extract_row_ranges(
+            row_index_first(i), row_index_second(i), row_ptr_fine, row_ptr_fine);
+        if (!r.both_empty()) {
+          detail::row_union_impl<false>(
+              coarsen_view, r.begin_a, r.end_a,
+              coarsen_view, r.begin_b, r.end_b,
+              intervals_out, row_ptr_out(i));
         }
-        if (ib >= 0) {
-          const std::size_t row_b = static_cast<std::size_t>(ib);
-          begin_b = row_ptr_fine(row_b);
-          end_b = row_ptr_fine(row_b + 1);
-        }
-
-        if (begin_a == end_a && begin_b == end_b) {
-          return;
-        }
-
-        const std::size_t out_offset = row_ptr_out(i);
-        detail::row_union_fill(coarsen_view, begin_a, end_a,
-                               coarsen_view, begin_b, end_b,
-                               intervals_out, out_offset);
       });
 
   ExecSpace().fence();
