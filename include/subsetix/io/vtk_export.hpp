@@ -45,78 +45,93 @@ inline T to_big_endian(T value) {
 #endif
 }
 
-// Generic CSR iteration: calls fn(x, y, interval_index, cell_in_interval)
-template <typename RowKeysT, typename RowPtrT, typename IntervalsT, typename Fn>
-inline void for_each_cell(const RowKeysT& row_keys, const RowPtrT& row_ptr,
-                          const IntervalsT& intervals, std::size_t num_rows, Fn&& fn) {
-  for (std::size_t i = 0; i < num_rows; ++i) {
-    const Coord y = row_keys[i].y;
-    const std::size_t begin = row_ptr[i], end = row_ptr[i + 1];
-    for (std::size_t k = begin; k < end; ++k) {
-      const auto& iv = intervals[k];
-      for (Coord x = iv.begin; x < iv.end; ++x)
-        fn(x, y, k, static_cast<std::size_t>(x - iv.begin));
+// Type traits for CSR data access
+template <typename T> struct CsrTraits;
+
+template <> struct CsrTraits<IntervalSet2DHost> {
+  static std::size_t num_rows(const IntervalSet2DHost& h) { return h.row_keys.size(); }
+  static Coord row_y(const IntervalSet2DHost& h, std::size_t i) { return h.row_keys[i].y; }
+  static std::size_t row_begin(const IntervalSet2DHost& h, std::size_t i) { return h.row_ptr[i]; }
+  static std::size_t row_end(const IntervalSet2DHost& h, std::size_t i) { return h.row_ptr[i + 1]; }
+  static Coord iv_begin(const IntervalSet2DHost& h, std::size_t k) { return h.intervals[k].begin; }
+  static Coord iv_end(const IntervalSet2DHost& h, std::size_t k) { return h.intervals[k].end; }
+  static bool valid(const IntervalSet2DHost& h) { return h.row_keys.size() > 0 && h.row_ptr.size() == h.row_keys.size() + 1; }
+};
+
+template <typename T> struct CsrTraits<IntervalField2DHost<T>> {
+  static std::size_t num_rows(const IntervalField2DHost<T>& f) { return f.row_keys.size(); }
+  static Coord row_y(const IntervalField2DHost<T>& f, std::size_t i) { return f.row_keys[i].y; }
+  static std::size_t row_begin(const IntervalField2DHost<T>& f, std::size_t i) { return f.row_ptr[i]; }
+  static std::size_t row_end(const IntervalField2DHost<T>& f, std::size_t i) { return f.row_ptr[i + 1]; }
+  static Coord iv_begin(const IntervalField2DHost<T>& f, std::size_t k) { return f.intervals[k].begin; }
+  static Coord iv_end(const IntervalField2DHost<T>& f, std::size_t k) { return f.intervals[k].end; }
+  static std::size_t value_offset(const IntervalField2DHost<T>& f, std::size_t k) { return f.intervals[k].value_offset; }
+  static float get_value(const IntervalField2DHost<T>& f, std::size_t idx) {
+    return idx < f.values.size() ? static_cast<float>(f.values[idx]) : 0.0f;
+  }
+  static bool valid(const IntervalField2DHost<T>& f) { return f.row_keys.size() > 0 && f.row_ptr.size() == f.row_keys.size() + 1; }
+};
+
+template <typename MemSpace> struct CsrTraits<csr::IntervalSet2DView<MemSpace>> {
+  using View = csr::IntervalSet2DView<MemSpace>;
+  static std::size_t num_rows(const View& v) { return v.num_rows; }
+  static Coord row_y(const View& v, std::size_t i) { return v.row_keys(i).y; }
+  static std::size_t row_begin(const View& v, std::size_t i) { return v.row_ptr(i); }
+  static std::size_t row_end(const View& v, std::size_t i) { return v.row_ptr(i + 1); }
+  static Coord iv_begin(const View& v, std::size_t k) { return v.intervals(k).begin; }
+  static Coord iv_end(const View& v, std::size_t k) { return v.intervals(k).end; }
+  static bool valid(const View& v) { return v.num_rows > 0; }
+};
+
+template <typename T, typename MemSpace> struct CsrTraits<csr::Field2D<T, MemSpace>> {
+  using Field = csr::Field2D<T, MemSpace>;
+  static std::size_t num_rows(const Field& f) { return f.geometry.num_rows; }
+  static Coord row_y(const Field& f, std::size_t i) { return f.geometry.row_keys(i).y; }
+  static std::size_t row_begin(const Field& f, std::size_t i) { return f.geometry.row_ptr(i); }
+  static std::size_t row_end(const Field& f, std::size_t i) { return f.geometry.row_ptr(i + 1); }
+  static Coord iv_begin(const Field& f, std::size_t k) { return f.geometry.intervals(k).begin; }
+  static Coord iv_end(const Field& f, std::size_t k) { return f.geometry.intervals(k).end; }
+  static std::size_t value_offset(const Field& f, std::size_t k) { return f.geometry.cell_offsets(k); }
+  static float get_value(const Field& f, std::size_t idx) {
+    return idx < f.values.extent(0) ? static_cast<float>(f.values(idx)) : 0.0f;
+  }
+  static bool valid(const Field& f) { return f.geometry.num_rows > 0; }
+};
+
+// Unified for_each_cell using traits
+template <typename CsrT, typename Fn>
+inline void for_each_cell(const CsrT& data, Fn&& fn) {
+  using Tr = CsrTraits<CsrT>;
+  for (std::size_t i = 0; i < Tr::num_rows(data); ++i) {
+    const Coord y = Tr::row_y(data, i);
+    for (std::size_t k = Tr::row_begin(data, i); k < Tr::row_end(data, i); ++k) {
+      const Coord x0 = Tr::iv_begin(data, k), x1 = Tr::iv_end(data, k);
+      for (Coord x = x0; x < x1; ++x)
+        fn(x, y, k, static_cast<std::size_t>(x - x0));
     }
   }
 }
 
-template <typename MemSpace, typename Fn>
-inline void for_each_cell(const csr::IntervalSet2DView<MemSpace>& view, Fn&& fn) {
-  for (std::size_t i = 0; i < view.num_rows; ++i) {
-    const Coord y = view.row_keys(i).y;
-    const std::size_t begin = view.row_ptr(i), end = view.row_ptr(i + 1);
-    for (std::size_t k = begin; k < end; ++k) {
-      const auto& iv = view.intervals(k);
-      for (Coord x = iv.begin; x < iv.end; ++x)
-        fn(x, y, k, static_cast<std::size_t>(x - iv.begin));
-    }
-  }
-}
-
-template <typename T, typename MemSpace, typename Fn>
-inline void for_each_cell(const csr::Field2D<T, MemSpace>& field, Fn&& fn) {
-  for (std::size_t i = 0; i < field.geometry.num_rows; ++i) {
-    const Coord y = field.geometry.row_keys(i).y;
-    const std::size_t begin = field.geometry.row_ptr(i), end = field.geometry.row_ptr(i + 1);
-    for (std::size_t k = begin; k < end; ++k) {
-      const auto& iv = field.geometry.intervals(k);
-      for (Coord x = iv.begin; x < iv.end; ++x)
-        fn(x, y, k, static_cast<std::size_t>(x - iv.begin));
-    }
-  }
-}
-
-template <typename RowPtrT, typename IntervalsT>
-inline std::size_t count_cells(const RowPtrT& row_ptr, const IntervalsT& intervals, std::size_t num_rows) {
+// Unified count_cells using traits
+template <typename CsrT>
+inline std::size_t count_cells(const CsrT& data) {
+  using Tr = CsrTraits<CsrT>;
   std::size_t count = 0;
-  for (std::size_t i = 0; i < num_rows; ++i) {
-    for (std::size_t k = row_ptr[i]; k < row_ptr[i + 1]; ++k) {
-      const Coord len = intervals[k].end - intervals[k].begin;
+  for (std::size_t i = 0; i < Tr::num_rows(data); ++i) {
+    for (std::size_t k = Tr::row_begin(data, i); k < Tr::row_end(data, i); ++k) {
+      const Coord len = Tr::iv_end(data, k) - Tr::iv_begin(data, k);
       if (len > 0) count += static_cast<std::size_t>(len);
     }
   }
   return count;
 }
 
-template <typename MemSpace>
-inline std::size_t count_cells(const csr::IntervalSet2DView<MemSpace>& view) {
-  std::size_t count = 0;
-  for (std::size_t i = 0; i < view.num_rows; ++i) {
-    for (std::size_t k = view.row_ptr(i); k < view.row_ptr(i + 1); ++k) {
-      const Coord len = view.intervals(k).end - view.intervals(k).begin;
-      if (len > 0) count += static_cast<std::size_t>(len);
-    }
-  }
-  return count;
-}
-
-// Buffered VTK writer - minimizes syscalls with 64KB buffer
+// Buffered binary VTK writer - minimizes syscalls with 64KB buffer
 class VtkQuadWriter {
   static constexpr std::size_t BUF_SIZE = 65536;
   std::ofstream ofs_;
   std::vector<char> buf_;
   std::size_t pos_ = 0;
-  bool binary_;
   std::size_t num_cells_ = 0;
 
   void flush_buf() { if (pos_) { ofs_.write(buf_.data(), pos_); pos_ = 0; } }
@@ -136,16 +151,25 @@ class VtkQuadWriter {
     pos_ += sizeof(T);
   }
 
+  template<typename T, std::size_t N>
+  void write_be_array(const T (&arr)[N]) {
+    ensure(sizeof(T) * N);
+    for (std::size_t i = 0; i < N; ++i) {
+      T be = to_big_endian(arr[i]);
+      std::memcpy(buf_.data() + pos_, &be, sizeof(T));
+      pos_ += sizeof(T);
+    }
+  }
+
 public:
-  VtkQuadWriter(const std::string& filename, bool binary = false)
-      : ofs_(filename, binary ? std::ios::binary : std::ios::out), buf_(BUF_SIZE), binary_(binary) {}
+  explicit VtkQuadWriter(const std::string& filename)
+      : ofs_(filename, std::ios::binary), buf_(BUF_SIZE) {}
   ~VtkQuadWriter() { flush_buf(); }
 
   void write_header(const char* title, std::size_t num_cells) {
     num_cells_ = num_cells;
     char hdr[256];
-    int n = std::snprintf(hdr, sizeof(hdr), "# vtk DataFile Version 3.0\n%s\n%s\nDATASET UNSTRUCTURED_GRID\n",
-                          title, binary_ ? "BINARY" : "ASCII");
+    int n = std::snprintf(hdr, sizeof(hdr), "# vtk DataFile Version 3.0\n%s\nBINARY\nDATASET UNSTRUCTURED_GRID\n", title);
     write_raw(hdr, n);
   }
 
@@ -167,60 +191,47 @@ public:
   }
 
   void write_quad(double x0, double y0, double x1, double y1) {
-    if (binary_) {
-      float pts[12] = {float(x0), float(y0), 0.f, float(x1), float(y0), 0.f,
-                       float(x1), float(y1), 0.f, float(x0), float(y1), 0.f};
-      for (int i = 0; i < 12; ++i) write_be(pts[i]);
-    } else {
-      char s[256];
-      int n = std::snprintf(s, sizeof(s), "%g %g 0\n%g %g 0\n%g %g 0\n%g %g 0\n", x0, y0, x1, y0, x1, y1, x0, y1);
-      write_raw(s, n);
-    }
+    const float pts[12] = {float(x0), float(y0), 0.f, float(x1), float(y0), 0.f,
+                           float(x1), float(y1), 0.f, float(x0), float(y1), 0.f};
+    write_be_array(pts);
   }
 
-  void end_points() { if (binary_) write_raw("\n", 1); }
+  void end_points() { write_raw("\n", 1); }
 
   void write_cells_and_types() {
     char s[64];
     int n = std::snprintf(s, sizeof(s), "CELLS %zu %zu\n", num_cells_, num_cells_ * 5);
     write_raw(s, n);
 
-    if (binary_) {
-      for (std::size_t c = 0, pt = 0; c < num_cells_; ++c, pt += 4) {
-        write_be(std::uint32_t(4));
-        write_be(std::uint32_t(pt)); write_be(std::uint32_t(pt+1));
-        write_be(std::uint32_t(pt+2)); write_be(std::uint32_t(pt+3));
-      }
-      write_raw("\n", 1);
-    } else {
-      for (std::size_t c = 0, pt = 0; c < num_cells_; ++c, pt += 4) {
-        char line[64];
-        int len = std::snprintf(line, sizeof(line), "4 %zu %zu %zu %zu\n", pt, pt+1, pt+2, pt+3);
-        write_raw(line, len);
-      }
+    for (std::size_t c = 0, pt = 0; c < num_cells_; ++c, pt += 4) {
+      const std::uint32_t cell[5] = {4, std::uint32_t(pt), std::uint32_t(pt+1),
+                                     std::uint32_t(pt+2), std::uint32_t(pt+3)};
+      write_be_array(cell);
     }
+    write_raw("\n", 1);
 
     n = std::snprintf(s, sizeof(s), "CELL_TYPES %zu\n", num_cells_);
     write_raw(s, n);
 
-    if (binary_) {
-      const std::uint32_t nine = to_big_endian(std::uint32_t(9));
-      ensure(sizeof(nine));
-      for (std::size_t c = 0; c < num_cells_; ++c) {
-        if (pos_ + sizeof(nine) > BUF_SIZE) flush_buf();
-        std::memcpy(buf_.data() + pos_, &nine, sizeof(nine));
-        pos_ += sizeof(nine);
-      }
-      write_raw("\n", 1);
-    } else {
-      // Batch write "9\n" - build block and repeat
-      constexpr std::size_t BATCH = 512;
-      char block[BATCH * 2];
-      for (std::size_t i = 0; i < BATCH; ++i) { block[i*2] = '9'; block[i*2+1] = '\n'; }
-      std::size_t full = num_cells_ / BATCH, rem = num_cells_ % BATCH;
-      for (std::size_t i = 0; i < full; ++i) write_raw(block, BATCH * 2);
-      if (rem) write_raw(block, rem * 2);
+    // Write cell types in batches for efficiency
+    constexpr std::size_t BATCH = 256;
+    std::uint32_t nines[BATCH];
+    const std::uint32_t nine_be = to_big_endian(std::uint32_t(9));
+    for (std::size_t i = 0; i < BATCH; ++i) nines[i] = nine_be;
+
+    std::size_t remaining = num_cells_;
+    while (remaining >= BATCH) {
+      ensure(BATCH * sizeof(std::uint32_t));
+      std::memcpy(buf_.data() + pos_, nines, BATCH * sizeof(std::uint32_t));
+      pos_ += BATCH * sizeof(std::uint32_t);
+      remaining -= BATCH;
     }
+    if (remaining > 0) {
+      ensure(remaining * sizeof(std::uint32_t));
+      std::memcpy(buf_.data() + pos_, nines, remaining * sizeof(std::uint32_t));
+      pos_ += remaining * sizeof(std::uint32_t);
+    }
+    write_raw("\n", 1);
   }
 
   void begin_cell_data() {
@@ -235,148 +246,117 @@ public:
     write_raw(s, n);
   }
 
-  template<typename T> void write_value(T v) {
-    if (binary_) {
-      write_be(v);
-    } else {
-      char s[32];
-      int n;
-      if constexpr (std::is_floating_point<T>::value) n = std::snprintf(s, sizeof(s), "%g\n", double(v));
-      else n = std::snprintf(s, sizeof(s), "%d\n", int(v));
-      write_raw(s, n);
-    }
-  }
+  template<typename T> void write_value(T v) { write_be(v); }
 
-  void end_scalar() { if (binary_) write_raw("\n", 1); }
+  void end_scalar() { write_raw("\n", 1); }
 };
+
+// Trait to detect if CsrTraits<T> has get_value (i.e., is a field type)
+template <typename T, typename = void>
+struct has_values : std::false_type {};
+template <typename T>
+struct has_values<T, std::void_t<decltype(CsrTraits<T>::get_value(std::declval<T>(), 0))>> : std::true_type {};
 
 } // namespace detail
 
 /**
- * @brief Export a CSR 2D interval set to a legacy VTK unstructured grid (.vtk).
+ * @brief Export a CSR 2D data structure to a legacy VTK unstructured grid (.vtk).
+ * Works with both IntervalSet2DHost (geometry only) and IntervalField2DHost<T> (with scalar values).
  */
-inline void write_legacy_quads(const IntervalSet2DHost& host, const std::string& filename, bool binary = false) {
-  const std::size_t num_rows = host.row_keys.size();
-  if (num_rows == 0 || host.row_ptr.size() != num_rows + 1) {
-    detail::VtkQuadWriter w(filename, binary);
-    w.write_empty("Empty subsetix mesh");
-    return;
-  }
-  const std::size_t num_cells = detail::count_cells(host.row_ptr, host.intervals, num_rows);
-  detail::VtkQuadWriter w(filename, binary);
-  w.write_header("Subsetix CSR mesh", num_cells);
-  w.begin_points();
-  detail::for_each_cell(host.row_keys, host.row_ptr, host.intervals, num_rows,
-    [&](Coord x, Coord y, std::size_t, std::size_t) { w.write_quad(x, y, x + 1, y + 1); });
-  w.end_points();
-  w.write_cells_and_types();
-}
+template <typename CsrT>
+inline void write_legacy_quads(const CsrT& data, const std::string& filename,
+                               const std::string& scalar_name = "field") {
+  using Tr = detail::CsrTraits<CsrT>;
+  constexpr bool is_field = detail::has_values<CsrT>::value;
 
-/**
- * @brief Export a CSR 2D field to a legacy VTK unstructured grid (.vtk).
- */
-template <typename T>
-inline void write_legacy_quads(const IntervalField2DHost<T>& field, const std::string& filename,
-                               const std::string& scalar_name = "field", bool binary = false) {
-  const std::size_t num_rows = field.row_keys.size();
-  if (num_rows == 0 || field.row_ptr.size() != num_rows + 1) {
-    detail::VtkQuadWriter w(filename, binary);
-    w.write_empty("Empty subsetix field", scalar_name);
+  if (!Tr::valid(data)) {
+    detail::VtkQuadWriter w(filename);
+    if constexpr (is_field) w.write_empty("Empty subsetix field", scalar_name);
+    else w.write_empty("Empty subsetix mesh");
     return;
   }
-  const std::size_t num_cells = detail::count_cells(field.row_ptr, field.intervals, num_rows);
-  detail::VtkQuadWriter w(filename, binary);
-  w.write_header("Subsetix CSR field", num_cells);
+
+  const std::size_t num_cells = detail::count_cells(data);
+  detail::VtkQuadWriter w(filename);
+  w.write_header(is_field ? "Subsetix CSR field" : "Subsetix CSR mesh", num_cells);
   w.begin_points();
-  detail::for_each_cell(field.row_keys, field.row_ptr, field.intervals, num_rows,
-    [&](Coord x, Coord y, std::size_t, std::size_t) { w.write_quad(x, y, x + 1, y + 1); });
+  detail::for_each_cell(data, [&](Coord x, Coord y, std::size_t, std::size_t) {
+    w.write_quad(x, y, x + 1, y + 1);
+  });
   w.end_points();
   w.write_cells_and_types();
-  w.begin_cell_data();
-  w.begin_scalar(scalar_name);
-  detail::for_each_cell(field.row_keys, field.row_ptr, field.intervals, num_rows,
-    [&](Coord, Coord, std::size_t k, std::size_t local_idx) {
-      const std::size_t idx = field.intervals[k].value_offset + local_idx;
-      w.write_value((idx < field.values.size()) ? static_cast<float>(field.values[idx]) : 0.0f);
+
+  if constexpr (is_field) {
+    w.begin_cell_data();
+    w.begin_scalar(scalar_name);
+    detail::for_each_cell(data, [&](Coord, Coord, std::size_t k, std::size_t local_idx) {
+      w.write_value(Tr::get_value(data, Tr::value_offset(data, k) + local_idx));
     });
-  w.end_scalar();
+    w.end_scalar();
+  }
 }
 
 /**
- * @brief Export a MultilevelGeoHost to VTK, respecting physical coordinates.
+ * @brief Export a MultilevelGeoHost or MultilevelFieldHost to VTK with physical coordinates.
+ * Uses compile-time detection to handle geometry-only vs field types.
  */
-inline void write_multilevel_vtk(const MultilevelGeoHost& geo, const std::string& filename, bool binary = false) {
+template <typename MultiT, bool WriteFieldValues>
+inline void write_multilevel_vtk_impl(const MultiT& multi, const MultilevelGeoHost& geo,
+                                      const std::string& filename, const std::string& scalar_name) {
   std::size_t num_cells = 0;
-  for (int l = 0; l < geo.num_active_levels; ++l) num_cells += detail::count_cells(geo.levels[l]);
+  for (int l = 0; l < multi.num_active_levels; ++l)
+    num_cells += detail::count_cells(multi.levels[l]);
 
-  detail::VtkQuadWriter w(filename, binary);
-  if (num_cells == 0) { w.write_empty("Subsetix Multilevel Mesh"); return; }
-  w.write_header("Subsetix Multilevel Mesh", num_cells);
+  detail::VtkQuadWriter w(filename);
+  if (num_cells == 0) {
+    if constexpr (WriteFieldValues) w.write_empty("Subsetix Multilevel Field", scalar_name);
+    else w.write_empty("Subsetix Multilevel Mesh");
+    return;
+  }
+
+  w.write_header(WriteFieldValues ? "Subsetix Multilevel Field" : "Subsetix Multilevel Mesh", num_cells);
   w.begin_points();
-  for (int l = 0; l < geo.num_active_levels; ++l) {
-    const auto& view = geo.levels[l];
-    if (view.num_rows == 0) continue;
+  for (int l = 0; l < multi.num_active_levels; ++l) {
+    const auto& lv = multi.levels[l];
+    using Tr = detail::CsrTraits<std::decay_t<decltype(lv)>>;
+    if (Tr::num_rows(lv) == 0) continue;
     const double dx = geo.dx_at(l), dy = geo.dy_at(l);
-    detail::for_each_cell(view, [&](Coord x, Coord y, std::size_t, std::size_t) {
+    detail::for_each_cell(lv, [&](Coord x, Coord y, std::size_t, std::size_t) {
       w.write_quad(geo.origin_x + x * dx, geo.origin_y + y * dy,
                    geo.origin_x + (x + 1) * dx, geo.origin_y + (y + 1) * dy);
     });
   }
   w.end_points();
   w.write_cells_and_types();
+
   w.begin_cell_data();
+  if constexpr (WriteFieldValues) {
+    w.begin_scalar(scalar_name);
+    for (int l = 0; l < multi.num_active_levels; ++l) {
+      const auto& lv = multi.levels[l];
+      using Tr = detail::CsrTraits<std::decay_t<decltype(lv)>>;
+      detail::for_each_cell(lv, [&](Coord, Coord, std::size_t k, std::size_t local_idx) {
+        w.write_value(Tr::get_value(lv, Tr::value_offset(lv, k) + local_idx));
+      });
+    }
+    w.end_scalar();
+  }
   w.begin_scalar("Level", "int");
-  for (int l = 0; l < geo.num_active_levels; ++l)
-    detail::for_each_cell(geo.levels[l], [&](Coord, Coord, std::size_t, std::size_t) { w.write_value(l); });
+  for (int l = 0; l < multi.num_active_levels; ++l)
+    detail::for_each_cell(multi.levels[l], [&](Coord, Coord, std::size_t, std::size_t) { w.write_value(l); });
   w.end_scalar();
 }
 
-/**
- * @brief Export a MultilevelFieldHost to VTK with physical coordinates.
- */
+/// Export MultilevelGeoHost to VTK (geometry + level scalar only)
+inline void write_multilevel_vtk(const MultilevelGeoHost& geo, const std::string& filename) {
+  write_multilevel_vtk_impl<MultilevelGeoHost, false>(geo, geo, filename, "");
+}
+
+/// Export MultilevelFieldHost to VTK (geometry + field values + level scalar)
 template <typename T>
 inline void write_multilevel_field_vtk(const MultilevelFieldHost<T>& field, const MultilevelGeoHost& geo,
-                                       const std::string& filename, const std::string& scalar_name = "field",
-                                       bool binary = false) {
-  std::size_t num_cells = 0;
-  for (int l = 0; l < field.num_active_levels; ++l) {
-    const auto& view = field.levels[l];
-    for (std::size_t i = 0; i < view.geometry.num_rows; ++i)
-      for (std::size_t k = view.geometry.row_ptr(i); k < view.geometry.row_ptr(i + 1); ++k) {
-        const Coord len = view.geometry.intervals(k).end - view.geometry.intervals(k).begin;
-        if (len > 0) num_cells += static_cast<std::size_t>(len);
-      }
-  }
-
-  detail::VtkQuadWriter w(filename, binary);
-  if (num_cells == 0) { w.write_empty("Subsetix Multilevel Field", scalar_name); return; }
-  w.write_header("Subsetix Multilevel Field", num_cells);
-  w.begin_points();
-  for (int l = 0; l < field.num_active_levels; ++l) {
-    const auto& view = field.levels[l];
-    if (view.geometry.num_rows == 0) continue;
-    const double dx = geo.dx_at(l), dy = geo.dy_at(l);
-    detail::for_each_cell(view, [&](Coord x, Coord y, std::size_t, std::size_t) {
-      w.write_quad(geo.origin_x + x * dx, geo.origin_y + y * dy,
-                   geo.origin_x + (x + 1) * dx, geo.origin_y + (y + 1) * dy);
-    });
-  }
-  w.end_points();
-  w.write_cells_and_types();
-  w.begin_cell_data();
-  w.begin_scalar(scalar_name);
-  for (int l = 0; l < field.num_active_levels; ++l) {
-    const auto& view = field.levels[l];
-    detail::for_each_cell(view, [&](Coord, Coord, std::size_t k, std::size_t local_idx) {
-      const std::size_t idx = view.geometry.cell_offsets(k) + local_idx;
-      w.write_value((idx < view.values.extent(0)) ? static_cast<float>(view.values(idx)) : 0.0f);
-    });
-  }
-  w.end_scalar();
-  w.begin_scalar("Level", "int");
-  for (int l = 0; l < field.num_active_levels; ++l)
-    detail::for_each_cell(field.levels[l], [&](Coord, Coord, std::size_t, std::size_t) { w.write_value(l); });
-  w.end_scalar();
+                                       const std::string& filename, const std::string& scalar_name = "field") {
+  write_multilevel_vtk_impl<MultilevelFieldHost<T>, true>(field, geo, filename, scalar_name);
 }
 
 } // namespace vtk

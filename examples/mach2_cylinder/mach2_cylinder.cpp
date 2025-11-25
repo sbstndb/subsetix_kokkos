@@ -1378,7 +1378,7 @@ void write_multilevel_outputs(
   const auto host_geo = subsetix::deep_copy_to_host(geo);
   const auto host_rho = subsetix::deep_copy_to_host(f_density);
   subsetix::vtk::write_multilevel_field_vtk(
-      host_rho, host_geo, vtk_filename(out_dir, step, "density"), "rho", true);
+      host_rho, host_geo, vtk_filename(out_dir, step, "density"), "rho");
 }
 
 } // namespace
