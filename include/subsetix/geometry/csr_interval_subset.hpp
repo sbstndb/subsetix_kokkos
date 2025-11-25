@@ -171,29 +171,11 @@ inline void build_interval_subset_device(
 
   ExecSpace().fence();
 
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_entries(
-      "subsetix_interval_subset_total_entries");
-
-  Kokkos::parallel_scan(
+  std::size_t num_entries = detail::exclusive_scan_csr_row_ptr<std::size_t>(
       "subsetix_interval_subset_offsets",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t row_idx, std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t count = row_counts(row_idx);
-        if (final_pass) {
-          row_offsets(row_idx) = update;
-          if (row_idx + 1 == num_rows) {
-            row_offsets(num_rows) = update + count;
-            total_entries() = update + count;
-          }
-        }
-        update += count;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_entries = 0;
-  Kokkos::deep_copy(num_entries, total_entries);
+      num_rows,
+      row_counts,
+      row_offsets);
 
   if (num_entries == 0) {
     reset_interval_subset(subset);

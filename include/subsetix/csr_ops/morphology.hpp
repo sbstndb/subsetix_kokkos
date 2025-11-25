@@ -317,12 +317,10 @@ build_expand_row_mapping(const IntervalSet2DDevice& in,
     // input_row_exists: int_buf_0 [num_rows_in]
     // row_block_counts: size_t_buf_0 [num_rows_in]
     // scan_offsets: size_t_buf_1 [num_rows_in]
-    // d_total: scalar_size_t_buf_0
-    
+
     auto in_exists = workspace.get_int_buf_0(num_rows_in);
     auto row_block_counts = workspace.get_size_t_buf_0(num_rows_in);
     auto scan_offsets = workspace.get_size_t_buf_1(num_rows_in);
-    auto d_total = workspace.get_scalar_size_t_buf_0();
     
     auto row_keys_in = in.row_keys;
     
@@ -360,21 +358,12 @@ build_expand_row_mapping(const IntervalSet2DDevice& in,
     });
     
     ExecSpace().fence();
-    
-    Kokkos::parallel_scan("morph_expand_scan", Kokkos::RangePolicy<ExecSpace>(0, num_rows_in),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-            const std::size_t c = row_block_counts(i);
-            if (final_pass) {
-                scan_offsets(i) = update;
-                if (i + 1 == num_rows_in) d_total() = update + c;
-            }
-            update += c;
-    });
-    
-    ExecSpace().fence();
-    
-    std::size_t total_rows_out = 0;
-    Kokkos::deep_copy(total_rows_out, d_total);
+
+    std::size_t total_rows_out = detail::exclusive_scan_with_total<std::size_t>(
+        "morph_expand_scan",
+        num_rows_in,
+        row_block_counts,
+        scan_offsets);
     
     result.num_rows = total_rows_out;
     if (total_rows_out == 0) return result;
@@ -466,11 +455,9 @@ build_shrink_row_mapping(const IntervalSet2DDevice& in,
     // Checkout buffers
     // valid_flags: int_buf_0 [num_rows_in]
     // offsets: size_t_buf_0 [num_rows_in]
-    // d_total: scalar_size_t_buf_0
-    
+
     auto valid_flags = workspace.get_int_buf_0(num_rows_in);
     auto offsets = workspace.get_size_t_buf_0(num_rows_in);
-    auto d_total = workspace.get_scalar_size_t_buf_0();
     
     auto row_keys_in = in.row_keys;
     
@@ -508,21 +495,12 @@ build_shrink_row_mapping(const IntervalSet2DDevice& in,
     });
     
     ExecSpace().fence();
-    
-    Kokkos::parallel_scan("morph_shrink_scan", Kokkos::RangePolicy<ExecSpace>(0, num_rows_in),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-            const int val = valid_flags(i);
-            if (final_pass) {
-                offsets(i) = update;
-                if (i + 1 == num_rows_in) d_total() = update + val;
-            }
-            update += val;
-    });
-    
-    ExecSpace().fence();
-    
-    std::size_t total_rows_out = 0;
-    Kokkos::deep_copy(total_rows_out, d_total);
+
+    std::size_t total_rows_out = detail::exclusive_scan_with_total<std::size_t>(
+        "morph_shrink_scan",
+        num_rows_in,
+        valid_flags,
+        offsets);
     
     result.num_rows = total_rows_out;
     if (total_rows_out == 0) return result;
@@ -587,11 +565,10 @@ expand_device(const IntervalSet2DDevice& in,
     KOKKOS_LAMBDA(const std::size_t i) {
       row_keys_out(i) = map_keys(i);
   });
-  
+
   // 2. Count intervals
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
-  auto total_intervals = ctx.workspace.get_scalar_size_t_buf_0();
-  
+
   auto map_start = map_result.map_start;
   auto map_end = map_result.map_end;
   auto row_ptr_in = in.row_ptr;
@@ -624,30 +601,17 @@ expand_device(const IntervalSet2DDevice& in,
   });
   
   ExecSpace().fence();
-  
+
   // 3. Scan
   if (out.row_ptr.extent(0) < num_rows_out + 1) {
       out.row_ptr = IntervalSet2DDevice::IndexView("subsetix_expand_row_ptr", num_rows_out + 1);
   }
   auto row_ptr_out = out.row_ptr;
-  
-  Kokkos::parallel_scan("subsetix_expand_scan", Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-    KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-      const std::size_t c = row_counts(i);
-      if (final_pass) {
-        row_ptr_out(i) = update;
-        if (i + 1 == num_rows_out) {
-          row_ptr_out(num_rows_out) = update + c;
-          total_intervals() = update + c;
-        }
-      }
-      update += c;
-  });
-  
-  ExecSpace().fence();
-  
-  std::size_t num_intervals_out = 0;
-  Kokkos::deep_copy(num_intervals_out, total_intervals);
+  std::size_t num_intervals_out = detail::exclusive_scan_csr_row_ptr<std::size_t>(
+      "subsetix_expand_scan",
+      num_rows_out,
+      row_counts,
+      row_ptr_out);
   
   out.num_rows = num_rows_out;
   out.num_intervals = num_intervals_out;
@@ -722,8 +686,7 @@ shrink_device(const IntervalSet2DDevice& in,
   
   // 2. Count intervals
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
-  auto total_intervals = ctx.workspace.get_scalar_size_t_buf_0();
-  
+
   auto map_start = map_result.map_start; // Contains index of central row
   auto row_ptr_in = in.row_ptr;
   auto intervals_in = in.intervals;
@@ -750,30 +713,17 @@ shrink_device(const IntervalSet2DDevice& in,
   });
   
   ExecSpace().fence();
-  
+
   // 3. Scan
   if (out.row_ptr.extent(0) < num_rows_out + 1) {
       out.row_ptr = IntervalSet2DDevice::IndexView("subsetix_shrink_row_ptr", num_rows_out + 1);
   }
   auto row_ptr_out = out.row_ptr;
-  
-  Kokkos::parallel_scan("subsetix_shrink_scan", Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-    KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-      const std::size_t c = row_counts(i);
-      if (final_pass) {
-        row_ptr_out(i) = update;
-        if (i + 1 == num_rows_out) {
-          row_ptr_out(num_rows_out) = update + c;
-          total_intervals() = update + c;
-        }
-      }
-      update += c;
-  });
-  
-  ExecSpace().fence();
-  
-  std::size_t num_intervals_out = 0;
-  Kokkos::deep_copy(num_intervals_out, total_intervals);
+  std::size_t num_intervals_out = detail::exclusive_scan_csr_row_ptr<std::size_t>(
+      "subsetix_shrink_scan",
+      num_rows_out,
+      row_counts,
+      row_ptr_out);
   
   out.num_rows = num_rows_out;
   out.num_intervals = num_intervals_out;

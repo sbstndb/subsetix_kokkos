@@ -79,42 +79,8 @@ build_amr_interval_mapping(
         const Coord y_f1 = static_cast<Coord>(2 * y_c + 1);
 
         // Find fine rows
-        int row_f0 = -1;
-        int row_f1 = -1;
-
-        // Search for y_f0
-        {
-          std::size_t lo = 0;
-          std::size_t hi = num_rows_fine;
-          while (lo < hi) {
-            const std::size_t mid = lo + (hi - lo) / 2;
-            if (fine_rows(mid).y < y_f0) {
-              lo = mid + 1;
-            } else {
-              hi = mid;
-            }
-          }
-          if (lo < num_rows_fine && fine_rows(lo).y == y_f0) {
-            row_f0 = static_cast<int>(lo);
-          }
-        }
-
-        // Search for y_f1
-        {
-          std::size_t lo = 0;
-          std::size_t hi = num_rows_fine;
-          while (lo < hi) {
-            const std::size_t mid = lo + (hi - lo) / 2;
-            if (fine_rows(mid).y < y_f1) {
-              lo = mid + 1;
-            } else {
-              hi = mid;
-            }
-          }
-          if (lo < num_rows_fine && fine_rows(lo).y == y_f1) {
-            row_f1 = static_cast<int>(lo);
-          }
-        }
+        const int row_f0 = find_row_by_y(fine_rows, num_rows_fine, y_f0);
+        const int row_f1 = find_row_by_y(fine_rows, num_rows_fine, y_f1);
 
         // If fine rows not found, skip (sparse AMR)
         // This allows fine grid to be smaller than coarse grid

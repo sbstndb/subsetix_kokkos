@@ -58,7 +58,6 @@ build_row_coarsen_mapping(const IntervalSet2DDevice& fine,
   auto tmp_second = workspace.get_int_buf_1(num_rows_fine);
   auto is_boundary = workspace.get_int_buf_2(num_rows_fine);
   auto boundary_scan = workspace.get_int_buf_4(num_rows_fine);
-  auto d_total_boundaries = workspace.get_scalar_int_buf_0();
   
   // We need to reinterpret cast coarse_y if Coord is not int.
   // But Coord is int32_t, so we can use int_buf.
@@ -89,24 +88,11 @@ build_row_coarsen_mapping(const IntervalSet2DDevice& fine,
   ExecSpace().fence();
 
   // Scan to get output indices for boundaries
-  Kokkos::parallel_scan(
+  int num_rows_out = detail::exclusive_scan_with_total<int>(
       "subsetix_csr_coarsen_scan_boundaries",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_fine),
-      KOKKOS_LAMBDA(const std::size_t i, int& update, const bool final_pass) {
-        const int val = is_boundary(i);
-        if (final_pass) {
-          boundary_scan(i) = update;
-          if (i + 1 == num_rows_fine) {
-            d_total_boundaries() = update + val;
-          }
-        }
-        update += val;
-      });
-
-  ExecSpace().fence();
-
-  int num_rows_out = 0;
-  Kokkos::deep_copy(num_rows_out, d_total_boundaries);
+      num_rows_fine,
+      is_boundary,
+      boundary_scan);
 
   result.num_rows = static_cast<std::size_t>(num_rows_out);
   if (num_rows_out == 0) {
@@ -293,7 +279,6 @@ project_level_down_device(const IntervalSet2DDevice& fine,
 
   // Use workspace buffers to avoid allocation
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_coarse);
-  auto total_intervals = ctx.workspace.get_scalar_size_t_buf_0();
 
   // Count intervals needed for each coarse row
   Kokkos::parallel_for(
@@ -337,28 +322,11 @@ project_level_down_device(const IntervalSet2DDevice& fine,
         "subsetix_csr_project_row_ptr_out", num_rows_coarse + 1);
   }
   auto row_ptr_out = out.row_ptr;
-
-  Kokkos::parallel_scan(
+  std::size_t num_intervals_coarse = detail::exclusive_scan_csr_row_ptr<std::size_t>(
       "subsetix_csr_project_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_coarse),
-      KOKKOS_LAMBDA(const std::size_t i,
-                    std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c = row_counts(i);
-        if (final_pass) {
-          row_ptr_out(i) = update;
-          if (i + 1 == num_rows_coarse) {
-            row_ptr_out(num_rows_coarse) = update + c;
-            total_intervals() = update + c;
-          }
-        }
-        update += c;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_intervals_coarse = 0;
-  Kokkos::deep_copy(num_intervals_coarse, total_intervals);
+      num_rows_coarse,
+      row_counts,
+      row_ptr_out);
 
   out.num_rows = num_rows_coarse;
   out.num_intervals = num_intervals_coarse;

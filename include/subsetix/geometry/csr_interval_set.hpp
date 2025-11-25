@@ -10,6 +10,7 @@
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Random.hpp>
 #include <subsetix/geometry/csr_backend.hpp>
+#include <subsetix/detail/scan_utils.hpp>
 
 namespace subsetix {
 namespace csr {
@@ -324,30 +325,11 @@ build_interval_set_from_rows(std::size_t num_rows,
         row_counts(i) = count;
       });
 
-  Kokkos::View<std::size_t, DeviceMemorySpace> total_intervals(
-      make_label("_total_intervals"));
-
-  Kokkos::parallel_scan(
+  std::size_t num_intervals_host = detail::exclusive_scan_csr_row_ptr<std::size_t>(
       make_label("_scan"),
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update,
-                    const bool final_pass) {
-        const std::size_t c = row_counts(i);
-        if (final_pass) {
-          row_ptr(i) = update;
-          if (i + 1 == num_rows) {
-            const std::size_t end = update + c;
-            row_ptr(num_rows) = end;
-            total_intervals() = end;
-          }
-        }
-        update += c;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_intervals_host = 0;
-  Kokkos::deep_copy(num_intervals_host, total_intervals);
+      num_rows,
+      row_counts,
+      row_ptr);
 
   dev.num_intervals = num_intervals_host;
 
