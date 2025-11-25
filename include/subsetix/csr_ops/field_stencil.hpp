@@ -6,6 +6,7 @@
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/geometry/csr_interval_subset.hpp>
 #include <subsetix/csr_ops/field_core.hpp>
 #include <subsetix/detail/csr_utils.hpp>
 
@@ -645,6 +646,116 @@ inline void apply_csr_stencil_on_set_device(
   apply_csr_stencil_on_set_device(field_out, field_in, mask,
                                   mapping_out, mapping_in, vertical,
                                   stencil, strict_check);
+}
+
+// ---------------------------------------------------------------------------
+// Subset-based stencil operations
+// ---------------------------------------------------------------------------
+
+template <typename T, class StencilFunctor>
+inline void apply_stencil_on_subset_device(
+    Field2DDevice<T>& field_out,
+    const Field2DDevice<T>& field_in,
+    const IntervalSubSet2DDevice& subset,
+    StencilFunctor stencil) {
+  if (!subset.valid()) return;
+  if (field_out.geometry.num_rows == 0 || field_in.geometry.num_rows == 0) return;
+
+  auto mask_indices = subset.interval_indices;
+  auto mask_x_begin = subset.x_begin;
+  auto mask_x_end = subset.x_end;
+  auto mask_rows = subset.row_indices;
+
+  auto row_keys = field_out.geometry.row_keys;
+  auto intervals = field_out.geometry.intervals;
+  auto offsets = field_out.geometry.cell_offsets;
+  auto values_out = field_out.values;
+  auto src_rows = field_in.geometry.row_keys;
+  auto src_row_ptr = field_in.geometry.row_ptr;
+  auto src_intervals = field_in.geometry.intervals;
+  auto src_offsets = field_in.geometry.cell_offsets;
+  const std::size_t src_num_rows = field_in.geometry.num_rows;
+
+  const detail::VerticalIntervalMapping vertical =
+      detail::build_vertical_interval_mapping(field_in);
+
+  detail::FieldStencilContext<T> ctx;
+  ctx.intervals = field_in.geometry.intervals;
+  ctx.offsets = field_in.geometry.cell_offsets;
+  ctx.values = field_in.values;
+  ctx.up_interval = vertical.up_interval;
+  ctx.down_interval = vertical.down_interval;
+
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using MemberType = TeamPolicy::member_type;
+  const TeamPolicy policy(static_cast<int>(subset.num_entries), Kokkos::AUTO);
+
+  Kokkos::parallel_for(
+      "subsetix_apply_stencil_on_subset_device", policy,
+      KOKKOS_LAMBDA(const MemberType& team) {
+        const int entry_idx = team.league_rank();
+        const std::size_t interval_idx = mask_indices(entry_idx);
+        const int row_idx = mask_rows(entry_idx);
+        const Coord y = row_keys(row_idx).y;
+        const Interval iv = intervals(interval_idx);
+        const std::size_t base_offset = offsets(interval_idx);
+        const Coord base_begin = iv.begin;
+        const Coord xb = mask_x_begin(entry_idx);
+        const Coord xe = mask_x_end(entry_idx);
+
+        const int src_row_idx =
+            detail::find_row_index(src_rows, src_num_rows, y);
+        if (src_row_idx < 0) return;
+
+        const std::size_t src_row_begin = src_row_ptr(src_row_idx);
+        const std::size_t src_row_end = src_row_ptr(src_row_idx + 1);
+        if (src_row_begin == src_row_end) return;
+
+        int src_interval_idx =
+            detail::find_interval_index(src_intervals, src_row_begin,
+                                        src_row_end, xb);
+        if (src_interval_idx < 0) return;
+
+        Interval src_iv = src_intervals(src_interval_idx);
+        std::size_t src_base = src_offsets(src_interval_idx);
+        Coord src_begin = src_iv.begin;
+
+        const int team_size = team.team_size();
+        const int team_rank = team.team_rank();
+
+        for (Coord x = static_cast<Coord>(xb + team_rank); x < xe;
+             x += static_cast<Coord>(team_size)) {
+          while (x >= src_iv.end) {
+            ++src_interval_idx;
+            if (src_interval_idx >= static_cast<int>(src_row_end)) return;
+            src_iv = src_intervals(src_interval_idx);
+            src_base = src_offsets(src_interval_idx);
+            src_begin = src_iv.begin;
+          }
+
+          const std::size_t dst_linear_index =
+              base_offset + static_cast<std::size_t>(x - base_begin);
+          const std::size_t src_linear_index =
+              src_base + static_cast<std::size_t>(x - src_begin);
+
+          const T value = stencil(x, y, src_linear_index, src_interval_idx, ctx);
+          values_out(dst_linear_index) = value;
+        }
+      });
+  ExecSpace().fence();
+}
+
+template <typename T, class StencilFunctor>
+inline void apply_stencil_on_subset_device(
+    Field2DDevice<T>& field_out,
+    const Field2DDevice<T>& field_in,
+    const IntervalSet2DDevice& mask,
+    StencilFunctor stencil,
+    CsrSetAlgebraContext* ctx = nullptr) {
+  if (mask.num_rows == 0 || mask.num_intervals == 0) return;
+  IntervalSubSet2DDevice subset;
+  build_interval_subset_device(field_out.geometry, mask, subset, ctx);
+  apply_stencil_on_subset_device(field_out, field_in, subset, stencil);
 }
 
 } // namespace csr
