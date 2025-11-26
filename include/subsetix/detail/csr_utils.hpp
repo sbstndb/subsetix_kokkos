@@ -70,28 +70,6 @@ RowRanges extract_row_ranges(int ia, int ib,
   return r;
 }
 
-/**
- * @brief Overload for same row_ptr type (common case).
- */
-template <class RowPtrView>
-KOKKOS_FORCEINLINE_FUNCTION
-RowRanges extract_row_ranges(int ia, int ib,
-                              const RowPtrView& row_ptr_a,
-                              const RowPtrView& row_ptr_b) {
-  RowRanges r;
-  if (ia >= 0) {
-    const std::size_t row_a = static_cast<std::size_t>(ia);
-    r.begin_a = row_ptr_a(row_a);
-    r.end_a = row_ptr_a(row_a + 1);
-  }
-  if (ib >= 0) {
-    const std::size_t row_b = static_cast<std::size_t>(ib);
-    r.begin_b = row_ptr_b(row_b);
-    r.end_b = row_ptr_b(row_b + 1);
-  }
-  return r;
-}
-
 // ============================================================================
 // Coordinate utilities
 // ============================================================================
@@ -132,6 +110,36 @@ int find_row_by_y(const RowKeyView& rows, std::size_t num_rows, Coord y) {
   }
   if (lo < num_rows && rows(lo).y == y) {
     return static_cast<int>(lo);
+  }
+  return -1;
+}
+
+/**
+ * @brief Find an interval containing x-coordinate using binary search.
+ *
+ * @tparam IntervalView A Kokkos view of Interval elements
+ * @param intervals The view of intervals (sorted by begin within row)
+ * @param begin Start index of the row's intervals
+ * @param end End index (exclusive) of the row's intervals
+ * @param x The x-coordinate to search for
+ * @return The index of the containing interval if found, -1 otherwise
+ */
+template <class IntervalView>
+KOKKOS_INLINE_FUNCTION
+int find_interval_by_x(const IntervalView& intervals,
+                       std::size_t begin, std::size_t end, Coord x) {
+  std::size_t left = begin;
+  std::size_t right = end;
+  while (left < right) {
+    const std::size_t mid = left + (right - left) / 2;
+    const auto iv = intervals(mid);
+    if (x < iv.begin) {
+      right = mid;
+    } else if (x >= iv.end) {
+      left = mid + 1;
+    } else {
+      return static_cast<int>(mid);
+    }
   }
   return -1;
 }

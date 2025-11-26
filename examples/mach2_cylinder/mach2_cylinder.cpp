@@ -131,14 +131,14 @@ struct ConservedFieldAccessor {
   KOKKOS_INLINE_FUNCTION
   bool try_get(Coord x, Coord y, Conserved& out) const {
     const int row_idx =
-        subsetix::csr::detail::find_row_index(row_keys, num_rows, y);
+        subsetix::csr::detail::find_row_by_y(row_keys, num_rows, y);
     if (row_idx < 0) {
       return false;
     }
     const std::size_t begin = row_ptr(row_idx);
     const std::size_t end = row_ptr(row_idx + 1);
     const int interval_idx =
-        subsetix::csr::detail::find_interval_index(intervals, begin, end, x);
+        subsetix::csr::detail::find_interval_by_x(intervals, begin, end, x);
     if (interval_idx < 0) {
       return false;
     }
@@ -377,14 +377,14 @@ bool contains_point(const IntervalSet2DDevice& set,
                     Coord x,
                     Coord y) {
   const int row_idx =
-      subsetix::csr::detail::find_row_index(set.row_keys, set.num_rows, y);
+      subsetix::csr::detail::find_row_by_y(set.row_keys, set.num_rows, y);
   if (row_idx < 0) {
     return false;
   }
   const std::size_t begin = set.row_ptr(row_idx);
   const std::size_t end = set.row_ptr(row_idx + 1);
   const int interval_idx =
-      subsetix::csr::detail::find_interval_index(set.intervals, begin, end, x);
+      subsetix::csr::detail::find_interval_by_x(set.intervals, begin, end, x);
   return interval_idx >= 0;
 }
 

@@ -19,50 +19,6 @@ namespace detail {
 // Field access helpers for stencils
 // ---------------------------------------------------------------------------
 
-template <class RowKeyView>
-KOKKOS_INLINE_FUNCTION
-int find_row_index(const RowKeyView& row_keys,
-                   std::size_t num_rows,
-                   Coord y) {
-  std::size_t left = 0;
-  std::size_t right = num_rows;
-  while (left < right) {
-    const std::size_t mid = left + (right - left) / 2;
-    const Coord current = row_keys(mid).y;
-    if (current == y) {
-      return static_cast<int>(mid);
-    }
-    if (current < y) {
-      left = mid + 1;
-    } else {
-      right = mid;
-    }
-  }
-  return -1;
-}
-
-template <class IntervalView>
-KOKKOS_INLINE_FUNCTION
-int find_interval_index(const IntervalView& intervals,
-                        std::size_t begin,
-                        std::size_t end,
-                        Coord x) {
-  std::size_t left = begin;
-  std::size_t right = end;
-  while (left < right) {
-    const std::size_t mid = left + (right - left) / 2;
-    const auto iv = intervals(mid);
-    if (x < iv.begin) {
-      right = mid;
-    } else if (x >= iv.end) {
-      left = mid + 1;
-    } else {
-      return static_cast<int>(mid);
-    }
-  }
-  return -1;
-}
-
 template <typename T>
 struct FieldReadAccessor {
   typename Field2DDevice<T>::RowKeyView row_keys;
@@ -75,14 +31,14 @@ struct FieldReadAccessor {
   KOKKOS_INLINE_FUNCTION
   bool try_get(Coord x, Coord y, T& out) const {
     const int row_idx =
-        find_row_index(row_keys, num_rows, y);
+        find_row_by_y(row_keys, num_rows, y);
     if (row_idx < 0) {
       return false;
     }
     const std::size_t begin = row_ptr(row_idx);
     const std::size_t end = row_ptr(row_idx + 1);
     const int interval_idx =
-        find_interval_index(intervals, begin, end, x);
+        find_interval_by_x(intervals, begin, end, x);
     if (interval_idx < 0) {
       return false;
     }
@@ -704,7 +660,7 @@ inline void apply_stencil_on_subset_device(
         const Coord xe = mask_x_end(entry_idx);
 
         const int src_row_idx =
-            detail::find_row_index(src_rows, src_num_rows, y);
+            detail::find_row_by_y(src_rows, src_num_rows, y);
         if (src_row_idx < 0) return;
 
         const std::size_t src_row_begin = src_row_ptr(src_row_idx);
@@ -712,8 +668,8 @@ inline void apply_stencil_on_subset_device(
         if (src_row_begin == src_row_end) return;
 
         int src_interval_idx =
-            detail::find_interval_index(src_intervals, src_row_begin,
-                                        src_row_end, xb);
+            detail::find_interval_by_x(src_intervals, src_row_begin,
+                                       src_row_end, xb);
         if (src_interval_idx < 0) return;
 
         Interval src_iv = src_intervals(src_interval_idx);

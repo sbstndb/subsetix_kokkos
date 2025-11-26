@@ -3,6 +3,7 @@
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/geometry/csr_interval_subset.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
+#include <subsetix/detail/csr_utils.hpp>
 
 namespace subsetix {
 namespace csr {
@@ -134,44 +135,8 @@ inline void scale_on_subset_device(Field2DDevice<T>& field,
 }
 
 // ---------------------------------------------------------------------------
-// Copy (subset kernel requires detail helpers, defined after field_stencil)
+// Copy
 // ---------------------------------------------------------------------------
-
-namespace detail {
-
-template <class RowKeyView>
-KOKKOS_INLINE_FUNCTION
-int find_row_index_subset(const RowKeyView& row_keys,
-                          std::size_t num_rows, Coord y) {
-  std::size_t left = 0;
-  std::size_t right = num_rows;
-  while (left < right) {
-    const std::size_t mid = left + (right - left) / 2;
-    const Coord current = row_keys(mid).y;
-    if (current == y) return static_cast<int>(mid);
-    if (current < y) left = mid + 1;
-    else right = mid;
-  }
-  return -1;
-}
-
-template <class IntervalView>
-KOKKOS_INLINE_FUNCTION
-int find_interval_index_subset(const IntervalView& intervals,
-                               std::size_t begin, std::size_t end, Coord x) {
-  std::size_t left = begin;
-  std::size_t right = end;
-  while (left < right) {
-    const std::size_t mid = left + (right - left) / 2;
-    const auto iv = intervals(mid);
-    if (x < iv.begin) right = mid;
-    else if (x >= iv.end) left = mid + 1;
-    else return static_cast<int>(mid);
-  }
-  return -1;
-}
-
-} // namespace detail
 
 template <typename T>
 inline void copy_on_subset_device(Field2DDevice<T>& dst,
@@ -215,14 +180,14 @@ inline void copy_on_subset_device(Field2DDevice<T>& dst,
         const Coord y = dst_rows(dst_row_idx).y;
 
         const int src_row_idx =
-            detail::find_row_index_subset(src_rows, src_num_rows, y);
+            detail::find_row_by_y(src_rows, src_num_rows, y);
         if (src_row_idx < 0) return;
 
         const std::size_t src_row_begin = src_row_ptr(src_row_idx);
         const std::size_t src_row_end = src_row_ptr(src_row_idx + 1);
         if (src_row_begin == src_row_end) return;
 
-        int src_interval_idx0 = detail::find_interval_index_subset(
+        int src_interval_idx0 = detail::find_interval_by_x(
             src_intervals, src_row_begin, src_row_end, xb);
         if (src_interval_idx0 < 0) return;
 
