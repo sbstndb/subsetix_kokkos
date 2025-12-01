@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
 #include <subsetix/detail/csr_utils.hpp>
@@ -561,10 +562,10 @@ expand_device(const IntervalSet2DDevice& in,
   auto row_keys_out = out.row_keys;
   auto map_keys = map_result.row_keys;
   
-  Kokkos::parallel_for("subsetix_expand_copy_keys", Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-    KOKKOS_LAMBDA(const std::size_t i) {
-      row_keys_out(i) = map_keys(i);
-  });
+  Kokkos::Experimental::copy(
+      ExecSpace(),
+      Kokkos::subview(map_keys, std::make_pair(std::size_t(0), num_rows_out)),
+      Kokkos::subview(row_keys_out, std::make_pair(std::size_t(0), num_rows_out)));
 
   // 2. Count intervals
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
@@ -679,10 +680,10 @@ shrink_device(const IntervalSet2DDevice& in,
   auto row_keys_out = out.row_keys;
   auto map_keys = map_result.row_keys;
   
-  Kokkos::parallel_for("subsetix_shrink_copy_keys", Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-    KOKKOS_LAMBDA(const std::size_t i) {
-      row_keys_out(i) = map_keys(i);
-  });
+  Kokkos::Experimental::copy(
+      ExecSpace(),
+      Kokkos::subview(map_keys, std::make_pair(std::size_t(0), num_rows_out)),
+      Kokkos::subview(row_keys_out, std::make_pair(std::size_t(0), num_rows_out)));
   
   // 2. Count intervals
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);

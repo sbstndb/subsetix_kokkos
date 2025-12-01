@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
 #include <subsetix/detail/csr_utils.hpp>
@@ -757,13 +758,10 @@ build_row_difference_mapping(const IntervalSet2DDevice& A,
   auto rows_b = B.row_keys;
 
   // Copy row keys from A.
-  Kokkos::parallel_for(
-      "subsetix_csr_difference_row_copy_keys",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        out_rows(i) = rows_a(i);
-      });
-
+  Kokkos::Experimental::copy(
+      ExecSpace(),
+      Kokkos::subview(rows_a, std::make_pair(std::size_t(0), num_rows_a)),
+      Kokkos::subview(out_rows, std::make_pair(std::size_t(0), num_rows_a)));
   ExecSpace().fence();
 
   // Build mapping A.rows -> B.rows using binary search on B.
@@ -831,13 +829,10 @@ set_union_device(const IntervalSet2DDevice& A,
 
   auto row_keys_out = out.row_keys;
 
-  Kokkos::parallel_for(
-      "subsetix_csr_union_copy_row_keys",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        row_keys_out(i) = row_keys_out_tmp(i);
-      });
-
+  Kokkos::Experimental::copy(
+      ExecSpace(),
+      Kokkos::subview(row_keys_out_tmp, std::make_pair(std::size_t(0), num_rows_out)),
+      Kokkos::subview(row_keys_out, std::make_pair(std::size_t(0), num_rows_out)));
   ExecSpace().fence();
 
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
@@ -1044,13 +1039,10 @@ set_difference_device(const IntervalSet2DDevice& A,
   auto row_index_b = diff_rows.row_index_b;
   auto row_keys_out = out.row_keys;
 
-  Kokkos::parallel_for(
-      "subsetix_csr_difference_copy_row_keys",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        row_keys_out(i) = row_keys_out_tmp(i);
-      });
-
+  Kokkos::Experimental::copy(
+      ExecSpace(),
+      Kokkos::subview(row_keys_out_tmp, std::make_pair(std::size_t(0), num_rows_out)),
+      Kokkos::subview(row_keys_out, std::make_pair(std::size_t(0), num_rows_out)));
   ExecSpace().fence();
 
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
@@ -1157,13 +1149,10 @@ set_symmetric_difference_device(const IntervalSet2DDevice& A,
 
   auto row_keys_out = out.row_keys;
 
-  Kokkos::parallel_for(
-      "subsetix_csr_xor_copy_row_keys",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        row_keys_out(i) = row_keys_out_tmp(i);
-      });
-
+  Kokkos::Experimental::copy(
+      ExecSpace(),
+      Kokkos::subview(row_keys_out_tmp, std::make_pair(std::size_t(0), num_rows_out)),
+      Kokkos::subview(row_keys_out, std::make_pair(std::size_t(0), num_rows_out)));
   ExecSpace().fence();
 
   auto row_counts = ctx.workspace.get_size_t_buf_0(num_rows_out);
