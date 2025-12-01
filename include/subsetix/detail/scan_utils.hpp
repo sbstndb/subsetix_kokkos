@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
 #include <subsetix/geometry/csr_backend.hpp>
 
 namespace subsetix {
@@ -32,27 +33,25 @@ T exclusive_scan_with_total(
     return T(0);
   }
 
-  Kokkos::View<T, DeviceMemorySpace> d_total(label + "_total");
+  // Create subviews with exact size n
+  auto counts_sub = Kokkos::subview(counts, std::make_pair(std::size_t(0), n));
+  auto output_sub = Kokkos::subview(output, std::make_pair(std::size_t(0), n));
 
-  Kokkos::parallel_scan(
-      label,
+  // Exclusive scan
+  Kokkos::Experimental::exclusive_scan(
+      ExecSpace(), counts_sub, output_sub, T(0));
+
+  // Compute total separately (reduce)
+  T total = T(0);
+  Kokkos::parallel_reduce(
+      label + "_total",
       Kokkos::RangePolicy<ExecSpace>(0, n),
-      KOKKOS_LAMBDA(const std::size_t i, T& update, const bool final_pass) {
-        const T c = static_cast<T>(counts(i));
-        if (final_pass) {
-          output(i) = update;
-          if (i + 1 == n) {
-            d_total() = update + c;
-          }
-        }
-        update += c;
-      });
+      KOKKOS_LAMBDA(const std::size_t i, T& sum) {
+        sum += static_cast<T>(counts(i));
+      },
+      total);
 
-  ExecSpace().fence();
-
-  T host_total = T(0);
-  Kokkos::deep_copy(host_total, d_total);
-  return host_total;
+  return total;
 }
 
 /**
@@ -82,28 +81,26 @@ T exclusive_scan_csr_row_ptr(
     return T(0);
   }
 
-  Kokkos::View<T, DeviceMemorySpace> d_total(label + "_total");
+  // Create subviews with exact size n
+  auto counts_sub = Kokkos::subview(counts, std::make_pair(std::size_t(0), n));
+  auto row_ptr_sub = Kokkos::subview(row_ptr, std::make_pair(std::size_t(0), n));
 
-  Kokkos::parallel_scan(
-      label,
+  // Exclusive scan into row_ptr[0..n)
+  Kokkos::Experimental::exclusive_scan(
+      ExecSpace(), counts_sub, row_ptr_sub, T(0));
+
+  // Compute total and set row_ptr[n]
+  T total = T(0);
+  Kokkos::parallel_reduce(
+      label + "_total",
       Kokkos::RangePolicy<ExecSpace>(0, n),
-      KOKKOS_LAMBDA(const std::size_t i, T& update, const bool final_pass) {
-        const T c = static_cast<T>(counts(i));
-        if (final_pass) {
-          row_ptr(i) = update;
-          if (i + 1 == n) {
-            row_ptr(n) = update + c;
-            d_total() = update + c;
-          }
-        }
-        update += c;
-      });
+      KOKKOS_LAMBDA(const std::size_t i, T& sum) {
+        sum += static_cast<T>(counts(i));
+      },
+      total);
 
-  ExecSpace().fence();
-
-  T host_total = T(0);
-  Kokkos::deep_copy(host_total, d_total);
-  return host_total;
+  Kokkos::deep_copy(Kokkos::subview(row_ptr, n), total);
+  return total;
 }
 
 /**
