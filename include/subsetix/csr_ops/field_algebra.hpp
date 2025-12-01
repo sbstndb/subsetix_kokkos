@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
@@ -40,19 +41,15 @@ template <typename T, typename BinaryOp>
 inline void field_binary_op_device(Field2DDevice<T>& result,
                                    const Field2DDevice<T>& a,
                                    const Field2DDevice<T>& b,
-                                   const char* label) {
+                                   const char* /* label */) {
   const std::size_t n = result.size();
   if (n == 0) return;
 
-  auto a_vals = a.values;
-  auto b_vals = b.values;
-  auto result_vals = result.values;
+  auto a_sub = Kokkos::subview(a.values, std::make_pair(std::size_t(0), n));
+  auto b_sub = Kokkos::subview(b.values, std::make_pair(std::size_t(0), n));
+  auto r_sub = Kokkos::subview(result.values, std::make_pair(std::size_t(0), n));
 
-  Kokkos::parallel_for(
-      label, Kokkos::RangePolicy<ExecSpace>(0, n),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        result_vals(i) = BinaryOp{}(a_vals(i), b_vals(i));
-      });
+  Kokkos::Experimental::transform(ExecSpace(), a_sub, b_sub, r_sub, BinaryOp{});
   ExecSpace().fence();
 }
 
@@ -99,20 +96,14 @@ template <typename T>
 inline void field_abs_device(Field2DDevice<T>& result,
                              const Field2DDevice<T>& a) {
   const std::size_t n = result.size();
-  if (n == 0) {
-    return;
-  }
+  if (n == 0) return;
 
-  auto a_vals = a.values;
-  auto result_vals = result.values;
+  auto a_sub = Kokkos::subview(a.values, std::make_pair(std::size_t(0), n));
+  auto r_sub = Kokkos::subview(result.values, std::make_pair(std::size_t(0), n));
 
-  Kokkos::parallel_for(
-      "subsetix_field2d_abs",
-      Kokkos::RangePolicy<ExecSpace>(0, n),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const T val = a_vals(i);
-        result_vals(i) = (val < T(0)) ? -val : val;
-      });
+  Kokkos::Experimental::transform(
+      ExecSpace(), a_sub, r_sub,
+      KOKKOS_LAMBDA(const T val) { return Kokkos::abs(val); });
 
   ExecSpace().fence();
 }
@@ -129,21 +120,19 @@ inline void field_axpby_device(Field2DDevice<T>& result,
                                const T& beta,
                                const Field2DDevice<T>& b) {
   const std::size_t n = result.size();
-  if (n == 0) {
-    return;
-  }
+  if (n == 0) return;
 
   const T alpha_copy = alpha;
   const T beta_copy = beta;
-  auto a_vals = a.values;
-  auto b_vals = b.values;
-  auto result_vals = result.values;
 
-  Kokkos::parallel_for(
-      "subsetix_field2d_axpby",
-      Kokkos::RangePolicy<ExecSpace>(0, n),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        result_vals(i) = alpha_copy * a_vals(i) + beta_copy * b_vals(i);
+  auto a_sub = Kokkos::subview(a.values, std::make_pair(std::size_t(0), n));
+  auto b_sub = Kokkos::subview(b.values, std::make_pair(std::size_t(0), n));
+  auto r_sub = Kokkos::subview(result.values, std::make_pair(std::size_t(0), n));
+
+  Kokkos::Experimental::transform(
+      ExecSpace(), a_sub, b_sub, r_sub,
+      KOKKOS_LAMBDA(const T av, const T bv) {
+        return alpha_copy * av + beta_copy * bv;
       });
 
   ExecSpace().fence();
@@ -158,23 +147,15 @@ template <typename T>
 inline T field_dot_device(const Field2DDevice<T>& a,
                           const Field2DDevice<T>& b) {
   const std::size_t n = a.size();
-  if (n == 0) {
-    return T(0);
-  }
+  if (n == 0) return T(0);
 
-  auto a_vals = a.values;
-  auto b_vals = b.values;
+  auto a_sub = Kokkos::subview(a.values, std::make_pair(std::size_t(0), n));
+  auto b_sub = Kokkos::subview(b.values, std::make_pair(std::size_t(0), n));
 
-  T result = T(0);
-  Kokkos::parallel_reduce(
-      "subsetix_field2d_dot",
-      Kokkos::RangePolicy<ExecSpace>(0, n),
-      KOKKOS_LAMBDA(const std::size_t i, T& sum) {
-        sum += a_vals(i) * b_vals(i);
-      },
-      result);
-
-  return result;
+  return Kokkos::Experimental::transform_reduce(
+      ExecSpace(), a_sub, b_sub, T(0),
+      KOKKOS_LAMBDA(const T x, const T y) { return x + y; },
+      KOKKOS_LAMBDA(const T av, const T bv) { return av * bv; });
 }
 
 /**
@@ -185,21 +166,14 @@ inline T field_dot_device(const Field2DDevice<T>& a,
 template <typename T>
 inline T field_norm_l2_device(const Field2DDevice<T>& a) {
   const std::size_t n = a.size();
-  if (n == 0) {
-    return T(0);
-  }
+  if (n == 0) return T(0);
 
-  auto a_vals = a.values;
+  auto a_sub = Kokkos::subview(a.values, std::make_pair(std::size_t(0), n));
 
-  T sum_sq = T(0);
-  Kokkos::parallel_reduce(
-      "subsetix_field2d_norm_l2",
-      Kokkos::RangePolicy<ExecSpace>(0, n),
-      KOKKOS_LAMBDA(const std::size_t i, T& local_sum) {
-        const T val = a_vals(i);
-        local_sum += val * val;
-      },
-      sum_sq);
+  T sum_sq = Kokkos::Experimental::transform_reduce(
+      ExecSpace(), a_sub, T(0),
+      KOKKOS_LAMBDA(const T x, const T y) { return x + y; },
+      KOKKOS_LAMBDA(const T val) { return val * val; });
 
   return Kokkos::sqrt(sum_sq);
 }
