@@ -1,24 +1,13 @@
 #pragma once
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
 
 namespace subsetix {
 namespace csr {
 namespace detail {
-
-template <class Transform>
-struct RowKeyTransformFunctor {
-  IntervalSet2DDevice::RowKeyView row_keys_out;
-  IntervalSet2DDevice::RowKeyView row_keys_in;
-  Transform transform;
-
-  KOKKOS_INLINE_FUNCTION
-  void operator()(const std::size_t i) const {
-    row_keys_out(i) = transform(row_keys_in(i));
-  }
-};
 
 /**
  * @brief Apply a row-key transform on device with workspace,
@@ -45,30 +34,12 @@ apply_row_key_transform_device(const IntervalSet2DDevice& in,
         "subsetix_transform_row_keys", in.num_rows);
   }
 
-  RowKeyTransformFunctor<Transform> functor;
-  functor.row_keys_out = out.row_keys;
-  functor.row_keys_in = in.row_keys;
-  functor.transform = transform;
+  auto in_sub = Kokkos::subview(in.row_keys, std::make_pair(std::size_t(0), in.num_rows));
+  auto out_sub = Kokkos::subview(out.row_keys, std::make_pair(std::size_t(0), in.num_rows));
 
-  Kokkos::parallel_for(
-      "subsetix_csr_row_key_transform_kernel",
-      Kokkos::RangePolicy<ExecSpace>(0, in.num_rows),
-      functor);
-
+  Kokkos::Experimental::transform(ExecSpace(), in_sub, out_sub, transform);
   ExecSpace().fence();
 }
-
-template <class Transform>
-struct IntervalTransformFunctor {
-  IntervalSet2DDevice::IntervalView intervals_out;
-  IntervalSet2DDevice::IntervalView intervals_in;
-  Transform transform;
-
-  KOKKOS_INLINE_FUNCTION
-  void operator()(const std::size_t i) const {
-    intervals_out(i) = transform(intervals_in(i));
-  }
-};
 
 /**
  * @brief Apply an interval transform on device with workspace,
@@ -95,16 +66,10 @@ apply_interval_transform_device(const IntervalSet2DDevice& in,
         "subsetix_transform_intervals", in.num_intervals);
   }
 
-  IntervalTransformFunctor<Transform> functor;
-  functor.intervals_out = out.intervals;
-  functor.intervals_in = in.intervals;
-  functor.transform = transform;
+  auto in_sub = Kokkos::subview(in.intervals, std::make_pair(std::size_t(0), in.num_intervals));
+  auto out_sub = Kokkos::subview(out.intervals, std::make_pair(std::size_t(0), in.num_intervals));
 
-  Kokkos::parallel_for(
-      "subsetix_csr_interval_transform_kernel",
-      Kokkos::RangePolicy<ExecSpace>(0, in.num_intervals),
-      functor);
-
+  Kokkos::Experimental::transform(ExecSpace(), in_sub, out_sub, transform);
   ExecSpace().fence();
 }
 
