@@ -9,6 +9,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Random.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
 #include <subsetix/geometry/csr_backend.hpp>
 #include <subsetix/detail/scan_utils.hpp>
 
@@ -375,7 +376,7 @@ make_box_device(const Box2D& box) {
       "subsetix_csr_box_intervals", num_rows);
 
   // Initialize row_ptr to 0, then fill row_ptr(i+1) = i+1 in parallel.
-  Kokkos::deep_copy(row_ptr, std::size_t(0));
+  Kokkos::Experimental::fill(ExecSpace(), row_ptr, std::size_t(0));
 
   Kokkos::parallel_for(
       "subsetix_csr_box_fill",

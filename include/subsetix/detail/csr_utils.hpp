@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/detail/scan_utils.hpp>
 
@@ -159,15 +160,13 @@ inline void reset_preallocated_interval_set(IntervalSet2DDevice& out) {
   const std::size_t intervals_cap = out.intervals.extent(0);
 
   if (rows_cap > 0) {
-    RowKey2D zero_key{};
-    Kokkos::deep_copy(out.row_keys, zero_key);
+    Kokkos::Experimental::fill(ExecSpace(), out.row_keys, RowKey2D{});
   }
   if (row_ptr_cap > 0) {
-    Kokkos::deep_copy(out.row_ptr, std::size_t(0));
+    Kokkos::Experimental::fill(ExecSpace(), out.row_ptr, std::size_t(0));
   }
   if (intervals_cap > 0) {
-    Interval zero_interval{};
-    Kokkos::deep_copy(out.intervals, zero_interval);
+    Kokkos::Experimental::fill(ExecSpace(), out.intervals, Interval{});
   }
 }
 
