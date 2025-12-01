@@ -1038,7 +1038,7 @@ void bench_difference_row_count(benchmark::State& state, Coord extent) {
   make_intersection_configs(extent, a_cfg, b_cfg);
   IntervalSet2DDevice A = make_box(a_cfg);
   IntervalSet2DDevice B = make_box(b_cfg);
-  detail::RowDifferenceResult mapping =
+  detail::RowMergeResult mapping =
       detail::build_row_difference_mapping(A, B);
   const std::size_t rows = mapping.num_rows;
   if (rows == 0) {
@@ -1091,7 +1091,7 @@ void bench_difference_scan(benchmark::State& state, Coord extent) {
   make_intersection_configs(extent, a_cfg, b_cfg);
   IntervalSet2DDevice A = make_box(a_cfg);
   IntervalSet2DDevice B = make_box(b_cfg);
-  detail::RowDifferenceResult mapping =
+  detail::RowMergeResult mapping =
       detail::build_row_difference_mapping(A, B);
   const std::size_t rows = mapping.num_rows;
   if (rows == 0) {
@@ -1168,7 +1168,7 @@ void bench_difference_fill(benchmark::State& state, Coord extent) {
   make_intersection_configs(extent, a_cfg, b_cfg);
   IntervalSet2DDevice A = make_box(a_cfg);
   IntervalSet2DDevice B = make_box(b_cfg);
-  detail::RowDifferenceResult mapping =
+  detail::RowMergeResult mapping =
       detail::build_row_difference_mapping(A, B);
   const std::size_t rows = mapping.num_rows;
   if (rows == 0) {
