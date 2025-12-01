@@ -10,289 +10,185 @@ namespace subsetix {
 namespace csr {
 namespace detail {
 
-// Max expected N for N-way operations (radius 3 -> N=7). 
+// Max expected N for N-way operations (radius 3 -> N=7).
 // We use a small static buffer in kernels.
 constexpr int MAX_MORPH_N = 16;
 
+// Coord bounds for intersection algorithm initialization
+// Using explicit values for GPU compatibility
+constexpr Coord COORD_MIN = -2147483647 - 1;  // INT32_MIN
+constexpr Coord COORD_MAX = 2147483647;        // INT32_MAX
+
 /**
- * @brief Count intervals in the union of N expanded rows.
- * 
+ * @brief Unified N-way union implementation for morphological dilation.
+ *
  * Each row i contributes intervals [begin - rx, end + rx).
+ * When CountOnly=true, returns the count without writing.
+ * When CountOnly=false, writes intervals to intervals_out starting at out_offset.
+ *
+ * @tparam CountOnly If true, only count intervals; if false, also write them.
  */
-template <class IntervalView>
+template <bool CountOnly, class IntervalView, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
-std::size_t row_n_way_union_count(const IntervalView& intervals,
-                                  const std::size_t* row_ptrs, // Array of current ptrs
-                                  const std::size_t* row_ends, // Array of end ptrs
-                                  int n_rows,
-                                  Coord rx) {
-  std::size_t ptrs[MAX_MORPH_N];
-  for(int i=0; i<n_rows; ++i) ptrs[i] = row_ptrs[i];
-
-  std::size_t count = 0;
-  bool active = true;
-
-  // Current merged interval
-  Coord cur_end = 0;
-  bool have_current = false;
-
-  while(active) {
-    active = false;
-    Coord min_start = 0;
-    bool first = true;
-    int best_idx = -1;
-
-    // Find the interval that starts earliest among all rows
-    for(int i=0; i<n_rows; ++i) {
-      if(ptrs[i] < row_ends[i]) {
-        active = true;
-        const auto iv = intervals(ptrs[i]);
-        const Coord b = iv.begin - rx;
-        if(first || b < min_start) {
-          min_start = b;
-          best_idx = i;
-          first = false;
-        }
-      }
-    }
-
-    if(!active) break;
-
-    // Process the best interval
-    const auto iv = intervals(ptrs[best_idx]);
-    const Coord b = iv.begin - rx;
-    const Coord e = iv.end + rx;
-    
-    // Advance the pointer
-    ptrs[best_idx]++;
-
-    if(!have_current) {
-      cur_end = e;
-      have_current = true;
-    } else {
-      // Overlap or adjacent?
-      if(b <= cur_end) {
-        // Merge
-        if(e > cur_end) cur_end = e;
-      } else {
-        // Emit current
-        count++;
-        cur_end = e;
-      }
-    }
-  }
-
-  if(have_current) count++;
-  return count;
-}
-
-template <class IntervalView, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_n_way_union_fill(const IntervalView& intervals,
-                          const std::size_t* row_ptrs,
-                          const std::size_t* row_ends,
-                          int n_rows,
-                          Coord rx,
-                          const IntervalViewOut& intervals_out,
-                          std::size_t out_offset) {
-  std::size_t ptrs[MAX_MORPH_N];
-  for(int i=0; i<n_rows; ++i) ptrs[i] = row_ptrs[i];
-
-  std::size_t write_idx = 0;
-  bool active = true;
-  Coord cur_begin = 0;
-  Coord cur_end = 0;
-  bool have_current = false;
-
-  while(active) {
-    active = false;
-    Coord min_start = 0;
-    bool first = true;
-    int best_idx = -1;
-
-    for(int i=0; i<n_rows; ++i) {
-      if(ptrs[i] < row_ends[i]) {
-        active = true;
-        const auto iv = intervals(ptrs[i]);
-        const Coord b = iv.begin - rx;
-        if(first || b < min_start) {
-          min_start = b;
-          best_idx = i;
-          first = false;
-        }
-      }
-    }
-
-    if(!active) break;
-
-    const auto iv = intervals(ptrs[best_idx]);
-    const Coord b = iv.begin - rx;
-    const Coord e = iv.end + rx;
-    ptrs[best_idx]++;
-
-    if(!have_current) {
-      cur_begin = b;
-      cur_end = e;
-      have_current = true;
-    } else {
-      if(b <= cur_end) {
-        if(e > cur_end) cur_end = e;
-      } else {
-        intervals_out(out_offset + write_idx) = Interval{cur_begin, cur_end};
-        write_idx++;
-        cur_begin = b;
-        cur_end = e;
-      }
-    }
-  }
-
-  if(have_current) {
-    intervals_out(out_offset + write_idx) = Interval{cur_begin, cur_end};
-  }
-}
-
-/**
- * @brief Count intervals in the intersection of N shrunk rows.
- * 
- * Each row i contributes intervals [begin + rx, end - rx).
- * If begin + rx >= end - rx, the interval is ignored.
- */
-template <class IntervalView>
-KOKKOS_INLINE_FUNCTION
-std::size_t row_n_way_intersection_count(const IntervalView& intervals,
-                                         const std::size_t* row_ptrs,
-                                         const std::size_t* row_ends,
-                                         int n_rows,
-                                         Coord rx) {
-  if(n_rows == 0) return 0;
-
-  std::size_t ptrs[MAX_MORPH_N];
-  for(int i=0; i<n_rows; ++i) ptrs[i] = row_ptrs[i];
-
-  std::size_t count = 0;
-  
-  // Skip empty/invalid intervals initially
-  for(int i=0; i<n_rows; ++i) {
-    while(ptrs[i] < row_ends[i]) {
-      const auto iv = intervals(ptrs[i]);
-      const Coord b = iv.begin + rx;
-      const Coord e = iv.end - rx;
-      if(b < e) break; // Valid
-      ptrs[i]++;
-    }
-    if(ptrs[i] == row_ends[i]) return 0; // One row empty -> intersection empty
-  }
-
-  while(true) {
-    // Find max start and min end of current intervals
-    Coord max_start = -2147483648; 
-    Coord min_end = 2147483647; 
-    
-    // We also need to identify which interval ends earliest to advance it
-    int earliest_end_idx = -1;
-    Coord earliest_end_val = 2147483647;
-
-    for(int i=0; i<n_rows; ++i) {
-      const auto iv = intervals(ptrs[i]);
-      const Coord b = iv.begin + rx;
-      const Coord e = iv.end - rx;
-
-      if(i==0 || b > max_start) max_start = b;
-      if(i==0 || e < min_end) min_end = e;
-
-      if(e < earliest_end_val) {
-        earliest_end_val = e;
-        earliest_end_idx = i;
-      }
-    }
-
-    if(max_start < min_end) {
-      count++;
-    }
-
-    // Advance the one that ends earliest
-    int idx = earliest_end_idx;
-    ptrs[idx]++;
-    
-    // Skip invalid intervals for this row
-    while(ptrs[idx] < row_ends[idx]) {
-      const auto iv = intervals(ptrs[idx]);
-      const Coord b = iv.begin + rx;
-      const Coord e = iv.end - rx;
-      if(b < e) break;
-      ptrs[idx]++;
-    }
-
-    if(ptrs[idx] == row_ends[idx]) break; // Exhausted one row
-  }
-
-  return count;
-}
-
-template <class IntervalView, class IntervalViewOut>
-KOKKOS_INLINE_FUNCTION
-void row_n_way_intersection_fill(const IntervalView& intervals,
+std::size_t row_n_way_union_impl(const IntervalView& intervals,
                                  const std::size_t* row_ptrs,
                                  const std::size_t* row_ends,
                                  int n_rows,
                                  Coord rx,
                                  const IntervalViewOut& intervals_out,
                                  std::size_t out_offset) {
-  if(n_rows == 0) return;
-
   std::size_t ptrs[MAX_MORPH_N];
-  for(int i=0; i<n_rows; ++i) ptrs[i] = row_ptrs[i];
+  for (int i = 0; i < n_rows; ++i) ptrs[i] = row_ptrs[i];
 
-  std::size_t write_idx = 0;
+  std::size_t count = 0;
+  bool active = true;
+  Coord cur_begin = 0;
+  Coord cur_end = 0;
+  bool have_current = false;
 
-  for(int i=0; i<n_rows; ++i) {
-    while(ptrs[i] < row_ends[i]) {
-      const auto iv = intervals(ptrs[i]);
-      const Coord b = iv.begin + rx;
-      const Coord e = iv.end - rx;
-      if(b < e) break;
-      ptrs[i]++;
+  while (active) {
+    active = false;
+    Coord min_start = 0;
+    bool first = true;
+    int best_idx = -1;
+
+    // Find the interval that starts earliest among all rows
+    for (int i = 0; i < n_rows; ++i) {
+      if (ptrs[i] < row_ends[i]) {
+        active = true;
+        const auto iv = intervals(ptrs[i]);
+        const Coord b = iv.begin - rx;
+        if (first || b < min_start) {
+          min_start = b;
+          best_idx = i;
+          first = false;
+        }
+      }
     }
-    if(ptrs[i] == row_ends[i]) return;
+
+    if (!active) break;
+
+    // Process the best interval
+    const auto iv = intervals(ptrs[best_idx]);
+    const Coord b = iv.begin - rx;
+    const Coord e = iv.end + rx;
+    ptrs[best_idx]++;
+
+    if (!have_current) {
+      cur_begin = b;
+      cur_end = e;
+      have_current = true;
+    } else {
+      // Overlap or adjacent?
+      if (b <= cur_end) {
+        // Merge
+        if (e > cur_end) cur_end = e;
+      } else {
+        // Emit current interval
+        if constexpr (!CountOnly) {
+          intervals_out(out_offset + count) = Interval{cur_begin, cur_end};
+        }
+        count++;
+        cur_begin = b;
+        cur_end = e;
+      }
+    }
   }
 
-  while(true) {
-    Coord max_start = -2147483648;
-    Coord min_end = 2147483647;
-    int earliest_end_idx = -1;
-    Coord earliest_end_val = 2147483647;
+  if (have_current) {
+    if constexpr (!CountOnly) {
+      intervals_out(out_offset + count) = Interval{cur_begin, cur_end};
+    }
+    count++;
+  }
+  return count;
+}
 
-    for(int i=0; i<n_rows; ++i) {
+/**
+ * @brief Unified N-way intersection implementation for morphological erosion.
+ *
+ * Each row i contributes intervals [begin + rx, end - rx).
+ * If begin + rx >= end - rx, the interval is ignored.
+ * When CountOnly=true, returns the count without writing.
+ * When CountOnly=false, writes intervals to intervals_out starting at out_offset.
+ *
+ * @tparam CountOnly If true, only count intervals; if false, also write them.
+ */
+template <bool CountOnly, class IntervalView, class IntervalViewOut>
+KOKKOS_INLINE_FUNCTION
+std::size_t row_n_way_intersection_impl(const IntervalView& intervals,
+                                        const std::size_t* row_ptrs,
+                                        const std::size_t* row_ends,
+                                        int n_rows,
+                                        Coord rx,
+                                        const IntervalViewOut& intervals_out,
+                                        std::size_t out_offset) {
+  if (n_rows == 0) return 0;
+
+  std::size_t ptrs[MAX_MORPH_N];
+  for (int i = 0; i < n_rows; ++i) ptrs[i] = row_ptrs[i];
+
+  std::size_t count = 0;
+
+  // Skip empty/invalid intervals initially
+  for (int i = 0; i < n_rows; ++i) {
+    while (ptrs[i] < row_ends[i]) {
+      const auto iv = intervals(ptrs[i]);
+      const Coord b = iv.begin + rx;
+      const Coord e = iv.end - rx;
+      if (b < e) break;  // Valid
+      ptrs[i]++;
+    }
+    if (ptrs[i] == row_ends[i]) return 0;  // One row empty -> intersection empty
+  }
+
+  while (true) {
+    // Find max start and min end of current intervals
+    Coord max_start = COORD_MIN;
+    Coord min_end = COORD_MAX;
+
+    // We also need to identify which interval ends earliest to advance it
+    int earliest_end_idx = -1;
+    Coord earliest_end_val = COORD_MAX;
+
+    for (int i = 0; i < n_rows; ++i) {
       const auto iv = intervals(ptrs[i]);
       const Coord b = iv.begin + rx;
       const Coord e = iv.end - rx;
 
-      if(i==0 || b > max_start) max_start = b;
-      if(i==0 || e < min_end) min_end = e;
+      if (i == 0 || b > max_start) max_start = b;
+      if (i == 0 || e < min_end) min_end = e;
 
-      if(e < earliest_end_val) {
+      if (e < earliest_end_val) {
         earliest_end_val = e;
         earliest_end_idx = i;
       }
     }
 
-    if(max_start < min_end) {
-      intervals_out(out_offset + write_idx) = Interval{max_start, min_end};
-      write_idx++;
+    if (max_start < min_end) {
+      if constexpr (!CountOnly) {
+        intervals_out(out_offset + count) = Interval{max_start, min_end};
+      }
+      count++;
     }
 
+    // Advance the one that ends earliest
     int idx = earliest_end_idx;
     ptrs[idx]++;
-    while(ptrs[idx] < row_ends[idx]) {
+
+    // Skip invalid intervals for this row
+    while (ptrs[idx] < row_ends[idx]) {
       const auto iv = intervals(ptrs[idx]);
       const Coord b = iv.begin + rx;
       const Coord e = iv.end - rx;
-      if(b < e) break;
+      if (b < e) break;
       ptrs[idx]++;
     }
 
-    if(ptrs[idx] == row_ends[idx]) break;
+    if (ptrs[idx] == row_ends[idx]) break;  // Exhausted one row
   }
+
+  return count;
 }
 
 struct RowMorphologyResult {
@@ -598,7 +494,8 @@ expand_device(const IntervalSet2DDevice& in,
         ends[k] = row_ptr_in(r+1);
       }
       
-      row_counts(i) = detail::row_n_way_union_count(intervals_in, ptrs, ends, capped_rows, rx);
+      row_counts(i) = detail::row_n_way_union_impl<true>(
+          intervals_in, ptrs, ends, capped_rows, rx, intervals_in, 0);
   });
   
   ExecSpace().fence();
@@ -646,7 +543,8 @@ expand_device(const IntervalSet2DDevice& in,
       }
       
       const std::size_t offset = row_ptr_out(i);
-      detail::row_n_way_union_fill(intervals_in, ptrs, ends, capped_rows, rx, intervals_out, offset);
+      detail::row_n_way_union_impl<false>(
+          intervals_in, ptrs, ends, capped_rows, rx, intervals_out, offset);
   });
   
   ExecSpace().fence();
@@ -710,7 +608,8 @@ shrink_device(const IntervalSet2DDevice& in,
         ends[k] = row_ptr_in(r+1);
       }
       
-      row_counts(i) = detail::row_n_way_intersection_count(intervals_in, ptrs, ends, n_rows, rx);
+      row_counts(i) = detail::row_n_way_intersection_impl<true>(
+          intervals_in, ptrs, ends, n_rows, rx, intervals_in, 0);
   });
   
   ExecSpace().fence();
@@ -755,7 +654,8 @@ shrink_device(const IntervalSet2DDevice& in,
       }
       
       const std::size_t offset = row_ptr_out(i);
-      detail::row_n_way_intersection_fill(intervals_in, ptrs, ends, n_rows, rx, intervals_out, offset);
+      detail::row_n_way_intersection_impl<false>(
+          intervals_in, ptrs, ends, n_rows, rx, intervals_out, offset);
   });
   
   ExecSpace().fence();

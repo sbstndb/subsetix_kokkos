@@ -1673,9 +1673,9 @@ int main(int argc, char* argv[]) {
 
     if (cfg.enable_output) {
       const IntervalSet2DHost fluid_host =
-          subsetix::csr::build_host_from_device(fluid_dev);
+          subsetix::csr::to<subsetix::csr::HostMemorySpace>(fluid_dev);
       const IntervalSet2DHost obstacle_host =
-          subsetix::csr::build_host_from_device(obstacle_dev);
+          subsetix::csr::to<subsetix::csr::HostMemorySpace>(obstacle_dev);
       write_legacy_quads(fluid_host,
                          subsetix_examples::output_file(output_dir, "fluid_geometry.vtk"));
       write_legacy_quads(obstacle_host,
@@ -1686,13 +1686,13 @@ int main(int argc, char* argv[]) {
         }
         if (coarse_masks[lvl].num_intervals > 0) {
           const IntervalSet2DHost mask_host =
-              subsetix::csr::build_host_from_device(coarse_masks[lvl]);
+              subsetix::csr::to<subsetix::csr::HostMemorySpace>(coarse_masks[lvl]);
           write_legacy_quads(mask_host,
                              subsetix_examples::output_file(
                                  output_dir, "refine_mask_lvl" + std::to_string(lvl) + ".vtk"));
         }
         const IntervalSet2DHost fine_host =
-            subsetix::csr::build_host_from_device(active_set[lvl]);
+            subsetix::csr::to<subsetix::csr::HostMemorySpace>(active_set[lvl]);
         write_legacy_quads(fine_host,
                            subsetix_examples::output_file(
                                output_dir, "fine_geometry_lvl" + std::to_string(lvl) + ".vtk"));

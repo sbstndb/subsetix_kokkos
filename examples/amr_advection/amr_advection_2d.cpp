@@ -48,7 +48,7 @@ make_accessor(const Field2DDevice<T>& field) {
 template <typename T>
 Field2DDevice<T> make_field_like_device(const IntervalSet2DDevice& geom,
                                         T init_val = T()) {
-  auto geom_host = build_host_from_device(geom);
+  auto geom_host = to<HostMemorySpace>(geom);
   auto field_host = make_field_like_geometry<T>(geom_host, init_val);
   return build_device_field_from_host(field_host);
 }

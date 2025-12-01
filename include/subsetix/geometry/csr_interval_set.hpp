@@ -237,17 +237,6 @@ inline IntervalSet2DDevice
 build_device_from_host(const IntervalSet2DHost& host) {
   return to<DeviceMemorySpace>(host);
 }
-
-/**
- * @brief Rebuild a host CSR representation from a device CSR interval set.
- * @deprecated Use to<HostMemorySpace>(dev) instead.
- */
-[[deprecated("Use to<HostMemorySpace>(dev) instead")]]
-inline IntervalSet2DHost
-build_host_from_device(const IntervalSet2DDevice& dev) {
-  return to<HostMemorySpace>(dev);
-}
-
 // ---------------------------------------------------------------------------
 // Geometry builders (CSR) - rectangles, disks, random on domain
 // ---------------------------------------------------------------------------
