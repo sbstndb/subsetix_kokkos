@@ -32,10 +32,11 @@ inline float read_be_float(std::ifstream& ifs) {
 
 TEST(VTKExportTest, WriteLegacyQuadsBinaryContent) {
     // 1. Create a simple geometry: 2x2 square from (0,0) to (2,2)
-    IntervalSet2DHost geom;
-    geom.row_keys = {RowKey2D{0}, RowKey2D{1}};
-    geom.row_ptr = {0, 1, 2};
-    geom.intervals = {Interval{0, 2}, Interval{0, 2}};
+    auto geom = make_interval_set_host(
+        {{0}, {1}},           // row_keys
+        {0, 1, 2},            // row_ptr
+        {{0, 2}, {0, 2}}      // intervals
+    );
 
     // 2. Create a field with values
     IntervalField2DHost<float> field = make_field_like_geometry<float>(geom, 0.0f);

@@ -34,15 +34,15 @@ TEST_F(CsrMorphologyTest, ExpandBox) {
   // Expand by 1 in X and 1 in Y
   expand_device(A, 1, 1, out, ctx);
   
-  auto h_out = build_host_from_device(out);
+  auto h_out = to<HostMemorySpace>(out);
   
   // Expected: Box 9..21, 9..21
-  EXPECT_EQ(h_out.num_rows(), 12); // 21 - 9
-  
-  for(size_t i=0; i<h_out.num_rows(); ++i) {
-    EXPECT_EQ(h_out.row_keys[i].y, 9 + (int)i);
-    EXPECT_EQ(h_out.intervals[h_out.row_ptr[i]].begin, 9);
-    EXPECT_EQ(h_out.intervals[h_out.row_ptr[i]].end, 21);
+  EXPECT_EQ(h_out.num_rows, 12u); // 21 - 9
+
+  for(size_t i=0; i<h_out.num_rows; ++i) {
+    EXPECT_EQ(h_out.row_keys(i).y, 9 + (int)i);
+    EXPECT_EQ(h_out.intervals(h_out.row_ptr(i)).begin, 9);
+    EXPECT_EQ(h_out.intervals(h_out.row_ptr(i)).end, 21);
   }
 }
 
@@ -58,17 +58,17 @@ TEST_F(CsrMorphologyTest, ShrinkBox) {
   // X range: 10+2 .. 20-2 = 12..18 (size 6)
   shrink_device(A, 2, 1, out, ctx);
   
-  auto h_out = build_host_from_device(out);
-  
-  EXPECT_EQ(h_out.num_rows(), 8);
-  
-  if (h_out.num_rows() > 0) {
-    EXPECT_EQ(h_out.row_keys.front().y, 11);
-    EXPECT_EQ(h_out.row_keys.back().y, 18);
-    
-    for(size_t i=0; i<h_out.num_rows(); ++i) {
-        EXPECT_EQ(h_out.intervals[h_out.row_ptr[i]].begin, 12);
-        EXPECT_EQ(h_out.intervals[h_out.row_ptr[i]].end, 18);
+  auto h_out = to<HostMemorySpace>(out);
+
+  EXPECT_EQ(h_out.num_rows, 8u);
+
+  if (h_out.num_rows > 0) {
+    EXPECT_EQ(h_out.row_keys(0).y, 11);
+    EXPECT_EQ(h_out.row_keys(h_out.num_rows - 1).y, 18);
+
+    for(size_t i=0; i<h_out.num_rows; ++i) {
+        EXPECT_EQ(h_out.intervals(h_out.row_ptr(i)).begin, 12);
+        EXPECT_EQ(h_out.intervals(h_out.row_ptr(i)).end, 18);
     }
   }
 }
@@ -97,25 +97,26 @@ TEST_F(CsrMorphologyTest, ExpandWithGaps) {
     // Expand Y=1 should bridge the gap
     
     // Construct manual set
-    IntervalSet2DHost h;
-    h.row_keys = {{10}, {12}};
-    h.row_ptr = {0, 1, 2};
-    h.intervals = {{10, 20}, {10, 20}};
-    
-    A = build_device_from_host(h);
+    IntervalSet2DHost h = make_interval_set_host(
+        {{10}, {12}},
+        {0, 1, 2},
+        {{10, 20}, {10, 20}}
+    );
+
+    A = to<DeviceMemorySpace>(h);
     IntervalSet2DDevice out = allocate_interval_set_device(100, 100);
     
     expand_device(A, 0, 1, out, ctx);
     
-    auto h_out = build_host_from_device(out);
-    
+    auto h_out = to<HostMemorySpace>(out);
+
     // 10 expands to 9,10,11
     // 12 expands to 11,12,13
     // Union: 9, 10, 11, 12, 13
-    
-    EXPECT_EQ(h_out.num_rows(), 5);
-    EXPECT_EQ(h_out.row_keys[0].y, 9);
-    EXPECT_EQ(h_out.row_keys[4].y, 13);
+
+    EXPECT_EQ(h_out.num_rows, 5u);
+    EXPECT_EQ(h_out.row_keys(0).y, 9);
+    EXPECT_EQ(h_out.row_keys(4).y, 13);
 }
 
 TEST_F(CsrMorphologyTest, ShrinkRequiresContiguity) {
@@ -128,12 +129,13 @@ TEST_F(CsrMorphologyTest, ShrinkRequiresContiguity) {
     // For 10 to exist, need 9, 10, 11. 9, 11 missing.
     // Result should be empty.
     
-    IntervalSet2DHost h;
-    h.row_keys = {{10}, {12}};
-    h.row_ptr = {0, 1, 2};
-    h.intervals = {{10, 20}, {10, 20}};
-    
-    A = build_device_from_host(h);
+    IntervalSet2DHost h = make_interval_set_host(
+        {{10}, {12}},
+        {0, 1, 2},
+        {{10, 20}, {10, 20}}
+    );
+
+    A = to<DeviceMemorySpace>(h);
     IntervalSet2DDevice out = allocate_interval_set_device(100, 100);
     
     shrink_device(A, 0, 1, out, ctx);

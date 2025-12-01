@@ -43,22 +43,22 @@ TEST(CSRDifferenceSmokeTest, EmptyAndNonEmpty) {
 
   // A \ empty = A
   auto D1 = run_difference(A, empty_b);
-  auto host_A = build_host_from_device(A);
-  auto host_D1 = build_host_from_device(D1);
+  auto host_A = to<HostMemorySpace>(A);
+  auto host_D1 = to<HostMemorySpace>(D1);
 
-  ASSERT_EQ(host_A.row_keys.size(), host_D1.row_keys.size());
-  ASSERT_EQ(host_A.row_ptr.size(), host_D1.row_ptr.size());
-  ASSERT_EQ(host_A.intervals.size(), host_D1.intervals.size());
+  ASSERT_EQ(host_A.row_keys.extent(0), host_D1.row_keys.extent(0));
+  ASSERT_EQ(host_A.row_ptr.extent(0), host_D1.row_ptr.extent(0));
+  ASSERT_EQ(host_A.intervals.extent(0), host_D1.intervals.extent(0));
 
-  for (std::size_t i = 0; i < host_A.row_keys.size(); ++i) {
-    EXPECT_EQ(host_A.row_keys[i].y, host_D1.row_keys[i].y);
+  for (std::size_t i = 0; i < host_A.row_keys.extent(0); ++i) {
+    EXPECT_EQ(host_A.row_keys(i).y, host_D1.row_keys(i).y);
   }
-  for (std::size_t i = 0; i < host_A.row_ptr.size(); ++i) {
-    EXPECT_EQ(host_A.row_ptr[i], host_D1.row_ptr[i]);
+  for (std::size_t i = 0; i < host_A.row_ptr.extent(0); ++i) {
+    EXPECT_EQ(host_A.row_ptr(i), host_D1.row_ptr(i));
   }
-  for (std::size_t i = 0; i < host_A.intervals.size(); ++i) {
-    EXPECT_EQ(host_A.intervals[i].begin, host_D1.intervals[i].begin);
-    EXPECT_EQ(host_A.intervals[i].end, host_D1.intervals[i].end);
+  for (std::size_t i = 0; i < host_A.intervals.extent(0); ++i) {
+    EXPECT_EQ(host_A.intervals(i).begin, host_D1.intervals(i).begin);
+    EXPECT_EQ(host_A.intervals(i).end, host_D1.intervals(i).end);
   }
 
   // empty \ A = empty
@@ -100,24 +100,24 @@ TEST(CSRDifferenceSmokeTest, OverlappingBoxesSameRows) {
   IntervalSet2DDevice B = make_box_device(boxB);
 
   auto D = run_difference(A, B);
-  auto host_D = build_host_from_device(D);
+  auto host_D = to<HostMemorySpace>(D);
 
-  ASSERT_EQ(host_D.row_keys.size(), 2u);
+  ASSERT_EQ(host_D.row_keys.extent(0), 2u);
   for (std::size_t i = 0; i < 2; ++i) {
-    EXPECT_EQ(host_D.row_keys[i].y, static_cast<Coord>(i));
+    EXPECT_EQ(host_D.row_keys(i).y, static_cast<Coord>(i));
   }
 
-  ASSERT_EQ(host_D.row_ptr.size(), 3u);
-  EXPECT_EQ(host_D.row_ptr[0], 0u);
-  EXPECT_EQ(host_D.row_ptr[1], 2u);
-  EXPECT_EQ(host_D.row_ptr[2], 4u);
+  ASSERT_EQ(host_D.row_ptr.extent(0), 3u);
+  EXPECT_EQ(host_D.row_ptr(0), 0u);
+  EXPECT_EQ(host_D.row_ptr(1), 2u);
+  EXPECT_EQ(host_D.row_ptr(2), 4u);
 
-  ASSERT_EQ(host_D.intervals.size(), 4u);
+  ASSERT_EQ(host_D.intervals.extent(0), 4u);
 
-  const auto& iv0 = host_D.intervals[0];
-  const auto& iv1 = host_D.intervals[1];
-  const auto& iv2 = host_D.intervals[2];
-  const auto& iv3 = host_D.intervals[3];
+  const auto& iv0 = host_D.intervals(0);
+  const auto& iv1 = host_D.intervals(1);
+  const auto& iv2 = host_D.intervals(2);
+  const auto& iv3 = host_D.intervals(3);
 
   EXPECT_EQ(iv0.begin, 0);
   EXPECT_EQ(iv0.end, 2);
@@ -146,8 +146,8 @@ TEST(CSRDifferenceSmokeTest, BoxesOnDisjointRows) {
   IntervalSet2DDevice B = make_box_device(boxB);
 
   auto D = run_difference(A, B);
-  auto host_A = build_host_from_device(A);
-  auto host_D = build_host_from_device(D);
+  auto host_A = to<HostMemorySpace>(A);
+  auto host_D = to<HostMemorySpace>(D);
 
   expect_equal_csr(host_A, host_D);
 }

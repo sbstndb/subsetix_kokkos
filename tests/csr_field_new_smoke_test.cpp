@@ -12,12 +12,11 @@ using namespace subsetix::csr;
 namespace {
 
 IntervalSet2DHost make_test_geometry() {
-  IntervalSet2DHost geom;
-  geom.row_keys = {RowKey2D{0}, RowKey2D{1}};
-  geom.row_ptr = {0, 1, 2};
-  geom.intervals = {Interval{0, 3}, Interval{1, 4}};
-  geom.rebuild_mapping();
-  return geom;
+  return make_interval_set_host(
+      {{0}, {1}},           // row_keys
+      {0, 1, 2},            // row_ptr
+      {{0, 3}, {1, 4}}      // intervals
+  );
 }
 
 std::vector<double> make_values(std::size_t count, double start) {
@@ -46,7 +45,7 @@ void assign_legacy(IntervalField2DHost<double>& field,
 
 TEST(Field2DTest, FieldAddMatchesLegacy) {
   auto geom_host = make_test_geometry();
-  auto geom_dev = build_device_from_host(geom_host);
+  auto geom_dev = to<DeviceMemorySpace>(geom_host);
 
   Field2DDevice<double> field_a(geom_dev, "a");
   Field2DDevice<double> field_b(geom_dev, "b");
@@ -83,18 +82,18 @@ TEST(Field2DTest, FieldAddMatchesLegacy) {
 
 TEST(Field2DTest, FillOnMask) {
   auto geom_host = make_test_geometry();
-  auto geom_dev = build_device_from_host(geom_host);
+  auto geom_dev = to<DeviceMemorySpace>(geom_host);
 
   Field2DDevice<double> field(geom_dev, "mask_field");
   auto initial_values = make_values(geom_host.total_cells, 0.0);
   assign_field(field, initial_values);
 
-  IntervalSet2DHost mask_host;
-  mask_host.row_keys = {RowKey2D{0}};
-  mask_host.row_ptr = {0, 1};
-  mask_host.intervals = {Interval{1, 3}};
-  mask_host.rebuild_mapping();
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_host = make_interval_set_host(
+      {{0}},        // row_keys
+      {0, 1},       // row_ptr
+      {{1, 3}}      // intervals
+  );
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   fill_on_set_device(field, mask_dev, 5.0);
 
@@ -110,4 +109,3 @@ TEST(Field2DTest, FillOnMask) {
     EXPECT_DOUBLE_EQ(result(i), expected[i]);
   }
 }
-

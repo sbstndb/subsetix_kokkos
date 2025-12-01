@@ -24,11 +24,11 @@ IntervalField2DHost<int> make_test_field() {
 }
 
 IntervalSet2DHost make_mask_host() {
-  IntervalSet2DHost mask;
-  mask.row_keys = {RowKey2D{0}, RowKey2D{1}};
-  mask.row_ptr = {0, 1, 2};
-  mask.intervals = {Interval{1, 3}, Interval{0, 2}};
-  return mask;
+  return make_interval_set_host(
+      {RowKey2D{0}, RowKey2D{1}},
+      {0, 1, 2},
+      {Interval{1, 3}, Interval{0, 2}}
+  );
 }
 
 IntervalField2DHost<double> make_stencil_input_field() {
@@ -46,7 +46,7 @@ IntervalField2DHost<double> make_stencil_input_field() {
 IntervalField2DHost<double> make_zero_field_like(
     const IntervalField2DHost<double>& ref) {
   IntervalField2DHost<double> host;
-  for (std::size_t i = 0; i < ref.row_keys.size(); ++i) {
+  for (std::size_t i = 0; i < ref.num_rows(); ++i) {
     const Coord y = ref.row_keys[i].y;
     const std::size_t begin = ref.row_ptr[i];
     const std::size_t end = ref.row_ptr[i + 1];
@@ -62,38 +62,47 @@ IntervalField2DHost<double> make_zero_field_like(
 }
 
 IntervalSet2DHost make_interior_mask() {
-  IntervalSet2DHost mask;
-  mask.row_keys = {RowKey2D{1}};
-  mask.row_ptr = {0, 1};
-  mask.intervals = {Interval{1, 3}};
-  return mask;
+  return make_interval_set_host(
+      {RowKey2D{1}},
+      {0, 1},
+      {Interval{1, 3}}
+  );
 }
 
 IntervalSet2DHost split_geometry_intervals(const IntervalSet2DHost& base) {
   IntervalSet2DHost out;
+  out.num_rows = base.num_rows;
   out.row_keys = base.row_keys;
-  out.row_ptr.resize(base.row_ptr.size());
-  out.intervals.clear();
+  out.row_ptr = Kokkos::View<std::size_t*, HostMemorySpace>(
+      "row_ptr", base.row_ptr.extent(0));
+  std::vector<Interval> temp_intervals;
 
-  for (std::size_t row = 0; row < base.row_keys.size(); ++row) {
-    const std::size_t begin = base.row_ptr[row];
-    const std::size_t end = base.row_ptr[row + 1];
-    out.row_ptr[row] = out.intervals.size();
+  for (std::size_t row = 0; row < base.num_rows; ++row) {
+    const std::size_t begin = base.row_ptr(row);
+    const std::size_t end = base.row_ptr(row + 1);
+    out.row_ptr(row) = temp_intervals.size();
     for (std::size_t k = begin; k < end; ++k) {
-      const Interval iv = base.intervals[k];
+      const Interval iv = base.intervals(k);
       const Coord len = static_cast<Coord>(iv.end - iv.begin);
       if (len <= 1) {
-        out.intervals.push_back(iv);
+        temp_intervals.push_back(iv);
         continue;
       }
       const Coord mid = iv.begin + len / 2;
-      out.intervals.push_back(Interval{iv.begin, mid});
-      out.intervals.push_back(Interval{mid, iv.end});
+      temp_intervals.push_back(Interval{iv.begin, mid});
+      temp_intervals.push_back(Interval{mid, iv.end});
     }
-    out.row_ptr[row + 1] = out.intervals.size();
+    out.row_ptr(row + 1) = temp_intervals.size();
   }
 
-  out.rebuild_mapping();
+  out.intervals = Kokkos::View<Interval*, HostMemorySpace>(
+      "intervals", temp_intervals.size());
+  for (std::size_t i = 0; i < temp_intervals.size(); ++i) {
+    out.intervals(i) = temp_intervals[i];
+  }
+  out.num_intervals = temp_intervals.size();
+
+  compute_cell_offsets_host(out);
   return out;
 }
 
@@ -114,7 +123,7 @@ struct FivePointAverage {
 template <typename T>
 void fill_field_with_pattern(IntervalField2DHost<T>& field,
                              const std::function<T(Coord, Coord)>& pattern) {
-  for (std::size_t row = 0; row < field.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < field.num_rows(); ++row) {
     const Coord y = field.row_keys[row].y;
     const std::size_t begin = field.row_ptr[row];
     const std::size_t end = field.row_ptr[row + 1];
@@ -133,7 +142,7 @@ void fill_field_with_pattern(IntervalField2DHost<T>& field,
 template <typename T>
 bool host_try_get(const IntervalField2DHost<T>& field,
                   Coord x, Coord y, T& out) {
-  for (std::size_t row = 0; row < field.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < field.num_rows(); ++row) {
     if (field.row_keys[row].y != y) {
       continue;
     }
@@ -169,7 +178,7 @@ TEST(CsrFieldSubViewTest, FillOnSubregion) {
   auto mask_host = make_mask_host();
 
   auto field_dev = build_device_field_from_host(field_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   auto sub = make_subview(field_dev, mask_dev, "fill_subview");
   fill_subview_device(sub, 99);
@@ -192,7 +201,7 @@ TEST(CsrFieldSubViewTest, FillOnSubregionWithSubsetCaching) {
   auto mask_host = make_mask_host();
 
   auto field_dev = build_device_field_from_host(field_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   auto sub = make_subview(field_dev, mask_dev, "subset_fill");
   EXPECT_FALSE(sub.has_subset());
@@ -215,7 +224,7 @@ TEST(CsrFieldSubViewTest, CustomLambdaOnSubregion) {
   auto mask_host = make_mask_host();
 
   auto field_dev = build_device_field_from_host(field_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   auto sub = make_subview(field_dev, mask_dev, "lambda_subview");
 
@@ -241,7 +250,7 @@ TEST(CsrFieldSubViewTest, StencilOnSubregion) {
 
   auto input_dev = build_device_field_from_host(input_host);
   auto output_dev = build_device_field_from_host(output_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   auto input_sub = make_subview(input_dev, mask_dev, "stencil_in");
   auto output_sub = make_subview(output_dev, mask_dev, "stencil_out");
@@ -265,7 +274,7 @@ TEST(CsrFieldSubViewTest, StencilOnSubregionWithSubset) {
 
   auto input_dev = build_device_field_from_host(input_host);
   auto output_dev = build_device_field_from_host(output_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   auto input_sub = make_subview(input_dev, mask_dev, "subset_stencil_in");
   auto output_sub = make_subview(output_dev, mask_dev, "subset_stencil_out");
@@ -288,7 +297,7 @@ TEST(CsrFieldSubViewTest, StencilOnSubregionWithSubset) {
 TEST(CsrFieldSubViewTest, CopySubViewHandlesDifferentLayoutsWithSubset) {
   Box2D domain{0, 8, 0, 4};
   auto dense_geom_dev = make_box_device(domain);
-  auto dense_geom_host = build_host_from_device(dense_geom_dev);
+  auto dense_geom_host = to<HostMemorySpace>(dense_geom_dev);
   auto split_geom_host = split_geometry_intervals(dense_geom_host);
 
   auto src_host =
@@ -328,7 +337,7 @@ TEST(CsrFieldSubViewTest, CopySubViewHandlesDifferentLayoutsWithSubset) {
 TEST(CsrFieldSubViewTest, StencilOnSubregionHandlesDifferentLayouts) {
   Box2D domain{0, 8, 0, 4};
   auto dense_geom_dev = make_box_device(domain);
-  auto dense_geom_host = build_host_from_device(dense_geom_dev);
+  auto dense_geom_host = to<HostMemorySpace>(dense_geom_dev);
   auto split_geom_host = split_geometry_intervals(dense_geom_host);
 
   auto src_host =
@@ -372,8 +381,8 @@ TEST(CsrFieldSubViewTest, RestrictSubViewAveragesFineValues) {
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -396,7 +405,7 @@ TEST(CsrFieldSubViewTest, RestrictSubViewAveragesFineValues) {
 
   auto restricted = build_host_field_from_device(coarse_field_dev);
 
-  for (std::size_t row = 0; row < restricted.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < restricted.num_rows(); ++row) {
     const Coord y = restricted.row_keys[row].y;
     const std::size_t begin = restricted.row_ptr[row];
     const std::size_t end = restricted.row_ptr[row + 1];
@@ -443,8 +452,8 @@ TEST(CsrFieldSubViewTest, RestrictSubViewSubsetMatchesAverages) {
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -467,7 +476,7 @@ TEST(CsrFieldSubViewTest, RestrictSubViewSubsetMatchesAverages) {
   EXPECT_TRUE(coarse_sub.has_subset());
 
   auto restricted = build_host_field_from_device(coarse_field_dev);
-  for (std::size_t row = 0; row < restricted.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < restricted.num_rows(); ++row) {
     const Coord y = restricted.row_keys[row].y;
     const std::size_t begin = restricted.row_ptr[row];
     const std::size_t end = restricted.row_ptr[row + 1];
@@ -513,8 +522,8 @@ TEST(CsrFieldSubViewTest, ProlongSubViewCopiesCoarseValues) {
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -537,7 +546,7 @@ TEST(CsrFieldSubViewTest, ProlongSubViewCopiesCoarseValues) {
 
   auto prolonged = build_host_field_from_device(fine_field_dev);
 
-  for (std::size_t row = 0; row < prolonged.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < prolonged.num_rows(); ++row) {
     const Coord y = prolonged.row_keys[row].y;
     const std::size_t begin = prolonged.row_ptr[row];
     const std::size_t end = prolonged.row_ptr[row + 1];
@@ -565,8 +574,8 @@ TEST(CsrFieldSubViewTest, ProlongSubViewSubsetCopiesCoarseValues) {
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -589,7 +598,7 @@ TEST(CsrFieldSubViewTest, ProlongSubViewSubsetCopiesCoarseValues) {
   EXPECT_TRUE(fine_sub.has_subset());
 
   auto prolonged = build_host_field_from_device(fine_field_dev);
-  for (std::size_t row = 0; row < prolonged.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < prolonged.num_rows(); ++row) {
     const Coord y = prolonged.row_keys[row].y;
     const std::size_t begin = prolonged.row_ptr[row];
     const std::size_t end = prolonged.row_ptr[row + 1];
@@ -616,8 +625,8 @@ TEST(CsrFieldSubViewTest, ProlongPredictionSubViewMatchesLinearField) {
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -640,7 +649,7 @@ TEST(CsrFieldSubViewTest, ProlongPredictionSubViewMatchesLinearField) {
 
   auto prolonged = build_host_field_from_device(fine_field_dev);
 
-  for (std::size_t row = 0; row < prolonged.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < prolonged.num_rows(); ++row) {
     const Coord y = prolonged.row_keys[row].y;
     if (y < 2 || y > 5) continue;
 

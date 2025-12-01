@@ -37,8 +37,8 @@ TEST(CSRTranslationSmokeTest, TranslationByZeroIsIdentity) {
   IntervalSet2DDevice T;
   translate_x_device(A, 0, T, ctx);
 
-  auto host_A = build_host_from_device(A);
-  auto host_T = build_host_from_device(T);
+  auto host_A = to<HostMemorySpace>(A);
+  auto host_T = to<HostMemorySpace>(T);
 
   expect_equal_csr(host_A, host_T);
 }
@@ -50,11 +50,11 @@ TEST(CSRTranslationSmokeTest, SimplePositiveTranslation) {
           {2, {Interval{1, 3}}},
       });
 
-  auto dev_in = build_device_from_host(host_in);
+  auto dev_in = to<DeviceMemorySpace>(host_in);
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice dev_out;
   translate_x_device(dev_in, 3, dev_out, ctx);
-  auto host_out = build_host_from_device(dev_out);
+  auto host_out = to<HostMemorySpace>(dev_out);
 
   IntervalSet2DHost expected =
       make_host_csr({
@@ -72,12 +72,12 @@ TEST(CSRTranslationSmokeTest, SimplePositiveTranslationY) {
           {3, {Interval{1, 3}}},
       });
 
-  auto dev_in = build_device_from_host(host_in);
+  auto dev_in = to<DeviceMemorySpace>(host_in);
   const Coord dy = 2;
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice dev_out;
   translate_y_device(dev_in, dy, dev_out, ctx);
-  auto host_out = build_host_from_device(dev_out);
+  auto host_out = to<HostMemorySpace>(dev_out);
 
   IntervalSet2DHost expected =
       make_host_csr({
@@ -116,8 +116,8 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslation) {
   IntervalSet2DDevice T;
   translate_x_device(U, -5, T, ctx);
 
-  auto host_U = build_host_from_device(U);
-  auto host_T = build_host_from_device(T);
+  auto host_U = to<HostMemorySpace>(U);
+  auto host_T = to<HostMemorySpace>(T);
 
   const std::size_t card_U = cardinality(host_U);
   const std::size_t card_T = cardinality(host_T);
@@ -153,8 +153,8 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslationY) {
   IntervalSet2DDevice T;
   translate_y_device(U, dy, T, ctx);
 
-  auto host_U = build_host_from_device(U);
-  auto host_T = build_host_from_device(T);
+  auto host_U = to<HostMemorySpace>(U);
+  auto host_T = to<HostMemorySpace>(T);
 
   const std::size_t card_U = cardinality(host_U);
   const std::size_t card_T = cardinality(host_T);
@@ -198,8 +198,8 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslation) {
   translate_x_device(B, dx, B_shift, ctx);
   auto U_shift_alt = run_union(A_shift, B_shift);
 
-  auto host_U_shift = build_host_from_device(U_shift);
-  auto host_U_shift_alt = build_host_from_device(U_shift_alt);
+  auto host_U_shift = to<HostMemorySpace>(U_shift);
+  auto host_U_shift_alt = to<HostMemorySpace>(U_shift_alt);
 
   expect_equal_csr(host_U_shift, host_U_shift_alt);
 }
@@ -237,8 +237,8 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslationY) {
   translate_y_device(B, dy, B_shift, ctx);
   auto U_shift_alt = run_union(A_shift, B_shift);
 
-  auto host_U_shift = build_host_from_device(U_shift);
-  auto host_U_shift_alt = build_host_from_device(U_shift_alt);
+  auto host_U_shift = to<HostMemorySpace>(U_shift);
+  auto host_U_shift_alt = to<HostMemorySpace>(U_shift_alt);
 
   expect_equal_csr(host_U_shift, host_U_shift_alt);
 }

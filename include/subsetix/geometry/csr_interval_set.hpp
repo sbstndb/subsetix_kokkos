@@ -28,58 +28,41 @@ struct RowKey2D {
 };
 
 /**
- * @brief Host-side CSR representation of a 2D interval set.
+ * @brief Unified CSR representation of a 2D interval set.
+ *
+ * Templated on MemorySpace to support both Host and Device.
+ * Uses Kokkos::View for all storage.
  *
  * Invariants (par convention) :
- *  - row_keys.size() == num_rows,
- *  - row_ptr.size() == num_rows + 1,
- *  - intervals.size() == row_ptr.back(),
+ *  - row_keys.extent(0) == num_rows,
+ *  - row_ptr.extent(0) == num_rows + 1,
+ *  - intervals.extent(0) >= num_intervals,
  *  - pour chaque ligne, les intervalles sont triés et non chevauchants.
  */
-struct IntervalSet2DHost {
-  std::vector<RowKey2D> row_keys;
-  std::vector<std::size_t> row_ptr;
-  std::vector<Interval> intervals;
-  std::vector<std::size_t> cell_offsets;
-  std::size_t total_cells = 0;
-
-  std::size_t num_rows() const { return row_keys.size(); }
-  std::size_t num_intervals() const { return intervals.size(); }
-
-  void rebuild_mapping() {
-    cell_offsets.resize(intervals.size());
-    std::size_t accum = 0;
-    for (std::size_t i = 0; i < intervals.size(); ++i) {
-      cell_offsets[i] = accum;
-      accum += static_cast<std::size_t>(intervals[i].end - intervals[i].begin);
-    }
-    total_cells = accum;
-  }
-};
-
-/**
- * @brief Device-friendly CSR representation using Kokkos::View.
- *
- * Layout identique au host : un seul CSR global (pas de tuiles).
- */
 template <class MemorySpace>
-struct IntervalSet2DView {
+struct IntervalSet2D {
   using RowKeyView = Kokkos::View<RowKey2D*, MemorySpace>;
   using IndexView = Kokkos::View<std::size_t*, MemorySpace>;
   using IntervalView = Kokkos::View<Interval*, MemorySpace>;
   using OffsetView = Kokkos::View<std::size_t*, MemorySpace>;
 
-  RowKeyView row_keys;    ///< [num_rows]
-  IndexView row_ptr;      ///< [num_rows + 1]
-  IntervalView intervals; ///< [num_intervals]
+  RowKeyView row_keys;     ///< [num_rows]
+  IndexView row_ptr;       ///< [num_rows + 1]
+  IntervalView intervals;  ///< [num_intervals]
   OffsetView cell_offsets; ///< [num_intervals]
   std::size_t total_cells = 0;
   std::size_t num_rows = 0;
   std::size_t num_intervals = 0;
 };
 
-using IntervalSet2DDevice = IntervalSet2DView<DeviceMemorySpace>;
-using IntervalSet2DHostView = IntervalSet2DView<HostMemorySpace>;
+// Primary type aliases
+using IntervalSet2DDevice = IntervalSet2D<DeviceMemorySpace>;
+using IntervalSet2DHost = IntervalSet2D<HostMemorySpace>;
+
+// Backward compatibility aliases
+template <class MemorySpace>
+using IntervalSet2DView = IntervalSet2D<MemorySpace>;
+using IntervalSet2DHostView = IntervalSet2D<HostMemorySpace>;
 
 inline IntervalSet2DDevice
 allocate_interval_set_device(std::size_t row_capacity,
@@ -144,113 +127,124 @@ inline void compute_cell_offsets_device(IntervalSet2DDevice& dev) {
 }
 
 /**
- * @brief Build a device CSR interval set from a host CSR representation.
+ * @brief Compute cell offsets for a host IntervalSet2D.
  */
+inline void compute_cell_offsets_host(IntervalSet2DHost& h) {
+  if (h.num_intervals == 0) {
+    h.total_cells = 0;
+    return;
+  }
+
+  if (h.cell_offsets.extent(0) < h.num_intervals) {
+    h.cell_offsets = IntervalSet2DHost::OffsetView(
+        "subsetix_csr_offsets_host", h.num_intervals);
+  }
+
+  std::size_t accum = 0;
+  for (std::size_t i = 0; i < h.num_intervals; ++i) {
+    h.cell_offsets(i) = accum;
+    accum += static_cast<std::size_t>(h.intervals(i).end - h.intervals(i).begin);
+  }
+  h.total_cells = accum;
+}
+
+/**
+ * @brief Convert an IntervalSet2D between memory spaces.
+ *
+ * Usage:
+ *   auto device_set = to<DeviceMemorySpace>(host_set);
+ *   auto host_set = to<HostMemorySpace>(device_set);
+ */
+template <class ToSpace, class FromSpace>
+inline IntervalSet2D<ToSpace> to(const IntervalSet2D<FromSpace>& src) {
+  IntervalSet2D<ToSpace> dst;
+
+  if (src.num_rows == 0) {
+    return dst;
+  }
+
+  dst.num_rows = src.num_rows;
+  dst.num_intervals = src.num_intervals;
+  dst.total_cells = src.total_cells;
+
+  // Use subviews to handle cases where view extent > num_*
+  auto src_row_keys = Kokkos::subview(src.row_keys, std::make_pair(std::size_t(0), src.num_rows));
+  auto src_row_ptr = Kokkos::subview(src.row_ptr, std::make_pair(std::size_t(0), src.num_rows + 1));
+  auto src_intervals = Kokkos::subview(src.intervals, std::make_pair(std::size_t(0), src.num_intervals));
+  auto src_offsets = Kokkos::subview(src.cell_offsets, std::make_pair(std::size_t(0), src.num_intervals));
+
+  dst.row_keys = Kokkos::create_mirror_view_and_copy(ToSpace{}, src_row_keys);
+  dst.row_ptr = Kokkos::create_mirror_view_and_copy(ToSpace{}, src_row_ptr);
+  dst.intervals = Kokkos::create_mirror_view_and_copy(ToSpace{}, src_intervals);
+  dst.cell_offsets = Kokkos::create_mirror_view_and_copy(ToSpace{}, src_offsets);
+
+  return dst;
+}
+
+/**
+ * @brief Create an IntervalSet2D on host from initializer lists.
+ *
+ * Useful for tests and simple constructions.
+ *
+ * Usage:
+ *   auto h = make_interval_set_host(
+ *       {{0}, {5}},           // row_keys (y values)
+ *       {0, 1, 2},            // row_ptr
+ *       {{0, 10}, {5, 8}}     // intervals
+ *   );
+ */
+inline IntervalSet2DHost make_interval_set_host(
+    std::initializer_list<RowKey2D> row_keys_init,
+    std::initializer_list<std::size_t> row_ptr_init,
+    std::initializer_list<Interval> intervals_init) {
+  IntervalSet2DHost h;
+
+  const auto nrows = row_keys_init.size();
+  const auto nints = intervals_init.size();
+
+  if (nrows == 0) {
+    return h;
+  }
+
+  h.row_keys = IntervalSet2DHost::RowKeyView("row_keys", nrows);
+  h.row_ptr = IntervalSet2DHost::IndexView("row_ptr", row_ptr_init.size());
+  h.intervals = IntervalSet2DHost::IntervalView("intervals", nints);
+  h.cell_offsets = IntervalSet2DHost::OffsetView("cell_offsets", nints);
+
+  std::copy(row_keys_init.begin(), row_keys_init.end(), h.row_keys.data());
+  std::copy(row_ptr_init.begin(), row_ptr_init.end(), h.row_ptr.data());
+  std::copy(intervals_init.begin(), intervals_init.end(), h.intervals.data());
+
+  h.num_rows = nrows;
+  h.num_intervals = nints;
+
+  compute_cell_offsets_host(h);
+
+  return h;
+}
+
+// ---------------------------------------------------------------------------
+// Backward compatibility wrappers (deprecated)
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Build a device CSR interval set from a host CSR representation.
+ * @deprecated Use to<DeviceMemorySpace>(host) instead.
+ */
+[[deprecated("Use to<DeviceMemorySpace>(host) instead")]]
 inline IntervalSet2DDevice
-build_device_from_host(const IntervalSet2DHost& host_in) {
-  IntervalSet2DHost host = host_in;
-  IntervalSet2DDevice dev;
-
-  const std::size_t num_rows = host.row_keys.size();
-  if (num_rows == 0) {
-    return dev;
-  }
-
-  const std::size_t row_ptr_size = host.row_ptr.size();
-  if (row_ptr_size != num_rows + 1) {
-    return dev;
-  }
-
-  if (host.cell_offsets.size() != host.intervals.size()) {
-    host.rebuild_mapping();
-  }
-
-  const std::size_t num_intervals = host.intervals.size();
-
-  dev.num_rows = num_rows;
-  dev.num_intervals = num_intervals;
-  dev.total_cells = host.total_cells;
-
-  typename IntervalSet2DDevice::RowKeyView row_keys(
-      "subsetix_csr_row_keys", num_rows);
-  typename IntervalSet2DDevice::IndexView row_ptr(
-      "subsetix_csr_row_ptr", row_ptr_size);
-  typename IntervalSet2DDevice::IntervalView intervals(
-      "subsetix_csr_intervals", num_intervals);
-  typename IntervalSet2DDevice::OffsetView cell_offsets(
-      "subsetix_csr_offsets", num_intervals);
-
-  Kokkos::View<RowKey2D*, HostMemorySpace> h_row_keys(
-      "subsetix_csr_row_keys_host", num_rows);
-  Kokkos::View<std::size_t*, HostMemorySpace> h_row_ptr(
-      "subsetix_csr_row_ptr_host", row_ptr_size);
-  Kokkos::View<Interval*, HostMemorySpace> h_intervals(
-      "subsetix_csr_intervals_host", num_intervals);
-  Kokkos::View<std::size_t*, HostMemorySpace> h_offsets(
-      "subsetix_csr_offsets_host", num_intervals);
-
-  for (std::size_t i = 0; i < num_rows; ++i) {
-    h_row_keys(i) = host.row_keys[i];
-  }
-  for (std::size_t i = 0; i < row_ptr_size; ++i) {
-    h_row_ptr(i) = host.row_ptr[i];
-  }
-  for (std::size_t i = 0; i < num_intervals; ++i) {
-    h_intervals(i) = host.intervals[i];
-    h_offsets(i) = host.cell_offsets[i];
-  }
-
-  Kokkos::deep_copy(row_keys, h_row_keys);
-  Kokkos::deep_copy(row_ptr, h_row_ptr);
-  Kokkos::deep_copy(intervals, h_intervals);
-  Kokkos::deep_copy(cell_offsets, h_offsets);
-
-  dev.row_keys = row_keys;
-  dev.row_ptr = row_ptr;
-  dev.intervals = intervals;
-  dev.cell_offsets = cell_offsets;
-
-  return dev;
+build_device_from_host(const IntervalSet2DHost& host) {
+  return to<DeviceMemorySpace>(host);
 }
 
 /**
  * @brief Rebuild a host CSR representation from a device CSR interval set.
+ * @deprecated Use to<HostMemorySpace>(dev) instead.
  */
+[[deprecated("Use to<HostMemorySpace>(dev) instead")]]
 inline IntervalSet2DHost
 build_host_from_device(const IntervalSet2DDevice& dev) {
-  IntervalSet2DHost host;
-
-  const std::size_t num_rows = dev.num_rows;
-  const std::size_t num_intervals = dev.num_intervals;
-
-  if (num_rows == 0) {
-    return host;
-  }
-
-  auto h_row_keys =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_keys);
-  auto h_row_ptr =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.row_ptr);
-  auto h_intervals =
-      Kokkos::create_mirror_view_and_copy(HostMemorySpace{}, dev.intervals);
-
-  host.row_keys.resize(num_rows);
-  host.row_ptr.resize(num_rows + 1);
-  host.intervals.resize(num_intervals);
-
-  for (std::size_t i = 0; i < num_rows; ++i) {
-    host.row_keys[i] = h_row_keys(i);
-  }
-  for (std::size_t i = 0; i < num_rows + 1; ++i) {
-    host.row_ptr[i] = h_row_ptr(i);
-  }
-  for (std::size_t i = 0; i < num_intervals; ++i) {
-    host.intervals[i] = h_intervals(i);
-  }
-
-  host.rebuild_mapping();
-
-  return host;
+  return to<HostMemorySpace>(dev);
 }
 
 // ---------------------------------------------------------------------------

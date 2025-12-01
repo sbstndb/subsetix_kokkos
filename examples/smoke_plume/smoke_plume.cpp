@@ -34,17 +34,20 @@ namespace {
 using Real = double;
 using subsetix::csr::Box2D;
 using subsetix::csr::Coord;
+using subsetix::csr::DeviceMemorySpace;
 using subsetix::csr::ExecSpace;
+using subsetix::csr::HostMemorySpace;
 using subsetix::csr::Field2DDevice;
 using subsetix::csr::Interval;
 using subsetix::csr::IntervalSet2DDevice;
+using subsetix::csr::RowKey2D;
 using subsetix::csr::IntervalSet2DHost;
 using subsetix::csr::build_device_field_from_host;
-using subsetix::csr::build_device_from_host;
 using subsetix::csr::build_host_field_from_device;
-using subsetix::csr::build_host_from_device;
+using subsetix::csr::compute_cell_offsets_host;
 using subsetix::csr::make_box_device;
 using subsetix::csr::make_field_like_geometry;
+using subsetix::csr::to;
 using subsetix::vtk::write_legacy_quads;
 using subsetix_examples::make_example_output_dir;
 using subsetix_examples::output_file;
@@ -98,7 +101,7 @@ make_accessor(const Field2DDevice<T>& field) {
 Field2DDevice<Real>
 make_field_for_box(const Box2D& box, Real init_value) {
   const IntervalSet2DDevice geom_dev = make_box_device(box);
-  const auto geom_host = build_host_from_device(geom_dev);
+  const auto geom_host = to<HostMemorySpace>(geom_dev);
   const auto host = make_field_like_geometry<Real>(geom_host, init_value);
   return build_device_field_from_host(host);
 }
@@ -148,7 +151,7 @@ Field2DDevice<T>
 remap_to_geometry(const Field2DDevice<T>& src,
                   const IntervalSet2DDevice& new_geom,
                   T ambient) {
-  const auto geom_host = build_host_from_device(new_geom);
+  const auto geom_host = to<HostMemorySpace>(new_geom);
   const auto host_field = make_field_like_geometry<T>(geom_host, ambient);
   Field2DDevice<T> dst = build_device_field_from_host(host_field);
 
@@ -188,12 +191,13 @@ bounds_from_set(const IntervalSet2DDevice& geom) {
   if (geom.num_rows == 0 || geom.num_intervals == 0) {
     return box;
   }
-  const auto host = build_host_from_device(geom);
-  box.y_min = host.row_keys.front().y;
-  box.y_max = host.row_keys.back().y + 1;
+  const auto host = to<HostMemorySpace>(geom);
+  box.y_min = host.row_keys(0).y;
+  box.y_max = host.row_keys(host.num_rows - 1).y + 1;
   Coord xmin = std::numeric_limits<Coord>::max();
   Coord xmax = std::numeric_limits<Coord>::min();
-  for (const auto& iv : host.intervals) {
+  for (std::size_t i = 0; i < host.num_intervals; ++i) {
+    const auto iv = host.intervals(i);
     if (iv.begin < xmin) xmin = iv.begin;
     if (iv.end > xmax) xmax = iv.end;
   }
@@ -211,30 +215,56 @@ build_expanded_mask(const Field2DDevice<Real>& smoke,
   IntervalSet2DDevice expanded;
   expand_device(active, cfg.expand_x, cfg.expand_y, expanded, ctx);
   // Clamp to y >= 0 (keep floor fixed).
-  const auto host = build_host_from_device(expanded);
-  IntervalSet2DHost filtered;
-  filtered.row_ptr.reserve(host.row_ptr.size());
-  filtered.row_keys.reserve(host.row_keys.size());
-  filtered.intervals.reserve(host.intervals.size());
-  filtered.row_ptr.push_back(0);
-  for (std::size_t i = 0; i < host.row_keys.size(); ++i) {
-    if (host.row_keys[i].y < 0) {
+  const auto host = to<HostMemorySpace>(expanded);
+
+  // First pass: count valid rows and intervals
+  std::vector<RowKey2D> temp_row_keys;
+  std::vector<std::size_t> temp_row_ptr;
+  std::vector<Interval> temp_intervals;
+  temp_row_ptr.push_back(0);
+
+  for (std::size_t i = 0; i < host.num_rows; ++i) {
+    if (host.row_keys(i).y < 0) {
       continue;
     }
-    const std::size_t begin = host.row_ptr[i];
-    const std::size_t end = host.row_ptr[i + 1];
+    const std::size_t begin = host.row_ptr(i);
+    const std::size_t end = host.row_ptr(i + 1);
     const std::size_t count = end - begin;
     if (count == 0) {
       continue;
     }
-    filtered.row_keys.push_back(host.row_keys[i]);
+    temp_row_keys.push_back(host.row_keys(i));
     for (std::size_t k = begin; k < end; ++k) {
-      filtered.intervals.push_back(host.intervals[k]);
+      temp_intervals.push_back(host.intervals(k));
     }
-    filtered.row_ptr.push_back(filtered.row_ptr.back() + count);
+    temp_row_ptr.push_back(temp_row_ptr.back() + count);
   }
-  filtered.rebuild_mapping();
-  return build_device_from_host(filtered);
+
+  // Build filtered IntervalSet2DHost
+  IntervalSet2DHost filtered;
+  filtered.num_rows = temp_row_keys.size();
+  filtered.num_intervals = temp_intervals.size();
+
+  if (filtered.num_rows == 0) {
+    return to<DeviceMemorySpace>(filtered);
+  }
+
+  filtered.row_keys = IntervalSet2DHost::RowKeyView("row_keys", filtered.num_rows);
+  filtered.row_ptr = IntervalSet2DHost::IndexView("row_ptr", filtered.num_rows + 1);
+  filtered.intervals = IntervalSet2DHost::IntervalView("intervals", filtered.num_intervals);
+
+  for (std::size_t i = 0; i < temp_row_keys.size(); ++i) {
+    filtered.row_keys(i) = temp_row_keys[i];
+  }
+  for (std::size_t i = 0; i < temp_row_ptr.size(); ++i) {
+    filtered.row_ptr(i) = temp_row_ptr[i];
+  }
+  for (std::size_t i = 0; i < temp_intervals.size(); ++i) {
+    filtered.intervals(i) = temp_intervals[i];
+  }
+
+  compute_cell_offsets_host(filtered);
+  return to<DeviceMemorySpace>(filtered);
 }
 
 Real

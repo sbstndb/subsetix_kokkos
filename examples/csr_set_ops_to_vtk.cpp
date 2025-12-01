@@ -58,10 +58,10 @@ int main(int argc, char* argv[]) {
                                           box_dev.num_intervals + disk_dev.num_intervals);
     set_symmetric_difference_device(box_dev, disk_dev, x, ctx);
 
-    auto u_host = build_host_from_device(u);
-    auto i_host = build_host_from_device(i);
-    auto d_host = build_host_from_device(d);
-    auto x_host = build_host_from_device(x);
+    auto u_host = to<HostMemorySpace>(u);
+    auto i_host = to<HostMemorySpace>(i);
+    auto d_host = to<HostMemorySpace>(d);
+    auto x_host = to<HostMemorySpace>(x);
 
     write_legacy_quads(u_host, output_path("box_disk_union.vtk"));
     write_legacy_quads(i_host, output_path("box_disk_intersection.vtk"));

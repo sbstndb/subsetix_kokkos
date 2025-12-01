@@ -47,9 +47,9 @@ TEST(CSRUnionSmokeTest, EmptyAndNonEmpty) {
   auto u1 = run_union(A, B);
   auto u2 = run_union(B, A);
 
-  auto host_A = build_host_from_device(A);
-  auto host_u1 = build_host_from_device(u1);
-  auto host_u2 = build_host_from_device(u2);
+  auto host_A = to<HostMemorySpace>(A);
+  auto host_u1 = to<HostMemorySpace>(u1);
+  auto host_u2 = to<HostMemorySpace>(u2);
 
   expect_equal_csr(host_A, host_u1);
   expect_equal_csr(host_A, host_u2);
@@ -72,21 +72,21 @@ TEST(CSRUnionSmokeTest, OverlappingBoxesSameRows) {
   IntervalSet2DDevice B = make_box_device(boxB);
 
   auto U = run_union(A, B);
-  auto host_U = build_host_from_device(U);
+  auto host_U = to<HostMemorySpace>(U);
 
-  ASSERT_EQ(host_U.row_keys.size(), 2u);
+  ASSERT_EQ(host_U.row_keys.extent(0), 2u);
   for (std::size_t i = 0; i < 2; ++i) {
-    EXPECT_EQ(host_U.row_keys[i].y, static_cast<Coord>(i));
+    EXPECT_EQ(host_U.row_keys(i).y, static_cast<Coord>(i));
   }
 
-  ASSERT_EQ(host_U.row_ptr.size(), 3u);
-  EXPECT_EQ(host_U.row_ptr[0], 0u);
-  EXPECT_EQ(host_U.row_ptr[1], 1u);
-  EXPECT_EQ(host_U.row_ptr[2], 2u);
+  ASSERT_EQ(host_U.row_ptr.extent(0), 3u);
+  EXPECT_EQ(host_U.row_ptr(0), 0u);
+  EXPECT_EQ(host_U.row_ptr(1), 1u);
+  EXPECT_EQ(host_U.row_ptr(2), 2u);
 
-  ASSERT_EQ(host_U.intervals.size(), 2u);
+  ASSERT_EQ(host_U.intervals.extent(0), 2u);
   for (std::size_t i = 0; i < 2; ++i) {
-    const auto& iv = host_U.intervals[i];
+    const auto& iv = host_U.intervals(i);
     EXPECT_EQ(iv.begin, 0);
     EXPECT_EQ(iv.end, 6);
   }
@@ -109,24 +109,24 @@ TEST(CSRUnionSmokeTest, BoxesOnDisjointRows) {
   IntervalSet2DDevice B = make_box_device(boxB);
 
   auto U = run_union(A, B);
-  auto host_U = build_host_from_device(U);
+  auto host_U = to<HostMemorySpace>(U);
 
-  ASSERT_EQ(host_U.row_keys.size(), 4u);
+  ASSERT_EQ(host_U.row_keys.extent(0), 4u);
   const Coord expected_y[4] = {0, 1, 3, 4};
   for (std::size_t i = 0; i < 4; ++i) {
-    EXPECT_EQ(host_U.row_keys[i].y, expected_y[i]);
+    EXPECT_EQ(host_U.row_keys(i).y, expected_y[i]);
   }
 
-  ASSERT_EQ(host_U.row_ptr.size(), 5u);
-  EXPECT_EQ(host_U.row_ptr[0], 0u);
-  EXPECT_EQ(host_U.row_ptr[1], 1u);
-  EXPECT_EQ(host_U.row_ptr[2], 2u);
-  EXPECT_EQ(host_U.row_ptr[3], 3u);
-  EXPECT_EQ(host_U.row_ptr[4], 4u);
+  ASSERT_EQ(host_U.row_ptr.extent(0), 5u);
+  EXPECT_EQ(host_U.row_ptr(0), 0u);
+  EXPECT_EQ(host_U.row_ptr(1), 1u);
+  EXPECT_EQ(host_U.row_ptr(2), 2u);
+  EXPECT_EQ(host_U.row_ptr(3), 3u);
+  EXPECT_EQ(host_U.row_ptr(4), 4u);
 
-  ASSERT_EQ(host_U.intervals.size(), 4u);
+  ASSERT_EQ(host_U.intervals.extent(0), 4u);
   for (std::size_t i = 0; i < 4; ++i) {
-    const auto& iv = host_U.intervals[i];
+    const auto& iv = host_U.intervals(i);
     EXPECT_EQ(iv.begin, 0);
     EXPECT_EQ(iv.end, 4);
   }
@@ -144,22 +144,22 @@ TEST(CSRUnionSmokeTest, SameRowMultipleDisjointIntervals) {
       {0, {Interval{2, 5}}},
   });
 
-  auto A = build_device_from_host(hostA);
-  auto B = build_device_from_host(hostB);
+  auto A = to<DeviceMemorySpace>(hostA);
+  auto B = to<DeviceMemorySpace>(hostB);
 
   auto U = run_union(A, B);
-  auto host_U = build_host_from_device(U);
+  auto host_U = to<HostMemorySpace>(U);
 
-  ASSERT_EQ(host_U.row_keys.size(), 1u);
-  EXPECT_EQ(host_U.row_keys[0].y, 0);
+  ASSERT_EQ(host_U.row_keys.extent(0), 1u);
+  EXPECT_EQ(host_U.row_keys(0).y, 0);
 
-  ASSERT_EQ(host_U.row_ptr.size(), 2u);
-  EXPECT_EQ(host_U.row_ptr[0], 0u);
-  EXPECT_EQ(host_U.row_ptr[1], 2u);
+  ASSERT_EQ(host_U.row_ptr.extent(0), 2u);
+  EXPECT_EQ(host_U.row_ptr(0), 0u);
+  EXPECT_EQ(host_U.row_ptr(1), 2u);
 
-  ASSERT_EQ(host_U.intervals.size(), 2u);
-  const auto& iv0 = host_U.intervals[0];
-  const auto& iv1 = host_U.intervals[1];
+  ASSERT_EQ(host_U.intervals.extent(0), 2u);
+  const auto& iv0 = host_U.intervals(0);
+  const auto& iv1 = host_U.intervals(1);
   EXPECT_EQ(iv0.begin, 0);
   EXPECT_EQ(iv0.end, 5);
   EXPECT_EQ(iv1.begin, 8);

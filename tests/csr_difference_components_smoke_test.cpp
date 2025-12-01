@@ -10,21 +10,20 @@
 using namespace subsetix::csr;
 
 TEST(CSRDifferenceComponentsSmokeTest, RowDifferenceMapping) {
-  IntervalSet2DHost hostA;
-  IntervalSet2DHost hostB;
+  auto hostA = make_interval_set_host(
+      {{0}, {2}, {4}},  // row_keys
+      {0, 0, 0, 0},     // row_ptr (empty rows)
+      {}                // no intervals
+  );
 
-  hostA.row_keys.push_back(RowKey2D{0});
-  hostA.row_keys.push_back(RowKey2D{2});
-  hostA.row_keys.push_back(RowKey2D{4});
-  hostA.row_ptr = {0, 0, 0, 0};
+  auto hostB = make_interval_set_host(
+      {{1}, {2}, {4}},  // row_keys
+      {0, 0, 0, 0},     // row_ptr (empty rows)
+      {}                // no intervals
+  );
 
-  hostB.row_keys.push_back(RowKey2D{1});
-  hostB.row_keys.push_back(RowKey2D{2});
-  hostB.row_keys.push_back(RowKey2D{4});
-  hostB.row_ptr = {0, 0, 0, 0};
-
-  auto A = build_device_from_host(hostA);
-  auto B = build_device_from_host(hostB);
+  auto A = to<DeviceMemorySpace>(hostA);
+  auto B = to<DeviceMemorySpace>(hostB);
 
   detail::RowDifferenceResult diff =
       detail::build_row_difference_mapping(A, B);

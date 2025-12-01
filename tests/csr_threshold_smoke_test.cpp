@@ -29,7 +29,7 @@ TEST(CSRThresholdSmokeTest, BasicThresholding) {
   //        Intervals: [10, 13)
   
   auto result_set_dev = threshold_field(dev_field, 1.0);
-  auto result_set_host = build_host_from_device(result_set_dev);
+  auto result_set_host = to<HostMemorySpace>(result_set_dev);
 
   subsetix::csr_test::expect_equal_csr(
       result_set_host,
@@ -47,15 +47,15 @@ TEST(CSRThresholdSmokeTest, EmptyResult) {
   
   // Epsilon higher than any value
   auto result_set_dev = threshold_field(dev_field, 10.0);
-  auto result_set_host = build_host_from_device(result_set_dev);
+  auto result_set_host = to<HostMemorySpace>(result_set_dev);
 
-  // Expect same rows but empty intervals (or no intervals at all if implementation optimizes empty rows? 
+  // Expect same rows but empty intervals (or no intervals at all if implementation optimizes empty rows?
   // The implementation copies row keys, so rows exist but row_ptr will indicate empty ranges).
   // make_host_csr with empty vector makes empty rows, but here we expect rows to exist.
-  
-  ASSERT_EQ(result_set_host.num_rows(), 1u);
-  ASSERT_EQ(result_set_host.num_intervals(), 0u);
-  ASSERT_EQ(result_set_host.row_keys[0].y, 0);
+
+  ASSERT_EQ(result_set_host.num_rows, 1u);
+  ASSERT_EQ(result_set_host.num_intervals, 0u);
+  ASSERT_EQ(result_set_host.row_keys(0).y, 0);
 }
 
 TEST(CSRThresholdSmokeTest, FullResult) {
@@ -66,7 +66,7 @@ TEST(CSRThresholdSmokeTest, FullResult) {
   
   // Epsilon 0, all values > 0
   auto result_set_dev = threshold_field(dev_field, 0.0);
-  auto result_set_host = build_host_from_device(result_set_dev);
+  auto result_set_host = to<HostMemorySpace>(result_set_dev);
 
   subsetix::csr_test::expect_equal_csr(
       result_set_host,
@@ -84,7 +84,7 @@ TEST(CSRThresholdSmokeTest, NegativeValues) {
   
   // Epsilon 3. Should pick |-5| and |5|.
   auto result_set_dev = threshold_field(dev_field, 3.0);
-  auto result_set_host = build_host_from_device(result_set_dev);
+  auto result_set_host = to<HostMemorySpace>(result_set_dev);
 
   subsetix::csr_test::expect_equal_csr(
       result_set_host,
@@ -103,7 +103,7 @@ TEST(CSRThresholdSmokeTest, GapsHandling) {
   
   // Epsilon 1. All values pass. But gap at 2 should break the interval.
   auto result_set_dev = threshold_field(dev_field, 1.0);
-  auto result_set_host = build_host_from_device(result_set_dev);
+  auto result_set_host = to<HostMemorySpace>(result_set_dev);
 
   subsetix::csr_test::expect_equal_csr(
       result_set_host,
@@ -122,7 +122,7 @@ TEST(CSRThresholdSmokeTest, MergeAcrossFieldIntervals) {
   
   // Epsilon 1. All values pass. They should merge into [0, 4).
   auto result_set_dev = threshold_field(dev_field, 1.0);
-  auto result_set_host = build_host_from_device(result_set_dev);
+  auto result_set_host = to<HostMemorySpace>(result_set_dev);
 
   subsetix::csr_test::expect_equal_csr(
       result_set_host,

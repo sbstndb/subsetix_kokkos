@@ -17,7 +17,7 @@ namespace {
 template <typename T>
 void fill_field_with_pattern(IntervalField2DHost<T>& field,
                              const std::function<T(Coord, Coord)>& pattern) {
-  for (std::size_t row = 0; row < field.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < field.num_rows(); ++row) {
     const Coord y = field.row_keys[row].y;
     const std::size_t begin = field.row_ptr[row];
     const std::size_t end = field.row_ptr[row + 1];
@@ -46,7 +46,7 @@ IntervalSet2DDevice make_box_mask(Coord x_min, Coord x_max,
 template <typename T>
 bool host_try_get(const IntervalField2DHost<T>& field,
                   Coord x, Coord y, T& out) {
-  for (std::size_t row = 0; row < field.row_keys.size(); ++row) {
+  for (std::size_t row = 0; row < field.num_rows(); ++row) {
     if (field.row_keys[row].y != y) {
       continue;
     }
@@ -74,8 +74,8 @@ TEST(CSRFieldAmrOpsSmokeTest, RestrictAveragesFineValues) {
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -102,7 +102,7 @@ TEST(CSRFieldAmrOpsSmokeTest, RestrictAveragesFineValues) {
 
   // For coarse cell (x, y), expected average:
   // avg = (2x + 20y + 5.5)
-  for (std::size_t row = 0; row < restricted.row_keys.size();
+  for (std::size_t row = 0; row < restricted.num_rows();
        ++row) {
     const Coord y = restricted.row_keys[row].y;
     const std::size_t begin = restricted.row_ptr[row];
@@ -150,8 +150,8 @@ TEST(CSRFieldAmrOpsSmokeTest, ProlongCopiesCoarseValues) {
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -176,7 +176,7 @@ TEST(CSRFieldAmrOpsSmokeTest, ProlongCopiesCoarseValues) {
   auto prolonged =
       build_host_field_from_device(fine_field_dev);
 
-  for (std::size_t row = 0; row < prolonged.row_keys.size();
+  for (std::size_t row = 0; row < prolonged.num_rows();
        ++row) {
     const Coord y = prolonged.row_keys[row].y;
     const std::size_t begin = prolonged.row_ptr[row];
@@ -206,8 +206,8 @@ TEST(CSRFieldAmrOpsSmokeTest, ProlongWithPredictionLinearReconstruction) {
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -233,11 +233,11 @@ TEST(CSRFieldAmrOpsSmokeTest, ProlongWithPredictionLinearReconstruction) {
   // Check internal cells where we expect exact reconstruction
   // Coarse x in [1, 2], y in [1, 2]
   // Fine x in [2, 5], y in [2, 5] (approx)
-  
-  for (std::size_t row = 0; row < prolonged.row_keys.size(); ++row) {
+
+  for (std::size_t row = 0; row < prolonged.num_rows(); ++row) {
     const Coord y = prolonged.row_keys[row].y;
     if (y < 2 || y > 5) continue;
-    
+
     const std::size_t begin = prolonged.row_ptr[row];
     const std::size_t end = prolonged.row_ptr[row + 1];
     for (std::size_t k = begin; k < end; ++k) {
@@ -265,8 +265,8 @@ TEST(CSRFieldAmrOpsSmokeTest,
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -299,14 +299,14 @@ TEST(CSRFieldAmrOpsSmokeTest,
   auto restricted_coords =
       build_host_field_from_device(coarse_field_coords);
 
-  ASSERT_EQ(restricted_standard.row_keys.size(),
-            restricted_coords.row_keys.size());
-  ASSERT_EQ(restricted_standard.intervals.size(),
-            restricted_coords.intervals.size());
-  ASSERT_EQ(restricted_standard.values.size(),
-            restricted_coords.values.size());
+  ASSERT_EQ(restricted_standard.num_rows(),
+            restricted_coords.num_rows());
+  ASSERT_EQ(restricted_standard.num_intervals(),
+            restricted_coords.num_intervals());
+  ASSERT_EQ(restricted_standard.value_count(),
+            restricted_coords.value_count());
 
-  for (std::size_t i = 0; i < restricted_standard.values.size(); ++i) {
+  for (std::size_t i = 0; i < restricted_standard.value_count(); ++i) {
     EXPECT_DOUBLE_EQ(restricted_standard.values[i],
                      restricted_coords.values[i]);
   }
@@ -319,8 +319,8 @@ TEST(CSRFieldAmrOpsSmokeTest,
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_geom, fine_geom, ctx);
 
-  auto coarse_geom_host = build_host_from_device(coarse_geom);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto coarse_geom_host = to<HostMemorySpace>(coarse_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
 
   auto coarse_field_host =
       make_field_like_geometry<double>(coarse_geom_host, 0.0);
@@ -355,14 +355,14 @@ TEST(CSRFieldAmrOpsSmokeTest,
   auto prolonged_coords =
       build_host_field_from_device(fine_field_coords);
 
-  ASSERT_EQ(prolonged_standard.row_keys.size(),
-            prolonged_coords.row_keys.size());
-  ASSERT_EQ(prolonged_standard.intervals.size(),
-            prolonged_coords.intervals.size());
-  ASSERT_EQ(prolonged_standard.values.size(),
-            prolonged_coords.values.size());
+  ASSERT_EQ(prolonged_standard.num_rows(),
+            prolonged_coords.num_rows());
+  ASSERT_EQ(prolonged_standard.num_intervals(),
+            prolonged_coords.num_intervals());
+  ASSERT_EQ(prolonged_standard.value_count(),
+            prolonged_coords.value_count());
 
-  for (std::size_t i = 0; i < prolonged_standard.values.size(); ++i) {
+  for (std::size_t i = 0; i < prolonged_standard.value_count(); ++i) {
     EXPECT_NEAR(prolonged_standard.values[i],
                 prolonged_coords.values[i],
                 1e-12);

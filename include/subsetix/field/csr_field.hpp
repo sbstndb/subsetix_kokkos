@@ -168,16 +168,28 @@ build_device_field_from_host(const IntervalField2DHost<T>& host,
     return dev;
   }
 
+  // Build geometry on host using Kokkos Views
   IntervalSet2DHost geom_host;
-  geom_host.row_keys = host.row_keys;
-  geom_host.row_ptr = host.row_ptr;
-  geom_host.intervals.reserve(num_intervals);
-  for (const FieldInterval& fi : host.intervals) {
-    geom_host.intervals.push_back(Interval{fi.begin, fi.end});
-  }
-  geom_host.rebuild_mapping();
+  geom_host.num_rows = num_rows;
+  geom_host.num_intervals = num_intervals;
 
-  dev.geometry = build_device_from_host(geom_host);
+  geom_host.row_keys = IntervalSet2DHost::RowKeyView("geom_row_keys", num_rows);
+  geom_host.row_ptr = IntervalSet2DHost::IndexView("geom_row_ptr", num_row_ptr);
+  geom_host.intervals = IntervalSet2DHost::IntervalView("geom_intervals", num_intervals);
+
+  for (std::size_t i = 0; i < num_rows; ++i) {
+    geom_host.row_keys(i) = host.row_keys[i];
+  }
+  for (std::size_t i = 0; i < num_row_ptr; ++i) {
+    geom_host.row_ptr(i) = host.row_ptr[i];
+  }
+  for (std::size_t i = 0; i < num_intervals; ++i) {
+    const FieldInterval& fi = host.intervals[i];
+    geom_host.intervals(i) = Interval{fi.begin, fi.end};
+  }
+  compute_cell_offsets_host(geom_host);
+
+  dev.geometry = to<DeviceMemorySpace>(geom_host);
 
   if (value_count > 0) {
     dev.values = typename Field2DDevice<T>::ValueView(
@@ -208,16 +220,25 @@ build_host_field_from_device(const Field2DDevice<T>& dev) {
     return host;
   }
 
-  auto geom_host = build_host_from_device(dev.geometry);
-  host.row_keys = geom_host.row_keys;
-  host.row_ptr = geom_host.row_ptr;
-  host.intervals.resize(geom_host.intervals.size());
+  auto geom_host = to<HostMemorySpace>(dev.geometry);
 
-  for (std::size_t i = 0; i < geom_host.intervals.size(); ++i) {
+  // Copy from Kokkos Views to std::vectors
+  host.row_keys.resize(geom_host.num_rows);
+  for (std::size_t i = 0; i < geom_host.num_rows; ++i) {
+    host.row_keys[i] = geom_host.row_keys(i);
+  }
+
+  host.row_ptr.resize(geom_host.num_rows + 1);
+  for (std::size_t i = 0; i < geom_host.num_rows + 1; ++i) {
+    host.row_ptr[i] = geom_host.row_ptr(i);
+  }
+
+  host.intervals.resize(geom_host.num_intervals);
+  for (std::size_t i = 0; i < geom_host.num_intervals; ++i) {
     FieldInterval fi;
-    fi.begin = geom_host.intervals[i].begin;
-    fi.end = geom_host.intervals[i].end;
-    fi.value_offset = geom_host.cell_offsets[i];
+    fi.begin = geom_host.intervals(i).begin;
+    fi.end = geom_host.intervals(i).end;
+    fi.value_offset = geom_host.cell_offsets(i);
     host.intervals[i] = fi;
   }
 
@@ -244,8 +265,8 @@ make_field_like_geometry(const IntervalSet2DHost& geom,
                          const T& init_value) {
   IntervalField2DHost<T> field;
 
-  const std::size_t num_rows = geom.row_keys.size();
-  if (num_rows == 0 || geom.row_ptr.size() != num_rows + 1) {
+  const std::size_t num_rows = geom.num_rows;
+  if (num_rows == 0) {
     return field;
   }
 
@@ -260,14 +281,14 @@ make_field_like_geometry(const IntervalSet2DHost& geom,
   field.row_ptr.push_back(0);
 
   for (std::size_t i = 0; i < num_rows; ++i) {
-    const Coord y = geom.row_keys[i].y;
+    const Coord y = geom.row_keys(i).y;
     field.row_keys.push_back(RowKey2D{y});
 
-    const std::size_t begin = geom.row_ptr[i];
-    const std::size_t end = geom.row_ptr[i + 1];
+    const std::size_t begin = geom.row_ptr(i);
+    const std::size_t end = geom.row_ptr(i + 1);
 
     for (std::size_t k = begin; k < end; ++k) {
-      const Interval& iv = geom.intervals[k];
+      const Interval iv = geom.intervals(k);
       const Coord len = static_cast<Coord>(iv.end - iv.begin);
       if (len <= 0) {
         continue;

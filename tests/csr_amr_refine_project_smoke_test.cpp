@@ -25,8 +25,8 @@ TEST(CSRAmrRefineProjectTest, RefineThenProjectBoxIsIdentity) {
   refine_level_up_device(coarse, fine, ctx);
   project_level_down_device(fine, coarse_back, ctx);
 
-  auto host_coarse = build_host_from_device(coarse);
-  auto host_back = build_host_from_device(coarse_back);
+  auto host_coarse = to<HostMemorySpace>(coarse);
+  auto host_back = to<HostMemorySpace>(coarse_back);
 
   expect_equal_csr(host_back, host_coarse);
 }
@@ -38,20 +38,20 @@ TEST(CSRAmrRefineProjectTest, RefineDuplicatesRowsAndIntervals) {
           {2, {Interval{1, 4}}},
       });
 
-  auto coarse = build_device_from_host(coarse_host);
+  auto coarse = to<DeviceMemorySpace>(coarse_host);
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice fine;
   refine_level_up_device(coarse, fine, ctx);
-  auto fine_host = build_host_from_device(fine);
+  auto fine_host = to<HostMemorySpace>(fine);
 
-  ASSERT_EQ(fine_host.row_keys.size(),
-            coarse_host.row_keys.size() * 2);
-  ASSERT_EQ(fine_host.intervals.size(),
-            coarse_host.intervals.size() * 2);
+  ASSERT_EQ(fine_host.num_rows,
+            coarse_host.num_rows * 2);
+  ASSERT_EQ(fine_host.num_intervals,
+            coarse_host.num_intervals * 2);
 
   std::vector<Coord> expected_rows = {0, 1, 4, 5};
   for (std::size_t i = 0; i < expected_rows.size(); ++i) {
-    EXPECT_EQ(fine_host.row_keys[i].y, expected_rows[i]);
+    EXPECT_EQ(fine_host.row_keys(i).y, expected_rows[i]);
   }
 
   std::vector<Interval> expected_intervals = {
@@ -59,12 +59,12 @@ TEST(CSRAmrRefineProjectTest, RefineDuplicatesRowsAndIntervals) {
       Interval{0, 2}, Interval{4, 6},
       Interval{2, 8}, Interval{2, 8},
   };
-  ASSERT_EQ(fine_host.intervals.size(),
+  ASSERT_EQ(fine_host.num_intervals,
             expected_intervals.size());
   for (std::size_t i = 0; i < expected_intervals.size(); ++i) {
-    EXPECT_EQ(fine_host.intervals[i].begin,
+    EXPECT_EQ(fine_host.intervals(i).begin,
               expected_intervals[i].begin);
-    EXPECT_EQ(fine_host.intervals[i].end,
+    EXPECT_EQ(fine_host.intervals(i).end,
               expected_intervals[i].end);
   }
 }
@@ -81,8 +81,8 @@ TEST(CSRAmrRefineProjectTest, RefineBoxCardinalityFactorFour) {
   IntervalSet2DDevice fine;
   refine_level_up_device(coarse, fine, ctx);
 
-  auto host_coarse = build_host_from_device(coarse);
-  auto host_fine = build_host_from_device(fine);
+  auto host_coarse = to<HostMemorySpace>(coarse);
+  auto host_fine = to<HostMemorySpace>(fine);
 
   const std::size_t card_coarse = cardinality(host_coarse);
   const std::size_t card_fine = cardinality(host_fine);
@@ -100,11 +100,11 @@ TEST(CSRAmrRefineProjectTest, Project1DExamplesOnSingleRow) {
             {0, {Interval{0, 1}}},
         });
 
-    auto fine = build_device_from_host(fine_host);
+    auto fine = to<DeviceMemorySpace>(fine_host);
     CsrSetAlgebraContext ctx;
     IntervalSet2DDevice coarse;
     project_level_down_device(fine, coarse, ctx);
-    auto coarse_host = build_host_from_device(coarse);
+    auto coarse_host = to<HostMemorySpace>(coarse);
 
     IntervalSet2DHost expected =
         make_host_csr({
@@ -121,11 +121,11 @@ TEST(CSRAmrRefineProjectTest, Project1DExamplesOnSingleRow) {
             {0, {Interval{0, 3}}},
         });
 
-    auto fine = build_device_from_host(fine_host);
+    auto fine = to<DeviceMemorySpace>(fine_host);
     CsrSetAlgebraContext ctx;
     IntervalSet2DDevice coarse;
     project_level_down_device(fine, coarse, ctx);
-    auto coarse_host = build_host_from_device(coarse);
+    auto coarse_host = to<HostMemorySpace>(coarse);
 
     IntervalSet2DHost expected =
         make_host_csr({
@@ -144,11 +144,11 @@ TEST(CSRAmrRefineProjectTest, ProjectMergesNeighbourRows) {
           {1, {Interval{0, 1}}},
       });
 
-  auto fine = build_device_from_host(fine_host);
+  auto fine = to<DeviceMemorySpace>(fine_host);
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice coarse;
   project_level_down_device(fine, coarse, ctx);
-  auto coarse_host = build_host_from_device(coarse);
+  auto coarse_host = to<HostMemorySpace>(coarse);
 
   IntervalSet2DHost expected =
       make_host_csr({
@@ -171,13 +171,13 @@ TEST(CSRAmrRefineProjectTest, ProjectIdempotent) {
           {5, {Interval{4, 5}}},
       });
 
-  auto fine = build_device_from_host(fine_host);
+  auto fine = to<DeviceMemorySpace>(fine_host);
 
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice coarse;
   project_level_down_device(fine, coarse, ctx);
 
-  auto host_coarse = build_host_from_device(coarse);
+  auto host_coarse = to<HostMemorySpace>(coarse);
 
   // Verify the expected projection result
   IntervalSet2DHost expected_result =

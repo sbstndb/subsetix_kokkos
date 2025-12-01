@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
     domain.y_max = 32;
 
     auto geom_dev = make_box_device(domain);
-    auto geom_host = build_host_from_device(geom_dev);
+    auto geom_host = to<HostMemorySpace>(geom_dev);
 
     auto field_host =
         make_field_like_geometry<double>(geom_host, 0.0);
@@ -87,9 +87,9 @@ int main(int argc, char* argv[]) {
                        output_path("set_algebra_masks_field.vtk"),
                        "value");
 
-    auto u_host = build_host_from_device(u);
-    auto inter_host = build_host_from_device(inter);
-    auto diff_host = build_host_from_device(diff);
+    auto u_host = to<HostMemorySpace>(u);
+    auto inter_host = to<HostMemorySpace>(inter);
+    auto diff_host = to<HostMemorySpace>(diff);
     write_legacy_quads(u_host,
                        output_path("set_algebra_union.vtk"));
     write_legacy_quads(inter_host,

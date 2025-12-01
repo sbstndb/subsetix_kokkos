@@ -97,11 +97,12 @@ TEST(IntervalSubSet2DTest, EmptyMaskProducesInvalidSubset) {
 
 TEST(IntervalSubSet2DTest, MaskRowOutsideGeometryThrows) {
   auto geom = make_basic_box(4);
-  IntervalSet2DHost mask_host;
-  mask_host.row_keys = {RowKey2D{5}};
-  mask_host.row_ptr = {0, 1};
-  mask_host.intervals = {Interval{0, 2}};
-  auto mask = build_device_from_host(mask_host);
+  IntervalSet2DHost mask_host = make_interval_set_host(
+      {RowKey2D{5}},
+      {0, 1},
+      {Interval{0, 2}}
+  );
+  auto mask = to<DeviceMemorySpace>(mask_host);
 
   IntervalSubSet2DDevice subset;
   EXPECT_THROW(build_interval_subset_device(geom, mask, subset),

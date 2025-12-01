@@ -51,7 +51,7 @@ IntervalSet2DDevice make_mask(const RectConfig& cfg) {
 Field2DDevice<double> make_random_field(
     const RectConfig& cfg, double fill_ratio) {
   auto geom = make_mask(cfg);
-  auto geom_host = build_host_from_device(geom);
+  auto geom_host = to<HostMemorySpace>(geom);
   
   // Create field on host
   auto field_host = make_field_like_geometry<double>(geom_host, 0.0);

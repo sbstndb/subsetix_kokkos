@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
     box.y_max = 100;
     
     auto geom_dev = make_box_device(box);
-    auto geom_host = build_host_from_device(geom_dev);
+    auto geom_host = to<HostMemorySpace>(geom_dev);
 
     // 2. Populate field values
     auto field_host = make_field_like_geometry<float>(geom_host, 0.0f);
@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
     // We want regions where |val| > 0.5
     float epsilon = 0.5f;
     auto threshold_set_dev = threshold_field(field_dev, static_cast<double>(epsilon));
-    auto threshold_set_host = build_host_from_device(threshold_set_dev);
+    auto threshold_set_host = to<HostMemorySpace>(threshold_set_dev);
 
     // Export result geometry (mask)
     write_legacy_quads(threshold_set_host, output_path("threshold_mask.vtk"));

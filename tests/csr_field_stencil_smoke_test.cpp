@@ -45,11 +45,11 @@ IntervalField2DHost<double> make_zero_field_like(
 }
 
 IntervalSet2DHost make_interior_mask() {
-  IntervalSet2DHost mask;
-  mask.row_keys = {RowKey2D{1}};
-  mask.row_ptr = {0, 1};
-  mask.intervals = {Interval{1, 3}};
-  return mask;
+  return make_interval_set_host(
+      {{1}},        // row_keys
+      {0, 1},       // row_ptr
+      {{1, 3}}      // intervals
+  );
 }
 
 struct FivePointAverage {
@@ -77,7 +77,7 @@ TEST(CSRFieldStencilSmokeTest, FivePointAverageOnInterior) {
 
   auto input_dev = build_device_field_from_host(input_host);
   auto output_dev = build_device_field_from_host(output_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   apply_stencil_on_set_device(output_dev, input_dev,
                               mask_dev, FivePointAverage{});

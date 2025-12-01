@@ -46,11 +46,11 @@ IntervalField2DHost<double> make_multi_interval_field() {
 }
 
 IntervalSet2DHost make_multi_interval_mask() {
-  IntervalSet2DHost mask;
-  mask.row_keys = {RowKey2D{1}};
-  mask.row_ptr = {0, 2};
-  mask.intervals = {Interval{1, 2}, Interval{6, 7}}; // interior points of each interval
-  return mask;
+  return make_interval_set_host(
+      {{1}},                         // row_keys
+      {0, 2},                        // row_ptr
+      {{1, 2}, {6, 7}}               // intervals: interior points of each interval
+  );
 }
 
 IntervalField2DHost<double> make_zero_like(
@@ -71,11 +71,11 @@ IntervalField2DHost<double> make_zero_like(
 }
 
 IntervalSet2DHost make_interior_mask_split() {
-  IntervalSet2DHost mask;
-  mask.row_keys = {RowKey2D{1}};
-  mask.row_ptr = {0, 2};
-  mask.intervals = {Interval{1, 2}, Interval{4, 5}};
-  return mask;
+  return make_interval_set_host(
+      {{1}},                         // row_keys
+      {0, 2},                        // row_ptr
+      {{1, 2}, {4, 5}}               // intervals
+  );
 }
 
 double host_value_at(const IntervalField2DHost<double>& field,
@@ -118,7 +118,7 @@ TEST(CSRFieldStencilSubsetTest, FivePointAverageAcrossSplitRows) {
 
   auto input_dev = build_device_field_from_host(input_host);
   auto output_dev = build_device_field_from_host(output_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   apply_csr_stencil_on_set_device(output_dev, input_dev,
                                   mask_dev, FivePointAverageCsr{});
@@ -145,7 +145,7 @@ TEST(CSRFieldStencilSubsetTest, FivePointAverageWithVaryingIntervalCounts) {
 
   auto input_dev = build_device_field_from_host(input_host);
   auto output_dev = build_device_field_from_host(output_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   apply_csr_stencil_on_set_device(output_dev, input_dev,
                                   mask_dev, FivePointAverageCsr{});

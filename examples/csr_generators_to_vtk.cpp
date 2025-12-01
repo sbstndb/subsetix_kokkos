@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
     box.y_max = 32;
 
     auto box_dev = make_box_device(box);
-    auto box_host = build_host_from_device(box_dev);
+    auto box_host = to<HostMemorySpace>(box_dev);
     write_legacy_quads(box_host, output_path("box.vtk"));
 
     auto box_field_host =
@@ -49,7 +49,7 @@ int main(int argc, char* argv[]) {
     disk.radius = 12;
 
     auto disk_dev = make_disk_device(disk);
-    auto disk_host = build_host_from_device(disk_dev);
+    auto disk_host = to<HostMemorySpace>(disk_dev);
     write_legacy_quads(disk_host, output_path("disk.vtk"));
 
     auto disk_field_host =
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
     dom.y_max = 64;
 
     auto rand_dev = make_random_device(dom, 0.2, 123456);
-    auto rand_host = build_host_from_device(rand_dev);
+    auto rand_host = to<HostMemorySpace>(rand_dev);
     write_legacy_quads(rand_host, output_path("random.vtk"));
 
     auto rand_field_host =
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
 
     Domain2D cb_dom = dom;
     auto cb_dev = make_checkerboard_device(cb_dom, 4);
-    auto cb_host = build_host_from_device(cb_dev);
+    auto cb_host = to<HostMemorySpace>(cb_dev);
     write_legacy_quads(cb_host, output_path("checkerboard.vtk"));
 
     auto cb_field_host =

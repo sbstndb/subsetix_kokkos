@@ -70,7 +70,7 @@ TEST(CSRFieldSmokeTest, VtkExportFromBoxField) {
   box.y_max = 2;
 
   auto geom_dev = make_box_device(box);
-  auto geom_host = build_host_from_device(geom_dev);
+  auto geom_host = to<HostMemorySpace>(geom_dev);
 
   auto field_host =
       make_field_like_geometry<float>(geom_host, 1.0f);

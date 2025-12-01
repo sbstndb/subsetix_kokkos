@@ -20,31 +20,31 @@ bool check_csr(const IntervalSet2DHost& host,
   const std::size_t num_rows_expected =
       static_cast<std::size_t>(y_max - y_min);
 
-  if (host.row_keys.size() != num_rows_expected) {
+  if (host.row_keys.extent(0) != num_rows_expected) {
     return false;
   }
-  if (host.row_ptr.size() != num_rows_expected + 1) {
+  if (host.row_ptr.extent(0) != num_rows_expected + 1) {
     return false;
   }
-  if (host.row_ptr.empty()) {
-    return host.intervals.empty();
+  if (host.num_rows == 0) {
+    return host.num_intervals == 0;
   }
-  if (host.row_ptr.front() != 0) {
+  if (host.row_ptr(0) != 0) {
     return false;
   }
 
   for (std::size_t i = 0; i < num_rows_expected; ++i) {
-    const Coord y = host.row_keys[i].y;
+    const Coord y = host.row_keys(i).y;
     if (y < y_min || y >= y_max) {
       return false;
     }
-    const std::size_t begin = host.row_ptr[i];
-    const std::size_t end = host.row_ptr[i + 1];
-    if (end < begin || end > host.intervals.size()) {
+    const std::size_t begin = host.row_ptr(i);
+    const std::size_t end = host.row_ptr(i + 1);
+    if (end < begin || end > host.intervals.extent(0)) {
       return false;
     }
     for (std::size_t k = begin; k < end; ++k) {
-      const auto& iv = host.intervals[k];
+      const auto& iv = host.intervals(k);
       if (!(iv.begin < iv.end)) {
         return false;
       }
@@ -54,7 +54,7 @@ bool check_csr(const IntervalSet2DHost& host,
     }
   }
 
-  if (host.row_ptr.back() != host.intervals.size()) {
+  if (host.row_ptr(host.num_rows) != host.intervals.extent(0)) {
     return false;
   }
 
@@ -71,15 +71,15 @@ TEST(CSRBuildersSmokeTest, BoxBuilder) {
   box.y_max = 3;
 
   auto rect_dev = make_box_device(box);
-  auto rect_host = build_host_from_device(rect_dev);
+  auto rect_host = to<HostMemorySpace>(rect_dev);
 
   ASSERT_TRUE(check_csr(rect_host, box.x_min, box.x_max,
                         box.y_min, box.y_max));
 
   for (std::size_t i = 0; i < 3; ++i) {
-    EXPECT_EQ(rect_host.row_keys[i].y, static_cast<Coord>(i));
-    EXPECT_EQ(rect_host.intervals[i].begin, 0);
-    EXPECT_EQ(rect_host.intervals[i].end, 10);
+    EXPECT_EQ(rect_host.row_keys(i).y, static_cast<Coord>(i));
+    EXPECT_EQ(rect_host.intervals(i).begin, 0);
+    EXPECT_EQ(rect_host.intervals(i).end, 10);
   }
 }
 
@@ -90,9 +90,9 @@ TEST(CSRBuildersSmokeTest, DiskBuilder) {
   disk.radius = 1;
 
   auto disk_dev = make_disk_device(disk);
-  auto disk_host = build_host_from_device(disk_dev);
+  auto disk_host = to<HostMemorySpace>(disk_dev);
 
-  ASSERT_FALSE(disk_host.row_keys.empty());
+  ASSERT_FALSE(disk_host.num_rows == 0);
 
   ASSERT_TRUE(check_csr(disk_host,
                         static_cast<Coord>(disk.cx - disk.radius),
@@ -101,12 +101,12 @@ TEST(CSRBuildersSmokeTest, DiskBuilder) {
                         static_cast<Coord>(disk.cy + disk.radius + 1)));
 
   bool ok_middle = false;
-  for (std::size_t i = 0; i < disk_host.row_keys.size(); ++i) {
-    if (disk_host.row_keys[i].y == 0) {
-      std::size_t begin = disk_host.row_ptr[i];
-      std::size_t end = disk_host.row_ptr[i + 1];
+  for (std::size_t i = 0; i < disk_host.num_rows; ++i) {
+    if (disk_host.row_keys(i).y == 0) {
+      std::size_t begin = disk_host.row_ptr(i);
+      std::size_t end = disk_host.row_ptr(i + 1);
       if (begin < end) {
-        const auto& iv = disk_host.intervals[begin];
+        const auto& iv = disk_host.intervals(begin);
         if (iv.begin <= 0 && iv.end > 0) {
           ok_middle = true;
         }
@@ -125,7 +125,7 @@ TEST(CSRBuildersSmokeTest, RandomBuilder) {
   dom.y_max = 10;
 
   auto rand_dev = make_random_device(dom, 0.3, 12345);
-  auto rand_host = build_host_from_device(rand_dev);
+  auto rand_host = to<HostMemorySpace>(rand_dev);
 
   EXPECT_TRUE(check_csr(rand_host, dom.x_min, dom.x_max,
                         dom.y_min, dom.y_max));
@@ -141,22 +141,22 @@ TEST(CSRBuildersSmokeTest, CheckerboardBuilder) {
   const Coord square_size = 2;
 
   auto cb_dev = make_checkerboard_device(dom_cb, square_size);
-  auto cb_host = build_host_from_device(cb_dev);
+  auto cb_host = to<HostMemorySpace>(cb_dev);
 
   ASSERT_TRUE(check_csr(cb_host, dom_cb.x_min, dom_cb.x_max,
                         dom_cb.y_min, dom_cb.y_max));
 
-  const std::size_t num_rows = cb_host.row_keys.size();
+  const std::size_t num_rows = cb_host.num_rows;
   const Coord width = dom_cb.x_max - dom_cb.x_min;
   const Coord height = dom_cb.y_max - dom_cb.y_min;
 
   for (std::size_t i = 0; i < num_rows; ++i) {
-    const Coord y = cb_host.row_keys[i].y;
+    const Coord y = cb_host.row_keys(i).y;
     const Coord local_y = static_cast<Coord>(y - dom_cb.y_min);
     const std::size_t block_y =
         static_cast<std::size_t>(local_y / square_size);
-    const std::size_t begin = cb_host.row_ptr[i];
-    const std::size_t end = cb_host.row_ptr[i + 1];
+    const std::size_t begin = cb_host.row_ptr(i);
+    const std::size_t end = cb_host.row_ptr(i + 1);
     const std::size_t count = end - begin;
 
     const std::size_t num_blocks_x =
@@ -190,7 +190,7 @@ TEST(CSRBuildersSmokeTest, CheckerboardBuilder) {
 
       ASSERT_LT(begin + written, end);
 
-      const auto& iv = cb_host.intervals[begin + written];
+      const auto& iv = cb_host.intervals(begin + written);
       EXPECT_EQ(iv.begin, x0);
       EXPECT_EQ(iv.end, x1);
 
@@ -227,34 +227,34 @@ TEST(CSRBuildersSmokeTest, BitmapBuilder) {
   const Coord x_min = -2;
   const Coord y_min = 5;
   auto dev = make_bitmap_device(d_mask, x_min, y_min, 1);
-  auto host = build_host_from_device(dev);
+  auto host = to<HostMemorySpace>(dev);
 
   ASSERT_TRUE(check_csr(host, x_min, x_min + static_cast<Coord>(width),
                         y_min, y_min + static_cast<Coord>(height)));
 
-  ASSERT_EQ(host.row_keys.size(), height);
-  ASSERT_EQ(host.row_ptr.size(), height + 1);
+  ASSERT_EQ(host.row_keys.extent(0), height);
+  ASSERT_EQ(host.row_ptr.extent(0), height + 1);
 
   // Row 0: one run [x_min, x_min+2)
   {
-    const std::size_t begin = host.row_ptr[0];
-    const std::size_t end = host.row_ptr[1];
+    const std::size_t begin = host.row_ptr(0);
+    const std::size_t end = host.row_ptr(1);
     ASSERT_EQ(end - begin, 1U);
-    EXPECT_EQ(host.intervals[begin].begin, x_min);
-    EXPECT_EQ(host.intervals[begin].end, x_min + 2);
+    EXPECT_EQ(host.intervals(begin).begin, x_min);
+    EXPECT_EQ(host.intervals(begin).end, x_min + 2);
   }
 
   // Row 1: two runs [x_min+1, x_min+3) and [x_min+4, x_min+5)
   {
-    const std::size_t begin = host.row_ptr[1];
-    const std::size_t end = host.row_ptr[2];
+    const std::size_t begin = host.row_ptr(1);
+    const std::size_t end = host.row_ptr(2);
     ASSERT_EQ(end - begin, 2U);
-    EXPECT_EQ(host.intervals[begin].begin, x_min + 1);
-    EXPECT_EQ(host.intervals[begin].end, x_min + 3);
-    EXPECT_EQ(host.intervals[begin + 1].begin, x_min + 4);
-    EXPECT_EQ(host.intervals[begin + 1].end, x_min + 5);
+    EXPECT_EQ(host.intervals(begin).begin, x_min + 1);
+    EXPECT_EQ(host.intervals(begin).end, x_min + 3);
+    EXPECT_EQ(host.intervals(begin + 1).begin, x_min + 4);
+    EXPECT_EQ(host.intervals(begin + 1).end, x_min + 5);
   }
 
   // Row 2: empty.
-  EXPECT_EQ(host.row_ptr[3] - host.row_ptr[2], 0U);
+  EXPECT_EQ(host.row_ptr(3) - host.row_ptr(2), 0U);
 }

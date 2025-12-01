@@ -34,31 +34,48 @@ struct FivePointAverage {
 };
 
 IntervalSet2DHost split_geometry(const IntervalSet2DHost& base) {
-  IntervalSet2DHost out;
-  out.row_keys = base.row_keys;
-  out.row_ptr.resize(base.row_ptr.size());
-  out.intervals.clear();
+  // First pass: count split intervals
+  std::vector<Interval> temp_intervals;
+  std::vector<std::size_t> temp_row_ptr;
+  temp_row_ptr.push_back(0);
 
-  for (std::size_t row = 0; row < base.row_keys.size(); ++row) {
-    const std::size_t begin = base.row_ptr[row];
-    const std::size_t end = base.row_ptr[row + 1];
-    out.row_ptr[row] = out.intervals.size();
+  for (std::size_t row = 0; row < base.num_rows; ++row) {
+    const std::size_t begin = base.row_ptr(row);
+    const std::size_t end = base.row_ptr(row + 1);
     for (std::size_t k = begin; k < end; ++k) {
-      const Interval iv = base.intervals[k];
-      const Coord length =
-          static_cast<Coord>(iv.end - iv.begin);
+      const Interval iv = base.intervals(k);
+      const Coord length = static_cast<Coord>(iv.end - iv.begin);
       if (length <= 1) {
-        out.intervals.push_back(iv);
-        continue;
+        temp_intervals.push_back(iv);
+      } else {
+        const Coord mid = iv.begin + length / 2;
+        temp_intervals.push_back(Interval{iv.begin, mid});
+        temp_intervals.push_back(Interval{mid, iv.end});
       }
-      const Coord mid = iv.begin + length / 2;
-      out.intervals.push_back(Interval{iv.begin, mid});
-      out.intervals.push_back(Interval{mid, iv.end});
     }
-    out.row_ptr[row + 1] = out.intervals.size();
+    temp_row_ptr.push_back(temp_intervals.size());
   }
 
-  out.rebuild_mapping();
+  // Build output IntervalSet2DHost
+  IntervalSet2DHost out;
+  out.num_rows = base.num_rows;
+  out.num_intervals = temp_intervals.size();
+
+  out.row_keys = IntervalSet2DHost::RowKeyView("row_keys", base.num_rows);
+  out.row_ptr = IntervalSet2DHost::IndexView("row_ptr", base.num_rows + 1);
+  out.intervals = IntervalSet2DHost::IntervalView("intervals", temp_intervals.size());
+
+  for (std::size_t i = 0; i < base.num_rows; ++i) {
+    out.row_keys(i) = base.row_keys(i);
+  }
+  for (std::size_t i = 0; i < temp_row_ptr.size(); ++i) {
+    out.row_ptr(i) = temp_row_ptr[i];
+  }
+  for (std::size_t i = 0; i < temp_intervals.size(); ++i) {
+    out.intervals(i) = temp_intervals[i];
+  }
+
+  compute_cell_offsets_host(out);
   return out;
 }
 
@@ -105,9 +122,9 @@ int main(int argc, char* argv[]) {
 
     Box2D domain{0, 64, 0, 32};
     auto dense_geom_dev = make_box_device(domain);
-    auto dense_geom_host = build_host_from_device(dense_geom_dev);
+    auto dense_geom_host = to<HostMemorySpace>(dense_geom_dev);
     auto split_geom_host = split_geometry(dense_geom_host);
-    auto split_geom_dev = build_device_from_host(split_geom_host);
+    auto split_geom_dev = to<DeviceMemorySpace>(split_geom_host);
 
     auto source_host =
         make_field_like_geometry<double>(dense_geom_host, 0.0);

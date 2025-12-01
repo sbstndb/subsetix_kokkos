@@ -64,7 +64,7 @@ RectConfig interior_rect(const RectConfig& cfg) {
 Field2DDevice<double> make_field(
     const RectConfig& cfg, double init_value) {
   auto geom = make_mask(cfg);
-  auto geom_host = build_host_from_device(geom);
+  auto geom_host = to<HostMemorySpace>(geom);
   auto field_host =
       make_field_like_geometry<double>(geom_host, init_value);
   return build_device_field_from_host(field_host);
@@ -420,7 +420,7 @@ void bench_restriction(benchmark::State& state,
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_mask, fine_geom, ctx);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
   for (std::size_t row = 0;
@@ -473,7 +473,7 @@ void bench_subview_restriction(benchmark::State& state,
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(coarse_mask, fine_geom, ctx);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
   for (std::size_t row = 0;
@@ -543,7 +543,7 @@ void bench_prolongation(benchmark::State& state,
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(make_mask(coarse_cfg), fine_geom, ctx);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
   Field2DDevice<double> fine =
@@ -602,7 +602,7 @@ void bench_subview_prolongation(benchmark::State& state,
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(make_mask(coarse_cfg), fine_geom, ctx);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
   Field2DDevice<double> fine =
@@ -666,7 +666,7 @@ void bench_prolongation_prediction(benchmark::State& state,
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(make_mask(coarse_cfg), fine_geom, ctx);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
   Field2DDevice<double> fine =
@@ -726,7 +726,7 @@ void bench_subview_prolongation_prediction(
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice fine_geom;
   refine_level_up_device(make_mask(coarse_cfg), fine_geom, ctx);
-  auto fine_geom_host = build_host_from_device(fine_geom);
+  auto fine_geom_host = to<HostMemorySpace>(fine_geom);
   auto fine_field_host =
       make_field_like_geometry<double>(fine_geom_host, 0.0);
   Field2DDevice<double> fine =

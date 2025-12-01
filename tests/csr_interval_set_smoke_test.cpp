@@ -1,4 +1,4 @@
-﻿#include <Kokkos_Core.hpp>
+#include <Kokkos_Core.hpp>
 #include <gtest/gtest.h>
 
 #include <subsetix/geometry/csr_backend.hpp>
@@ -10,25 +10,20 @@
 TEST(CSRIntervalSetSmokeTest, HostDeviceRoundtrip) {
   using namespace subsetix::csr;
 
-  IntervalSet2DHost host;
-  host.row_keys.push_back(RowKey2D{0});
-  host.row_keys.push_back(RowKey2D{5});
+  // Build host using the new helper
+  auto host = make_interval_set_host(
+      {{0}, {5}},           // row_keys (y=0, y=5)
+      {0, 1, 2},            // row_ptr
+      {{0, 10}, {5, 8}}     // intervals
+  );
 
-  host.row_ptr.push_back(0);
-  host.intervals.push_back(Interval{0, 10}); // row 0
-  host.row_ptr.push_back(host.intervals.size());
-  host.intervals.push_back(Interval{5, 8});  // row 1
-  host.row_ptr.push_back(host.intervals.size());
+  auto dev = to<DeviceMemorySpace>(host);
+  auto host_roundtrip = to<HostMemorySpace>(dev);
 
-  auto dev = build_device_from_host(host);
-  auto host_roundtrip = build_host_from_device(dev);
+  ASSERT_EQ(host_roundtrip.num_rows, host.num_rows);
+  ASSERT_EQ(host_roundtrip.num_intervals, host.num_intervals);
 
-  ASSERT_EQ(host_roundtrip.row_keys.size(), host.row_keys.size());
-  ASSERT_EQ(host_roundtrip.row_ptr.size(), host.row_ptr.size());
-  ASSERT_EQ(host_roundtrip.intervals.size(), host.intervals.size());
-
-  for (std::size_t i = 0; i < host.row_keys.size(); ++i) {
-    EXPECT_EQ(host_roundtrip.row_keys[i].y, host.row_keys[i].y);
+  for (std::size_t i = 0; i < host.num_rows; ++i) {
+    EXPECT_EQ(host_roundtrip.row_keys(i).y, host.row_keys(i).y);
   }
 }
-

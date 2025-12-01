@@ -64,20 +64,21 @@ TEST(CSRIntersectionSmokeTest, OverlappingBoxesSameRows) {
   IntervalSet2DDevice B = make_box_device(boxB);
 
   auto I = run_intersection(A, B);
-  auto host_I = build_host_from_device(I);
+  auto host_I = to<HostMemorySpace>(I);
 
-  ASSERT_EQ(host_I.row_keys.size(), 2u);
+  ASSERT_EQ(host_I.row_keys.extent(0), 2u);
   for (std::size_t i = 0; i < 2; ++i) {
-    EXPECT_EQ(host_I.row_keys[i].y, static_cast<Coord>(i));
+    EXPECT_EQ(host_I.row_keys(i).y, static_cast<Coord>(i));
   }
 
-  ASSERT_EQ(host_I.row_ptr.size(), 3u);
-  EXPECT_EQ(host_I.row_ptr[0], 0u);
-  EXPECT_EQ(host_I.row_ptr[1], 1u);
-  EXPECT_EQ(host_I.row_ptr[2], 2u);
+  ASSERT_EQ(host_I.row_ptr.extent(0), 3u);
+  EXPECT_EQ(host_I.row_ptr(0), 0u);
+  EXPECT_EQ(host_I.row_ptr(1), 1u);
+  EXPECT_EQ(host_I.row_ptr(2), 2u);
 
-  ASSERT_EQ(host_I.intervals.size(), 2u);
-  for (const auto& iv : host_I.intervals) {
+  ASSERT_EQ(host_I.intervals.extent(0), 2u);
+  for (std::size_t i = 0; i < 2; ++i) {
+    const auto& iv = host_I.intervals(i);
     EXPECT_EQ(iv.begin, 2);
     EXPECT_EQ(iv.end, 4);
   }

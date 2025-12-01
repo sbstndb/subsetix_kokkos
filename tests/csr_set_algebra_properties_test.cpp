@@ -86,17 +86,17 @@ TEST(CSRSetAlgebraPropertiesTest, PartitionOfAByB) {
   auto D1 = run_difference(A, B, ctx); // A \ B
   auto U = run_union(I, D1, ctx);
 
-  auto host_A = build_host_from_device(A);
-  auto host_I = build_host_from_device(I);
-  auto host_D1 = build_host_from_device(D1);
-  auto host_U = build_host_from_device(U);
+  auto host_A = to<HostMemorySpace>(A);
+  auto host_I = to<HostMemorySpace>(I);
+  auto host_D1 = to<HostMemorySpace>(D1);
+  auto host_U = to<HostMemorySpace>(U);
 
   // A = (A ∩ B) ∪ (A \ B)
   expect_equal_csr(host_A, host_U);
 
   // Intersection nulle entre (A ∩ B) et (A \ B) en termes de cellules.
   auto I_cap_D1 = run_intersection(I, D1, ctx);
-  auto host_I_cap_D1 = build_host_from_device(I_cap_D1);
+  auto host_I_cap_D1 = to<HostMemorySpace>(I_cap_D1);
   EXPECT_EQ(I_cap_D1.num_intervals, 0u);
   EXPECT_EQ(cardinality(host_I_cap_D1), 0u);
 
@@ -122,10 +122,10 @@ TEST(CSRSetAlgebraPropertiesTest, InclusionExclusionCardinality) {
   auto U = run_union(A, B, ctx);
   auto I = run_intersection(A, B, ctx);
 
-  auto host_A = build_host_from_device(A);
-  auto host_B = build_host_from_device(B);
-  auto host_U = build_host_from_device(U);
-  auto host_I = build_host_from_device(I);
+  auto host_A = to<HostMemorySpace>(A);
+  auto host_B = to<HostMemorySpace>(B);
+  auto host_U = to<HostMemorySpace>(U);
+  auto host_I = to<HostMemorySpace>(I);
 
   const std::size_t card_A = cardinality(host_A);
   const std::size_t card_B = cardinality(host_B);
@@ -158,8 +158,8 @@ TEST(CSRSetAlgebraPropertiesTest, DeMorganRelativeToBoxDomain) {
   auto left1 = run_difference(D_full, A_union_B, ctx);
   auto right1 = run_intersection(Ac, Bc, ctx);
 
-  auto host_left1 = build_host_from_device(left1);
-  auto host_right1 = build_host_from_device(right1);
+  auto host_left1 = to<HostMemorySpace>(left1);
+  auto host_right1 = to<HostMemorySpace>(right1);
   expect_equal_csr(host_left1, host_right1);
 
   // 2) D \ (A ∩ B) == (D \ A) ∪ (D \ B)
@@ -167,7 +167,7 @@ TEST(CSRSetAlgebraPropertiesTest, DeMorganRelativeToBoxDomain) {
   auto left2 = run_difference(D_full, A_inter_B, ctx);
   auto right2 = run_union(Ac, Bc, ctx);
 
-  auto host_left2 = build_host_from_device(left2);
-  auto host_right2 = build_host_from_device(right2);
+  auto host_left2 = to<HostMemorySpace>(left2);
+  auto host_right2 = to<HostMemorySpace>(right2);
   expect_equal_csr(host_left2, host_right2);
 }

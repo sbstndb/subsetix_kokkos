@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
         DeviceMemorySpace{}, h_mask_flipped);
 
     auto geom_dev = make_bitmap_device(d_mask, 0, 0, 1);
-    auto geom_host = build_host_from_device(geom_dev);
+    auto geom_host = to<HostMemorySpace>(geom_dev);
     write_legacy_quads(geom_host, output_path("smiley.vtk"));
   }
   return 0;

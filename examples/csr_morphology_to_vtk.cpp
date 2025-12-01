@@ -39,7 +39,7 @@ int main(int argc, char* argv[]) {
         allocate_interval_set_device(d_outer.num_rows, d_outer.num_intervals + d_inner.num_intervals);
     set_difference_device(d_outer, d_inner, shape, ctx);
     
-    auto h_shape = build_host_from_device(shape);
+    auto h_shape = to<HostMemorySpace>(shape);
     write_legacy_quads(h_shape, output_path("original_shape.vtk"));
 
     // Expand (Dilation)
@@ -48,14 +48,14 @@ int main(int argc, char* argv[]) {
     auto expanded = allocate_interval_set_device(200, 1000);
     expand_device(shape, 2, 2, expanded, ctx);
     
-    auto h_expanded = build_host_from_device(expanded);
+    auto h_expanded = to<HostMemorySpace>(expanded);
     write_legacy_quads(h_expanded, output_path("expanded_r2.vtk"));
     
     // Shrink (Erosion)
     auto shrunk = allocate_interval_set_device(200, 1000);
     shrink_device(shape, 2, 2, shrunk, ctx);
     
-    auto h_shrunk = build_host_from_device(shrunk);
+    auto h_shrunk = to<HostMemorySpace>(shrunk);
     write_legacy_quads(h_shrunk, output_path("shrunk_r2.vtk"));
     
     // Opening (Shrink then Expand) - removes small noise/objects
@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
     // Reuse shrunk as input to expand
     expand_device(shrunk, 2, 2, opened, ctx);
     
-    auto h_opened = build_host_from_device(opened);
+    auto h_opened = to<HostMemorySpace>(opened);
     write_legacy_quads(h_opened, output_path("opened_r2.vtk"));
     
     // Closing (Expand then Shrink) - fills small holes
@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
     // Reuse expanded as input to shrink
     shrink_device(expanded, 2, 2, closed, ctx);
     
-    auto h_closed = build_host_from_device(closed);
+    auto h_closed = to<HostMemorySpace>(closed);
     write_legacy_quads(h_closed, output_path("closed_r2.vtk"));
   }
 

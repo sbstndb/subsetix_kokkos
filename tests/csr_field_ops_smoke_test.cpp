@@ -29,11 +29,11 @@ IntervalField2DHost<int> make_source_field() {
 }
 
 IntervalSet2DHost make_mask_host() {
-  IntervalSet2DHost mask;
-  mask.row_keys = {RowKey2D{0}, RowKey2D{1}};
-  mask.row_ptr = {0, 1, 2};
-  mask.intervals = {Interval{1, 3}, Interval{0, 2}};
-  return mask;
+  return make_interval_set_host(
+      {{0}, {1}},           // row_keys
+      {0, 1, 2},            // row_ptr
+      {{1, 3}, {0, 2}}      // intervals
+  );
 }
 
 void apply_custom_pattern(Field2DDevice<int>& field,
@@ -55,7 +55,7 @@ TEST(CSRFieldOpsSmokeTest, FillOnMask) {
   auto mask_host = make_mask_host();
 
   auto field_dev = build_device_field_from_host(field_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   fill_on_set_device(field_dev, mask_dev, 99);
 
@@ -83,7 +83,7 @@ TEST(CSRFieldOpsSmokeTest, CopyOnMask) {
 
   auto dst_dev = build_device_field_from_host(dst_host);
   auto src_dev = build_device_field_from_host(src_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   copy_on_set_device(dst_dev, src_dev, mask_dev);
 
@@ -105,7 +105,7 @@ TEST(CSRFieldOpsSmokeTest, CustomLambdaOnMask) {
   auto mask_host = make_mask_host();
 
   auto field_dev = build_device_field_from_host(field_host);
-  auto mask_dev = build_device_from_host(mask_host);
+  auto mask_dev = to<DeviceMemorySpace>(mask_host);
 
   apply_custom_pattern(field_dev, mask_dev);
 

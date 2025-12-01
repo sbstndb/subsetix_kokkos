@@ -27,7 +27,7 @@ TEST(CsrFieldAlgebraTest, FieldAddBasic) {
 
   auto result = build_host_field_from_device(dev_result);
 
-  ASSERT_EQ(result.values.size(), 3);
+  ASSERT_EQ(result.value_count(), 3);
   EXPECT_DOUBLE_EQ(result.values[0], 5.0);
   EXPECT_DOUBLE_EQ(result.values[1], 7.0);
   EXPECT_DOUBLE_EQ(result.values[2], 9.0);
@@ -51,7 +51,7 @@ TEST(CsrFieldAlgebraTest, FieldSubBasic) {
 
   auto result = build_host_field_from_device(dev_result);
 
-  ASSERT_EQ(result.values.size(), 3);
+  ASSERT_EQ(result.value_count(), 3);
   EXPECT_DOUBLE_EQ(result.values[0], 9.0);
   EXPECT_DOUBLE_EQ(result.values[1], 18.0);
   EXPECT_DOUBLE_EQ(result.values[2], 27.0);
@@ -75,7 +75,7 @@ TEST(CsrFieldAlgebraTest, FieldMulBasic) {
 
   auto result = build_host_field_from_device(dev_result);
 
-  ASSERT_EQ(result.values.size(), 3);
+  ASSERT_EQ(result.value_count(), 3);
   EXPECT_DOUBLE_EQ(result.values[0], 10.0);
   EXPECT_DOUBLE_EQ(result.values[1], 18.0);
   EXPECT_DOUBLE_EQ(result.values[2], 28.0);
@@ -99,7 +99,7 @@ TEST(CsrFieldAlgebraTest, FieldDivBasic) {
 
   auto result = build_host_field_from_device(dev_result);
 
-  ASSERT_EQ(result.values.size(), 3);
+  ASSERT_EQ(result.value_count(), 3);
   EXPECT_DOUBLE_EQ(result.values[0], 5.0);
   EXPECT_DOUBLE_EQ(result.values[1], 5.0);
   EXPECT_DOUBLE_EQ(result.values[2], 6.0);
@@ -119,7 +119,7 @@ TEST(CsrFieldAlgebraTest, FieldAbsBasic) {
 
   auto result = build_host_field_from_device(dev_result);
 
-  ASSERT_EQ(result.values.size(), 4);
+  ASSERT_EQ(result.value_count(), 4);
   EXPECT_DOUBLE_EQ(result.values[0], 1.0);
   EXPECT_DOUBLE_EQ(result.values[1], 2.0);
   EXPECT_DOUBLE_EQ(result.values[2], 3.0);
@@ -145,7 +145,7 @@ TEST(CsrFieldAlgebraTest, FieldAxpbyBasic) {
 
   auto result = build_host_field_from_device(dev_result);
 
-  ASSERT_EQ(result.values.size(), 3);
+  ASSERT_EQ(result.value_count(), 3);
   EXPECT_DOUBLE_EQ(result.values[0], 2.0 * 1.0 + 3.0 * 4.0);  // 14.0
   EXPECT_DOUBLE_EQ(result.values[1], 2.0 * 2.0 + 3.0 * 5.0);  // 19.0
   EXPECT_DOUBLE_EQ(result.values[2], 2.0 * 3.0 + 3.0 * 6.0);  // 24.0
@@ -201,7 +201,7 @@ TEST(CsrFieldAlgebraTest, MultiRowField) {
 
   auto result = build_host_field_from_device(dev_result);
 
-  ASSERT_EQ(result.values.size(), 4);
+  ASSERT_EQ(result.value_count(), 4);
   EXPECT_DOUBLE_EQ(result.values[0], 6.0);
   EXPECT_DOUBLE_EQ(result.values[1], 8.0);
   EXPECT_DOUBLE_EQ(result.values[2], 10.0);

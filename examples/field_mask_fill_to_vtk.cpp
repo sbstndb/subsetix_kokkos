@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     domain.y_max = 32;
 
     auto geom_dev = make_box_device(domain);
-    auto geom_host = build_host_from_device(geom_dev);
+    auto geom_host = to<HostMemorySpace>(geom_dev);
 
     auto field_host =
         make_field_like_geometry<double>(geom_host, 0.0);

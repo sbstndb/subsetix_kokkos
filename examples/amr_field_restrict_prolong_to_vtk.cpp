@@ -41,9 +41,9 @@ int main(int argc, char* argv[]) {
     refine_level_up_device(coarse_geom_dev, fine_geom_dev, ctx);
 
     auto coarse_geom_host =
-        build_host_from_device(coarse_geom_dev);
+        to<HostMemorySpace>(coarse_geom_dev);
     auto fine_geom_host =
-        build_host_from_device(fine_geom_dev);
+        to<HostMemorySpace>(fine_geom_dev);
 
     auto coarse_field_host =
         make_field_like_geometry<double>(

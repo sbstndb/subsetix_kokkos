@@ -10,22 +10,18 @@
 using namespace subsetix::csr;
 
 TEST(CSRIntersectionComponentsSmokeTest, RowIntersectionMapping) {
-  IntervalSet2DHost hostA;
-  IntervalSet2DHost hostB;
+  IntervalSet2DHost hostA = make_interval_set_host(
+      {RowKey2D{0}, RowKey2D{2}, RowKey2D{3}},
+      {0, 0, 0, 0},
+      {});
 
-  hostA.row_keys.push_back(RowKey2D{0});
-  hostA.row_keys.push_back(RowKey2D{2});
-  hostA.row_keys.push_back(RowKey2D{3});
-  hostA.row_ptr = {0, 0, 0, 0};
+  IntervalSet2DHost hostB = make_interval_set_host(
+      {RowKey2D{1}, RowKey2D{2}, RowKey2D{3}, RowKey2D{5}},
+      {0, 0, 0, 0, 0},
+      {});
 
-  hostB.row_keys.push_back(RowKey2D{1});
-  hostB.row_keys.push_back(RowKey2D{2});
-  hostB.row_keys.push_back(RowKey2D{3});
-  hostB.row_keys.push_back(RowKey2D{5});
-  hostB.row_ptr = {0, 0, 0, 0, 0};
-
-  auto A = build_device_from_host(hostA);
-  auto B = build_device_from_host(hostB);
+  auto A = to<DeviceMemorySpace>(hostA);
+  auto B = to<DeviceMemorySpace>(hostB);
 
   detail::RowMergeResult merge =
       detail::build_row_intersection_mapping(A, B);
