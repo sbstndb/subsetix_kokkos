@@ -10,3 +10,4 @@ mach2_profile.ncu-rep
 ncu_mach2.log
 tools/kp_timeline/libkp_timeline.so
 *.ncu-rep
+presentation/.slides.typ.swp
