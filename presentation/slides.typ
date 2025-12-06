@@ -1197,6 +1197,117 @@
 ]
 
 // ============================================
+// SLIDE 13d: AMR Restrict & Prolong
+// ============================================
+#slide(title: "AMR — Restrict & Prolong")[
+  #set text(size: 10pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 1em,
+    [
+      == Coordinate Mapping (2:1)
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          edge-stroke: 1.5pt + rgb("#28a745"),
+          spacing: (8mm, 8mm),
+
+          // Coarse cell
+          node((0, 0), text(size: 9pt, weight: "bold")[C], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 8pt, name: <coarse>),
+          node((0, 0.8), text(size: 7pt)[coarse(x,y)], stroke: none, fill: none),
+
+          // Arrow
+          node((1.5, 0), text(size: 10pt)[↔], stroke: none, fill: none),
+
+          // Fine cells (2x2 grid)
+          node((2.5, -0.4), text(size: 7pt)[00], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 5pt, name: <f00>),
+          node((3.3, -0.4), text(size: 7pt)[01], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 5pt, name: <f01>),
+          node((2.5, 0.4), text(size: 7pt)[10], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 5pt, name: <f10>),
+          node((3.3, 0.4), text(size: 7pt)[11], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 5pt, name: <f11>),
+          node((2.9, 1), text(size: 7pt)[fine(2x+i, 2y+j)], stroke: none, fill: none),
+        )
+      ]
+
+      #v(0.3em)
+      == Restrict (Fine → Coarse)
+      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%, fill: rgb("#fff3cd").lighten(70%))[
+        ```cpp
+        coarse[x,y] = 0.25 * (
+          fine[2x,   2y  ] + fine[2x+1, 2y  ] +
+          fine[2x,   2y+1] + fine[2x+1, 2y+1]
+        );
+        ```
+      ]
+      #align(center)[
+        #text(size: 8pt)[Average of 4 fine cells → 1 coarse cell]
+      ]
+
+      #v(0.3em)
+      == Interval Mapping
+      #set text(size: 8pt)
+      ```cpp
+      struct AmrIntervalMapping {
+        View<int*> coarse_to_fine_first;  // row 2y
+        View<int*> coarse_to_fine_second; // row 2y+1
+        View<int*> fine_to_coarse;
+      };
+      ```
+      #text(size: 7pt, fill: gray)[Condition: same interval count, aligned bounds]
+    ],
+    [
+      == Prolong (Coarse → Fine)
+
+      *1. Injection* (simple copy)
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
+        ```cpp
+        fine[x,y] = coarse[x/2, y/2];
+        ```
+      ]
+
+      #v(0.2em)
+      *2. Linear Prediction* (with gradients)
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          spacing: (6mm, 6mm),
+
+          // Coarse stencil
+          node((1, 0), text(size: 7pt)[U], corner-radius: 2pt, fill: hpc-light.lighten(50%), inset: 3pt),
+          node((0, 1), text(size: 7pt)[L], corner-radius: 2pt, fill: hpc-light.lighten(50%), inset: 3pt),
+          node((1, 1), text(size: 7pt, weight: "bold")[C], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, name: <cc>),
+          node((2, 1), text(size: 7pt)[R], corner-radius: 2pt, fill: hpc-light.lighten(50%), inset: 3pt),
+          node((1, 2), text(size: 7pt)[D], corner-radius: 2pt, fill: hpc-light.lighten(50%), inset: 3pt),
+
+          // Fine output
+          node((4, 0.7), text(size: 6pt)[−−], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt),
+          node((4.6, 0.7), text(size: 6pt)[+−], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt),
+          node((4, 1.3), text(size: 6pt)[−+], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt),
+          node((4.6, 1.3), text(size: 6pt)[++], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt),
+        )
+      ]
+
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e8f4f8"))[
+        #set text(size: 8pt)
+        ```cpp
+        grad_x = 0.125 * (R - L);
+        grad_y = 0.125 * (U - D);
+        sign_x = (x%2==0) ? -1 : +1;
+        sign_y = (y%2==0) ? -1 : +1;
+        fine = C + sign_x*grad_x + sign_y*grad_y;
+        ```
+      ]
+
+      #v(0.3em)
+      #align(center)[
+        #box(fill: rgb("#d4edda"), inset: 0.3em, radius: 3pt)[
+          *O(1)* per cell with pre-computed mapping
+        ]
+      ]
+    ]
+  )
+]
+
+// ============================================
 // SLIDE 14: Field Operations
 // ============================================
 #slide(title: "Field Operations")[
