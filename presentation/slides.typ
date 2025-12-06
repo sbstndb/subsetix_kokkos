@@ -995,36 +995,41 @@
       #align(center)[
         #diagram(
           node-stroke: 1pt + dark,
-          edge-stroke: 1pt + gray,
-          spacing: (3mm, 8mm),
+          edge-stroke: 1.5pt + rgb("#28a745"),
+          spacing: (6mm, 10mm),
 
-          // Number line labels
-          node((-1, 0), text(size: 7pt, weight: "bold")[A:], stroke: none, fill: none),
-          node((-1, 1), text(size: 7pt, weight: "bold")[B:], stroke: none, fill: none),
-          node((-1, 2), text(size: 7pt, weight: "bold")[∩:], stroke: none, fill: none),
+          // Column labels
+          node((-0.5, -0.5), text(size: 7pt, style: "italic")[overlap 1], stroke: none, fill: none),
+          node((2.5, -0.5), text(size: 7pt, style: "italic")[overlap 2], stroke: none, fill: none),
 
-          // A intervals: [2,6] and [10,18]
-          node((0.5, 0), text(size: 7pt)[[2,6]], corner-radius: 2pt, fill: hpc-light, inset: 3pt, width: 12mm, name: <a1i>),
-          node((3.5, 0), text(size: 7pt)[[10,18]], corner-radius: 2pt, fill: hpc-light, inset: 3pt, width: 18mm, name: <a2i>),
+          // Row labels
+          node((-1.2, 0), text(size: 8pt, weight: "bold")[A:], stroke: none, fill: none),
+          node((-1.2, 1), text(size: 8pt, weight: "bold")[B:], stroke: none, fill: none),
+          node((-1.2, 2), text(size: 8pt, weight: "bold")[∩:], stroke: none, fill: none),
 
-          // B intervals: [4,9] and [12,16]
-          node((1.5, 1), text(size: 7pt)[[4,9]], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, width: 14mm, name: <b1i>),
-          node((4, 1), text(size: 7pt)[[12,16]], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, width: 11mm, name: <b2i>),
+          // First overlap group (left)
+          node((0, 0), text(size: 8pt)[[2,6]], corner-radius: 3pt, fill: hpc-light, inset: 4pt, name: <a1>),
+          node((0, 1), text(size: 8pt)[[4,9]], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 4pt, name: <b1>),
+          node((0, 2), text(size: 8pt, weight: "bold")[[4,6]], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 4pt, name: <r1>),
 
-          // Result intervals
-          node((0.8, 2), text(size: 7pt)[[4,6]], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, width: 10mm, name: <r1>),
-          node((4, 2), text(size: 7pt)[[12,16]], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, width: 11mm, name: <r2>),
+          // Second overlap group (right)
+          node((3, 0), text(size: 8pt)[[10,18]], corner-radius: 3pt, fill: hpc-light, inset: 4pt, name: <a2>),
+          node((3, 1), text(size: 8pt)[[12,16]], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 4pt, name: <b2>),
+          node((3, 2), text(size: 8pt, weight: "bold")[[12,16]], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 4pt, name: <r2>),
 
-          // Overlap arrows
-          edge(<a1i>, <r1>, "->", stroke: 1pt + rgb("#28a745"), bend: 20deg),
-          edge(<b1i>, <r1>, "->", stroke: 1pt + rgb("#28a745"), bend: -20deg),
-          edge(<a2i>, <r2>, "->", stroke: 1pt + rgb("#28a745"), bend: 20deg),
-          edge(<b2i>, <r2>, "->", stroke: 1pt + rgb("#28a745"), bend: -20deg),
+          // Vertical arrows showing merge
+          edge(<a1>, <r1>, "->", bend: -25deg),
+          edge(<b1>, <r1>, "->", bend: 25deg),
+          edge(<a2>, <r2>, "->", bend: -25deg),
+          edge(<b2>, <r2>, "->", bend: 25deg),
         )
       ]
       #align(center)[
+        #text(size: 8pt)[max(2,4)=4, min(6,9)=6 #h(1em) | #h(1em) max(10,12)=12, min(18,16)=16]
+      ]
+      #align(center)[
         #box(fill: rgb("#d4edda"), inset: 0.2em, radius: 3pt)[
-          #text(size: 8pt)[*O(n+m)* linear merge — max(begin), min(end)]
+          #text(size: 8pt)[*O(n+m)* linear merge]
         ]
       ]
     ],
