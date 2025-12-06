@@ -1036,54 +1036,53 @@
       ]
     ],
     [
-      == GPU Pattern
-      #v(0.3em)
+      == GPU Pattern: Count-Scan-Fill
+      #set text(size: 8pt)
+      Output size unknown → 3-phase approach:
+
+      #v(0.2em)
       #align(center)[
         #diagram(
           node-stroke: 1.5pt + dark,
           edge-stroke: 2pt + accent,
-          spacing: (12mm, 6mm),
+          spacing: (12mm, 5mm),
 
-          // Main flow
           node((0, 0), text(size: 9pt, weight: "bold")[COUNT], corner-radius: 4pt, fill: rgb("#e3f2fd"), inset: 6pt, name: <count>),
           edge(<count>, <scan>, "->"),
           node((1, 0), text(size: 9pt, weight: "bold")[SCAN], corner-radius: 4pt, fill: rgb("#fff3cd"), inset: 6pt, name: <scan>),
           edge(<scan>, <fill>, "->"),
           node((2, 0), text(size: 9pt, weight: "bold")[FILL], corner-radius: 4pt, fill: rgb("#d4edda"), inset: 6pt, name: <fill>),
-
-          // Descriptions below
-          node((0, 1), text(size: 7pt)[∥ per row], stroke: none, fill: none),
-          node((1, 1), text(size: 7pt)[prefix sum], stroke: none, fill: none),
-          node((2, 1), text(size: 7pt)[∥ per row], stroke: none, fill: none),
         )
       ]
 
-      #v(0.4em)
-      #set text(size: 8pt)
-      *1. COUNT*
-      #box(stroke: 1pt + gray, inset: 0.25em, radius: 3pt, width: 100%)[
+      #v(0.3em)
+      *1. COUNT* — how many intervals per row?
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e3f2fd").lighten(70%))[
         ```cpp
         row_counts[i] = count_intersect(A[i], B[i])
         ```
       ]
+      #text(size: 7pt, fill: gray)[Parallel per row — don't write yet]
 
-      *2. SCAN*
-      #box(stroke: 1pt + gray, inset: 0.25em, radius: 3pt, width: 100%)[
+      *2. SCAN* — where does each row start?
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#fff3cd").lighten(70%))[
         ```cpp
         row_ptr = exclusive_scan(row_counts)
         ```
       ]
+      #text(size: 7pt, fill: gray)[Prefix sum → row_ptr[i] = write offset]
 
-      *3. FILL*
-      #box(stroke: 1pt + gray, inset: 0.25em, radius: 3pt, width: 100%)[
+      *3. FILL* — write results at known offsets
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
         ```cpp
         fill_intersect(A[i], B[i], out, row_ptr[i])
         ```
       ]
+      #text(size: 7pt, fill: gray)[Parallel per row — no conflicts!]
 
-      #v(0.3em)
+      #v(0.2em)
       #align(center)[
-        #box(fill: rgb("#fff3cd"), inset: 0.3em, radius: 3pt)[
+        #box(fill: rgb("#e8f4f8"), inset: 0.25em, radius: 3pt)[
           Same pattern for *∪*, *\\*, *⊕*
         ]
       ]
