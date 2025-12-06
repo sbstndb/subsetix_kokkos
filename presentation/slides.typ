@@ -1,5 +1,5 @@
 // ============================================
-// SUBSETIX KOKKOS - PRÉSENTATION
+// SUBSETIX KOKKOS - PRESENTATION
 // ============================================
 
 #set page(
@@ -18,10 +18,10 @@
   size: 16pt,
 )
 
-// Couleurs HPC@Maths
-#let hpc-dark = rgb("#003957")      // Bleu foncé (H, P, C)
-#let hpc-medium = rgb("#046D98")    // Bleu moyen (Maths)
-#let hpc-light = rgb("#5AA0BB")     // Bleu clair (spirale)
+// HPC@Maths Colors
+#let hpc-dark = rgb("#003957")      // Dark blue (H, P, C)
+#let hpc-medium = rgb("#046D98")    // Medium blue (Maths)
+#let hpc-light = rgb("#5AA0BB")     // Light blue (spiral)
 
 #let accent = hpc-medium
 #let dark = hpc-dark
@@ -29,7 +29,7 @@
 #let green = rgb("#27ae60")
 #let orange = rgb("#e67e22")
 
-// Slide helper
+// Slide helper function
 #let slide(title: none, body) = {
   pagebreak(weak: true)
   if title != none {
@@ -52,7 +52,7 @@
   )
   set text(fill: white)
 
-  // Logo en bas à droite
+  // Logo at bottom right
   if logo != none {
     place(bottom + right, dx: -0.3cm, dy: -0.8cm)[
       #box(
@@ -110,60 +110,60 @@
   width: 100%,
 )
 
-// Fletcher pour diagrammes
+// Fletcher for diagrams
 #import "@preview/fletcher:0.4.5" as fletcher: diagram, node, edge
 
 // ============================================
-// SLIDE 1: TITRE
+// SLIDE 1: TITLE
 // ============================================
 #title-slide(
-  "Algèbre d'Ensembles sur Représentation CSR d'Intervalles",
-  subtitle: "Implémentation Haute Performance avec Kokkos",
+  "Subsetix: Sparse 2D Geometry on GPU",
+  subtitle: "From Set Algebra to AMR Simulation",
   author: "Sébastien DUBOIS",
-  affiliation: "Équipe HPC@Maths",
-  date: "Décembre 2025",
+  affiliation: "HPC@Maths Team",
+  date: "December 2025",
   logo: "logo_hpc.png",
 )
 
 // ============================================
-// SLIDE 2: PLAN
+// SLIDE 2: OUTLINE
 // ============================================
-#slide(title: "Plan")[
+#slide(title: "Outline")[
   #set text(size: 15pt)
   #grid(
     columns: (1fr, 1fr),
     gutter: 2em,
     [
-      == I. Contexte
-      1. Calcul GPU & Kokkos
+      == I. Context
+      1. GPU Computing & Kokkos
 
       #v(0.5em)
-      == II. Représentation Sparse
-      2. Intervalles et CSR
-      3. Exemple de maillage 2D sparse
+      == II. Sparse Representation
+      2. Intervals and CSR
+      3. 2D Sparse Mesh Example
 
       #v(0.5em)
-      == III. Structures de Données
-      4. *Vue d'ensemble Device*
+      == III. Data Structures
+      4. *Device-Side Overview*
       5. IntervalSet2D, Field2D, SubSet
       6. Workspace & AMR
     ],
     [
-      == IV. Algorithmes
-      7. Constructeurs de géométrie
-      8. Algèbre ensembliste
-      9. Opérations sur champs
-      10. Morphologie & AMR
+      == IV. Algorithms
+      7. Geometry Constructors
+      8. Set Algebra
+      9. Field Operations
+      10. Morphology & AMR
 
       #v(0.5em)
-      == V. Démonstration
-      11. Mach2 Cylinder (AMR multi-niveaux)
+      == V. Demo
+      11. Mach2 Cylinder (Multi-level AMR)
 
       #v(0.5em)
-      == VI. Annexes
-      - Évolution du projet
-      - Pourquoi Kokkos ?
-      - Méthodologie de développement
+      == VI. Appendices
+      - Project Evolution
+      - Why Kokkos?
+      - Development Methodology
     ]
   )
 ]
@@ -171,117 +171,125 @@
 // ============================================
 // SECTION: GPU & KOKKOS
 // ============================================
-#section-slide("I. Contexte : GPU & Kokkos")
+#section-slide("I. Context: GPU & Kokkos")
 
 // ============================================
-// SLIDE 3: GPU & CUDA Essentials (condensé)
+// SLIDE 3: GPU & CUDA Essentials (condensed)
 // ============================================
-#slide(title: "Architecture GPU — Massively Parallel")[
-  #set text(size: 12pt)
+#slide(title: "GPU Architecture — Massively Parallel")[
+  #set text(size: 13pt)
   #grid(
     columns: (1fr, 1fr),
-    gutter: 1.5em,
+    gutter: 2em,
     [
-      == Hiérarchie d'exécution
-      #set text(size: 11pt)
-      ```
-      GPU
-      └── SM (Streaming Multiprocessor) ×N
-          └── Warps ×64 par SM
-              └── Threads ×32 par warp (SIMT)
-      ```
+      == Execution Hierarchy
+      #v(0.5em)
+      #align(center)[
+        #diagram(
+          node-stroke: 1.5pt + dark,
+          edge-stroke: 2pt + accent,
+          spacing: (8mm, 5mm),
 
-      #v(0.3em)
-      - *Warp* = 32 threads exécutés *en lockstep*
-      - *SM* = unité de calcul autonome
-      - Plusieurs warps actifs par SM (latency hiding)
+          node((0, 0), text(size: 10pt, fill: white)[*GPU*], corner-radius: 3pt, fill: hpc-dark, stroke: none, name: <gpu>, inset: 6pt),
+          edge(<gpu>, <sm>, "->"),
+          node((1, 0), text(size: 10pt, fill: white)[*SM* ×N], corner-radius: 3pt, fill: hpc-medium, stroke: none, name: <sm>, inset: 6pt),
+          edge(<sm>, <warp>, "->"),
+          node((2, 0), text(size: 10pt, fill: white)[*Warp* ×64], corner-radius: 3pt, fill: hpc-light, stroke: none, name: <warp>, inset: 6pt),
+          edge(<warp>, <thread>, "->"),
+          node((3, 0), text(size: 10pt)[*Thread* ×32], corner-radius: 3pt, fill: rgb("#d4edda"), name: <thread>, inset: 6pt),
+        )
+      ]
 
-      #v(0.3em)
-      == Comparaison B200 vs EPYC 9965
-      #set text(size: 10pt)
-      #table(
-        columns: (auto, auto, auto),
-        inset: 4pt,
-        align: (left, center, center),
-        fill: (x, y) => if y == 0 { accent.lighten(70%) } else { white },
-        [], [*GPU B200*], [*CPU EPYC 9965*],
-        [Cœurs], [148 SM], [192 cores],
-        [Mémoire], [192 GB HBM3e], [jusqu'à 6 TB DDR5],
-        [Bandwidth], [*8 TB/s*], [576 GB/s],
-        [FP32], [*80 TFlops*], [~14 TFlops],
-      )
+      #v(0.8em)
+      - *Warp* = 32 threads in *lockstep* (SIMT)
+      - *SM* = autonomous compute unit
+      - Multiple warps/SM → latency hiding
+
+      #v(1em)
+      == For Our Project
+      - *1 thread* = processes 1 Y row (or 1 cell)
+      - Thousands of rows → *saturate the GPU*
     ],
     [
-      == Modèle d'exécution
-      #set text(size: 9pt)
+      == Execution Model
+      #v(0.3em)
       #align(center)[
-        #box(stroke: 1.5pt + dark, fill: light-gray.lighten(50%), radius: 4pt, inset: 0.4em)[
-          #align(center)[
-            #text(weight: "bold", size: 10pt)[GRID]
-            #v(0.2em)
-            #diagram(
-              node-stroke: 1pt + dark,
-              edge-stroke: 1pt + accent,
-              spacing: (8mm, 5mm),
+        #box(stroke: 2pt + dark, fill: light-gray.lighten(50%), radius: 6pt, inset: 0.8em)[
+          #text(weight: "bold", size: 13pt)[GRID]
+          #v(0.5em)
+          #diagram(
+            node-stroke: 1.5pt + dark,
+            edge-stroke: 1.5pt + accent,
+            spacing: (14mm, 10mm),
 
-              // Blocks row
-              node((0, 0), [*Block 0* \ #text(size: 7pt)[32-1024 th]], corner-radius: 2pt, fill: white, name: <b0>),
-              node((1, 0), [*Block 1* \ #text(size: 7pt)[threads]], corner-radius: 2pt, fill: white, name: <b1>),
-              node((2, 0), [*Block N* \ #text(size: 7pt)[...]], corner-radius: 2pt, fill: white, name: <bn>),
+            // Blocks row
+            node((0, 0), [*Block 0* \ #text(size: 9pt)[32-1024 th]], corner-radius: 3pt, fill: white, name: <b0>, inset: 5pt),
+            node((1, 0), [*Block 1* \ #text(size: 9pt)[threads]], corner-radius: 3pt, fill: white, name: <b1>, inset: 5pt),
+            node((2, 0), [*Block N* \ #text(size: 9pt)[...]], corner-radius: 3pt, fill: white, name: <bn>, inset: 5pt),
 
-              // Arrows to SMs
-              edge(<b0>, <sm0>, "->"),
-              edge(<b1>, <sm1>, "->"),
-              edge(<bn>, <smk>, "->"),
+            // Arrows to SMs
+            edge(<b0>, <sm0>, "->"),
+            edge(<b1>, <sm1>, "->"),
+            edge(<bn>, <smk>, "->"),
 
-              // SMs row
-              node((0, 1), [SM 0], corner-radius: 2pt, fill: rgb("#d4edda"), name: <sm0>),
-              node((1, 1), [SM 1], corner-radius: 2pt, fill: rgb("#d4edda"), name: <sm1>),
-              node((2, 1), [SM k], corner-radius: 2pt, fill: rgb("#d4edda"), name: <smk>),
-            )
-          ]
+            // SMs row
+            node((0, 1), text(size: 10pt)[SM 0], corner-radius: 3pt, fill: rgb("#d4edda"), name: <sm0>, inset: 5pt),
+            node((1, 1), text(size: 10pt)[SM 1], corner-radius: 3pt, fill: rgb("#d4edda"), name: <sm1>, inset: 5pt),
+            node((2, 1), text(size: 10pt)[SM k], corner-radius: 3pt, fill: rgb("#d4edda"), name: <smk>, inset: 5pt),
+          )
         ]
       ]
 
-      #v(0.2em)
-      == Pour notre projet
-      - *1 thread* = traite 1 ligne Y (ou 1 cellule)
-      - Des milliers de lignes → *saturent le GPU*
-
-      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt)[
-        GPU : *14× plus de bandwidth* que CPU \
-        → idéal pour grands maillages
+      #v(1em)
+      == B200 vs EPYC 9965
+      #align(center)[
+        #table(
+          columns: (auto, auto, auto),
+          inset: 6pt,
+          align: (left, center, center),
+          fill: (x, y) => if y == 0 { accent.lighten(70%) } else { white },
+          [], [*GPU B200*], [*CPU EPYC 9965*],
+          [Bandwidth], [*8 TB/s*], [576 GB/s],
+          [FP32], [*80 TFlops*], [~14 TFlops],
+        )
       ]
     ]
   )
+
+  #v(0.5em)
+  #align(center)[
+    #box(fill: rgb("#d4edda"), inset: 0.6em, radius: 6pt)[
+      #text(size: 14pt)[GPU: *14× more bandwidth* than CPU → ideal for large sparse meshes]
+    ]
+  ]
 ]
 
 // ============================================
 // SLIDE 4: Kokkos Introduction
 // ============================================
-#slide(title: "Kokkos — Portabilité Performance")[
+#slide(title: "Kokkos — Performance Portability")[
   #set text(size: 12pt)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1em,
     [
-      == Le problème
+      == The Problem
       #set text(size: 11pt)
       - CUDA = NVIDIA only
-      - OpenMP = CPU only (GPU limité)
+      - OpenMP = CPU only (limited GPU)
       - HIP = AMD only
-      - Réécrire pour chaque plateforme ?
+      - Rewrite for each platform?
 
-      == La solution : Kokkos
+      == The Solution: Kokkos
       #set text(size: 10pt)
       ```cpp
-      // 1. COUNT — taille résultat inconnue
+      // 1. COUNT — unknown result size
       parallel_for(num_rows, KOKKOS_LAMBDA(int r) {
         counts[r] = count_intervals(r);
       });
-      // 2. SCAN — calcul des offsets
+      // 2. SCAN — compute offsets
       exclusive_scan(counts, row_ptr);
-      // 3. FILL — écriture parallèle
+      // 3. FILL — parallel write
       parallel_for(num_rows, KOKKOS_LAMBDA(int r) {
         fill_intervals(r, &out[row_ptr[r]]);
       });
@@ -294,46 +302,46 @@
         columns: (1fr, 1fr),
         gutter: 0.5em,
         [
-          *CUDA natif*
+          *Native CUDA*
           ```cpp
           // Allocation
           double* d_data;
           cudaMalloc(&d_data, n*8);
 
-          // Copie Host → Device
+          // Copy Host → Device
           cudaMemcpy(d_data, h_data,
             n*8, HostToDevice);
 
           // Kernel
           kernel<<<B,T>>>(d_data, n);
 
-          // Copie Device → Host
+          // Copy Device → Host
           cudaMemcpy(h_data, d_data,
             n*8, DeviceToHost);
 
-          // Libération
+          // Free
           cudaFree(d_data);
           ```
         ],
         [
           *Kokkos*
           ```cpp
-          // Allocation + miroir auto
+          // Allocation + auto mirror
           View<double*> data("d", n);
           auto h_data = create_mirror_view(data);
 
-          // Copie Host → Device
+          // Copy Host → Device
           deep_copy(data, h_data);
 
-          // Parallel (CPU ou GPU)
+          // Parallel (CPU or GPU)
           parallel_for(n, KOKKOS_LAMBDA(int i){
             data(i) = compute(i);
           });
 
-          // Copie Device → Host
+          // Copy Device → Host
           deep_copy(h_data, data);
 
-          // Libération automatique (RAII)
+          // Automatic cleanup (RAII)
           ```
         ]
       )
@@ -342,7 +350,7 @@
 
   #align(center)[
     #box(fill: rgb("#d4edda"), inset: 0.5em, radius: 4pt)[
-      *Un code source unique* → compile pour OpenMP, CUDA, HIP, SYCL, Serial — spécialisable si nécessaire
+      *Single source code* → compiles for OpenMP, CUDA, HIP, SYCL, Serial — specializable if needed
     ]
   ]
 ]
@@ -350,61 +358,55 @@
 // ============================================
 // SECTION: SPARSE REPRESENTATION
 // ============================================
-#section-slide("II. Représentation Sparse")
+#section-slide("II. Sparse Representation")
 
 // ============================================
-// SLIDE 5: Exemple Mesh 2D Sparse
+// SLIDE 5: 2D Sparse Mesh Example
 // ============================================
-#slide(title: "Exemple : Maillage 2D Sparse avec Intervalles")[
+#slide(title: "Example: 2D Sparse Mesh with Intervals")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1em,
     [
-      == Géométrie "Smiley" :-)
+      == "Smiley" Geometry :-)
       #align(center)[
         #box(stroke: 1pt + dark, inset: 0.5em, radius: 4pt)[
           ```
           Y
-          9│ . . . . . . . . . .    (vide)
-          8│ . . . . . . . . . .    (vide)
-          7│ . . ▓ ▓ . . ▓ ▓ . .    YEUX
-          6│ . . ▓ ▓ . . ▓ ▓ . .    YEUX
-          5│ . . . . . . . . . .    (TROU)
-          4│ . . . . . . . . . .    (TROU)
-          3│ . ▓ ▓ . . . . ▓ ▓ .    SOURIRE
-          2│ . . ▓ ▓ . . ▓ ▓ . .    SOURIRE
-          1│ . . . ▓ ▓ ▓ ▓ . . .    SOURIRE
-          0│ . . . . . . . . . .    (vide)
+          9│ . . . . . . . . . .    (empty)
+          8│ . . . . . . . . . .    (empty)
+          7│ . . ▓ ▓ . . ▓ ▓ . .    EYES
+          6│ . . ▓ ▓ . . ▓ ▓ . .    EYES
+          5│ . . . . . . . . . .    (HOLE)
+          4│ . . . . . . . . . .    (HOLE)
+          3│ . ▓ ▓ . . . . ▓ ▓ .    SMILE
+          2│ . . ▓ ▓ . . ▓ ▓ . .    SMILE
+          1│ . . . ▓ ▓ ▓ ▓ . . .    SMILE
+          0│ . . . . . . . . . .    (empty)
            └──────────────────── X
              0 1 2 3 4 5 6 7 8 9
           ```
         ]
       ]
 
-      == Complexité mémoire
-      *O(R + I)* — R = lignes Y, I = intervalles
-
-      #box(fill: rgb("#d4edda"), inset: 0.3em, radius: 4pt)[
-        Dense O(W×H) vs CSR O(R+I) ≪
-      ]
     ],
     [
-      == Représentation CSR
+      == CSR Representation
       ```cpp
-      // 5 lignes, TROU Y=4,5
-      row_keys = [1, 2, 3, 6, 7]  // saute 4,5!
+      // 5 rows, HOLE Y=4,5
+      row_keys = [1, 2, 3, 6, 7]  // skips 4,5!
       num_rows = 5
 
-      // Lignes avec 1 ou 2 intervalles
+      // Rows with 1 or 2 intervals
       row_ptr = [0, 1, 3, 5, 7, 9]
 
       intervals = [
-        {3, 7},        // Y=1: sourire bas
-        {2, 4}, {6, 8},// Y=2: sourire épais
-        {1, 3}, {7, 9},// Y=3: sourire coins
-        {2, 4}, {6, 8},// Y=6: YEUX bas
-        {2, 4}, {6, 8},// Y=7: YEUX haut
+        {3, 7},        // Y=1: smile bottom
+        {2, 4}, {6, 8},// Y=2: smile thick
+        {1, 3}, {7, 9},// Y=3: smile corners
+        {2, 4}, {6, 8},// Y=6: EYES bottom
+        {2, 4}, {6, 8},// Y=7: EYES top
       ]
       num_intervals = 9
 
@@ -412,8 +414,10 @@
       total_cells = 20
       ```
 
-      #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
-        *Trou Y=4,5* : row_keys saute de 3 à 6
+      #align(center)[
+        #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
+          *Hole Y=4,5*: row_keys jumps from 3 to 6
+        ]
       ]
     ]
   )
@@ -422,103 +426,100 @@
 // ============================================
 // SECTION: DATA STRUCTURES
 // ============================================
-#section-slide("III. Structures de Données")
+#section-slide("III. Data Structures")
 
 // ============================================
-// SLIDE 7: Vue d'Ensemble — Structures Device
+// SLIDE 7: Overview — Device Structures
 // ============================================
-#slide(title: "Vue d'Ensemble — Structures Device")[
-  #set text(size: 10pt)
+#slide(title: "Overview — Device Structures")[
+  #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
-    gutter: 1em,
+    gutter: 1.5em,
     [
-      == Architecture des types GPU
-      #set text(size: 8pt)
+      == Core Types
+      #v(0.3em)
       #align(center)[
         #diagram(
-          node-stroke: 1pt + dark,
+          node-stroke: 1.5pt + dark,
           node-fill: light-gray,
-          edge-stroke: 1pt + accent,
-          spacing: (8mm, 6mm),
+          edge-stroke: 1.5pt + accent,
+          spacing: (10mm, 10mm),
 
           node((0, 0), align(left)[
-            *IntervalSet2D* \
-            #set text(size: 7pt)
-            row_keys[], row_ptr[] \
-            intervals[], cell_offsets[]
-          ], corner-radius: 3pt, width: 38mm, name: <set>),
+            #text(size: 10pt, weight: "bold")[IntervalSet2D] \
+            #text(size: 8pt)[row_keys[], row_ptr[] \
+            intervals[], cell_offsets[]]
+          ], corner-radius: 4pt, width: 42mm, inset: 6pt, name: <set>),
 
-          edge(<set>, <field>, "->", [référence], label-side: right),
+          edge(<set>, <field>, "->"),
 
           node((0, 1), align(left)[
-            *Field2D\<T\>* \
-            #set text(size: 7pt)
-            geometry: IntervalSet2D \
-            values: View\<T\*\>
-          ], corner-radius: 3pt, width: 38mm, fill: rgb("#d4edda"), name: <field>),
+            #text(size: 10pt, weight: "bold")[Field2D\<T\>] \
+            #text(size: 8pt)[geometry: IntervalSet2D \
+            values: View\<T\*\>]
+          ], corner-radius: 4pt, width: 42mm, inset: 6pt, fill: rgb("#d4edda"), name: <field>),
 
-          edge(<field>, <subview>, "->", [make_subview()], label-side: right),
+          // Region input
+          node((1, 1), align(center)[
+            #text(size: 10pt, weight: "bold")[Region] \
+            #text(size: 8pt)[(IntervalSet2D)]
+          ], corner-radius: 4pt, width: 26mm, inset: 6pt, fill: rgb("#fff3cd"), name: <region>),
 
-          node((0, 2), align(left)[
-            *Field2DSubView\<T\>* \
-            #set text(size: 7pt)
-            parent: Field2D& \
+          edge(<field>, <subview>, "->"),
+          edge(<region>, <subview>, "->"),
+
+          node((0.5, 2), align(left)[
+            #text(size: 10pt, weight: "bold")[Field2DSubView\<T\>] \
+            #text(size: 8pt)[parent: Field2D& \
             region: IntervalSet2D \
-            subset: SubSet (lazy)
-          ], corner-radius: 3pt, width: 38mm, fill: rgb("#e8f4f8"), name: <subview>),
+            subset: IntervalSubSet2D]
+          ], corner-radius: 4pt, width: 50mm, inset: 6pt, fill: rgb("#e8f4f8"), name: <subview>),
         )
       ]
 
-      #v(0.2em)
-      == IntervalSubSet2D (intersection)
+      #v(0.3em)
+      == IntervalSubSet2D
       #set text(size: 9pt)
       ```cpp
-      // Décrit l'intersection parent ∩ region
       struct IntervalSubSet2D {
-        interval_indices[];  // → parent
-        x_begin[], x_end[];  // sous-plages
-        row_indices[];       // index lignes
+        IntervalSet2D parent;      // ref
+        interval_indices[];        // which intervals
+        x_begin[], x_end[];        // restricted range
+        row_indices[];             // Y coords
       };
       ```
     ],
     [
-      == Workflow GPU typique
-      #set text(size: 9pt)
+      == SubView: Lazy Intersection
+      #set text(size: 8pt)
       ```cpp
-      // Champs sur même géométrie
-      Field2D<Real> rho(fluid_geom);
-      Field2D<Real> rhou(fluid_geom);
+      // Region = any IntervalSet2D
+      IntervalSet2DDevice left_bc = make_box_device({0,2,0,ny});
+      Field2DSubViewDevice<T> sub = make_subview(field, left_bc);
 
-      // Zone d'intérêt (overlap, guard, etc.)
-      auto overlap = set_intersection_device(
-          field.geometry, other_level, ctx);
+      // First op: computes field.geo ∩ region
+      fill_subview_device(sub, T_inlet, &ctx);
 
-      // SubView = référence légère
-      auto sub_rho = make_subview(rho, overlap);
-      auto sub_rhou = make_subview(rhou, overlap);
-
-      // Opérations sur la zone uniquement
-      fill_subview_device(sub_rho, 0.0, &ctx);
-      copy_subview_device(dst, src, &ctx);
-
-      // Stencil, AMR restrict/prolong...
-      restrict_field_subview_device(coarse, fine);
-      prolong_field_subview_device(fine, coarse);
+      // Time loop: reuses cached intersection
+      for (int step = 0; step < nsteps; ++step) {
+        fill_subview_device(sub, T_inlet);  // fast
+      }
       ```
 
-      == Pourquoi SubView ?
-      #table(
-        columns: (auto, 1fr),
-        inset: 3pt,
-        align: (left, left),
-        fill: (x, y) => if y == 0 { accent.lighten(70%) } else { white },
-        [*Avantage*], [*Description*],
-        [Non-owning], [Pas de copie, juste des références],
-        [Lazy subset], [Intersection calculée à la demande],
-        [Cache ctx], [SubSet réutilisé entre opérations],
-        [API unifiée], [fill, copy, stencil, AMR...],
-      )
+      #v(0.3em)
+      == SubView Operations
+      - `fill_subview_device(sub, val)`
+      - `scale_subview_device(sub, alpha)`
+      - `copy_subview_device(dst, src)`
+      - `apply_stencil_on_subview_device(...)`
+
+      #v(0.3em)
+      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt, width: 100%)[
+        #set text(size: 10pt)
+        *Lazy*: intersection computed on first use \
+        *Cached*: reused for subsequent operations
+      ]
     ]
   )
 ]
@@ -526,26 +527,26 @@
 // ============================================
 // SLIDE 8: IntervalSet2D Structure
 // ============================================
-#slide(title: "IntervalSet2D — Structure CSR Complète")[
+#slide(title: "IntervalSet2D — Complete CSR Structure")[
   #set text(size: 12pt)
   #grid(
     columns: (1.1fr, 1fr),
     gutter: 1em,
     [
-      == Définition C++
+      == C++ Definition
       ```cpp
       template<class MemorySpace>
       struct IntervalSet2D {
-        // Coordonnées Y des lignes non-vides
+        // Y coordinates of non-empty rows
         View<RowKey2D*> row_keys;  // [num_rows]
 
-        // Index dans intervals[] pour chaque ligne
+        // Index into intervals[] for each row
         View<size_t*> row_ptr;     // [num_rows + 1]
 
-        // Tous les intervalles (contigus)
+        // All intervals (contiguous)
         View<Interval*> intervals; // [num_intervals]
 
-        // Offset linéaire des cellules
+        // Linear cell offsets
         View<size_t*> cell_offsets;// [num_intervals]
 
         size_t total_cells;
@@ -556,25 +557,16 @@
     ],
     [
       == Invariants
-      - `row_keys` trié par Y croissant
-      - Intervalles triés par X dans chaque ligne
-      - Pas de chevauchement entre intervalles
-      - `row_ptr[r+1] - row_ptr[r]` = nb intervalles ligne r
+      - `row_keys` sorted by increasing Y
+      - Intervals sorted by X within each row
+      - No overlap between intervals
+      - `row_ptr[r+1] - row_ptr[r]` = nb intervals row r
 
-      #v(0.3em)
-      == Accès aux intervalles d'une ligne
-      ```cpp
-      // Intervalles de la ligne r
-      int begin = row_ptr[r];
-      int end   = row_ptr[r + 1];
-      for (int i = begin; i < end; i++) {
-        Interval iv = intervals[i];
-        // Traiter [iv.begin, iv.end)
-      }
-      ```
-
-      #box(fill: rgb("#e8f4f8"), inset: 0.4em, radius: 4pt)[
-        *Template MemorySpace* : Device ou Host
+      #v(0.5em)
+      #align(center)[
+        #box(fill: rgb("#e8f4f8"), inset: 0.4em, radius: 4pt)[
+          *Template MemorySpace*: Device or Host
+        ]
       ]
     ]
   )
@@ -583,165 +575,230 @@
 // ============================================
 // SLIDE 9: Field2D
 // ============================================
-#slide(title: "Field2D — Champ sur Géométrie Creuse")[
+#slide(title: "Field2D — Field on Sparse Geometry")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
     [
-      == Définition
-      Associe une *valeur* à chaque cellule sparse
+      == Definition
+      Associates a *value* with each sparse cell
 
       ```cpp
       template<class T, class MemorySpace>
       struct Field2D {
-        IntervalSet2D geometry;  // Réf géométrie
+        IntervalSet2D geometry;  // Geometry ref
         View<T*> values;         // [total_cells]
-
-        // Accès à une valeur
-        T& at(interval_idx, x) {
-          offset = cell_offsets(interval_idx);
-          x0 = intervals(interval_idx).begin;
-          return values(offset + x - x0);
-        }
       };
       ```
 
       #v(0.3em)
-      == Stockage mémoire
+      == Memory Layout
       #set text(size: 10pt)
-      ```
-      Géométrie: ████ ░░ ████ ░░ ██████
-      values[]:  [v0 v1 | v2 v3 | v4 v5 v6]
-                  ↑       ↑       ↑
-      offsets:    0       2       4
-      ```
-      Valeurs *contiguës* → cache-friendly
+      #align(center)[
+        ```
+        Geometry:  ████ ░░ ████ ░░ ██████
+        values[]:  [v0 v1 | v2 v3 | v4 v5 v6]
+                    ↑       ↑       ↑
+        offsets:    0       2       4
+        ```
+        *Contiguous* values → cache-friendly
+      ]
     ],
     [
-      == Opérations sur Fields
-      ```cpp
-      // Algèbre élément par élément
-      field_add(a, b, result);       // a + b
-      field_sub(a, b, result);       // a - b
-      field_mul(a, b, result);       // a * b
-      field_axpby(α, a, β, b, r);    // αa + βb
-
-      // Réductions globales
-      T sum  = field_reduce_sum(f);
-      T dot  = field_dot(a, b);      // Σ aᵢbᵢ
-      T norm = field_norm_l2(f);     // √(Σ fᵢ²)
-      T min  = field_min(f);
-      T max  = field_max(f);
-      ```
-
-      #v(0.3em)
-      == Implémentation (Kokkos std-like)
+      == Cell Access
       #set text(size: 10pt)
       ```cpp
-      // Utilise transform, reduce, etc.
-      Kokkos::Experimental::transform(
-        exec, a.values, b.values, result.values,
-        KOKKOS_LAMBDA(T x, T y) { return x + y; }
-      );
+      // O(1) - when interval index known
+      T val = field.at(interval_idx, x);
+
+      // O(log R + log I) - by coordinates
+      // (binary search on Y, then X)
+      bool ok = accessor.try_get(x, y, val);
       ```
 
-      #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
-        Pour opérer sur une *zone spécifique* → SubSet
-      ]
+      #v(0.5em)
+      == Usage
+      #set text(size: 10pt)
+      ```cpp
+      Field2DDevice<double> rho(fluid_geo);
+      fill_field_device(rho, 1.0);
+      auto rho_host = to_host(rho);  // I/O
+      ```
     ]
   )
 ]
 
 // ============================================
-// SLIDE 10: SubSet — Opérations sur Zones
+// SLIDE 10: SubSet — Targeted Region Operations
 // ============================================
-#slide(title: "SubSet — Opérations sur Zones Ciblées")[
+#slide(title: "SubSet — Targeted Region Operations")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
-    gutter: 1em,
+    gutter: 1.5em,
     [
-      == Problème
-      Comment appliquer une opération *uniquement* sur une zone ?
-      - Conditions aux limites (bords)
-      - Zone source (injection d'énergie)
-      - Mise à jour partielle
+      == Structure
+      #set text(size: 10pt)
+      ```cpp
+      struct IntervalSubSet2D {
+        IntervalSet2D parent;  // ref to Field geo
+        interval_indices[];    // which intervals
+        x_begin[], x_end[];    // restricted range
+        row_indices[];         // Y row in parent
+        num_entries;
+      };
+      ```
 
       #v(0.3em)
-      == Solution : SubSet = Intersection
-      #set text(size: 9pt)
+      == Usage
+      #set text(size: 10pt)
+      ```cpp
+      // Build subset (intersection)
+      build_interval_subset(
+        field.geometry, mask, subset, &ctx);
+
+      // Operations on subset only
+      fill_on_subset(field, subset, 0.0);
+
+      // Iteration: O(1) access per entry
+      for (e = 0; e < num_entries; ++e) {
+        int iv = interval_indices[e];
+        for (x = x_begin[e]; x < x_end[e]; ++x)
+          field.at(iv, x) = ...;  // O(1)
+      }
+      ```
+    ],
+    [
+      == 1D Example: Intersection
+      #set text(size: 8pt)
       #align(center)[
-        #box(stroke: 1pt + dark, inset: 0.4em, radius: 4pt)[
+        #box(stroke: 1pt + dark, inset: 0.5em, radius: 4pt, fill: light-gray.lighten(50%))[
           ```
-          Géométrie Field:       Masque:
-          ████████████████       ░░░░████████░░░░
-          ████████████████   ∩   ░░░░████████░░░░
-          ████████████████       ░░░░░░░░░░░░░░░░
+          Parent:  [==A==]   [==B==]   [==C==]
+            idx:      0         1         2
+                   0     8  12    18  22    30
 
-                    ↓ build_interval_subset()
+          Mask:        [=======M=======]
+                       5              25
 
-                 SubSet:
-          ░░░░████████░░░░  ← référence parent
-          ░░░░████████░░░░  ← [x_begin, x_end)
-          ░░░░░░░░░░░░░░░░    par intervalle
+          SubSet:      [=]   [==B==]   [=]
+                       5 8  12    18  22 25
+                        ↑       ↑       ↑
+          entry:        0       1       2
           ```
         ]
       ]
 
-      #box(fill: rgb("#d4edda"), inset: 0.3em, radius: 4pt)[
-        *Pas de copie* — référence la géométrie parente
+      #v(0.2em)
+      == SubSet = references to Parent
+      #set text(size: 8pt)
+      #align(center)[
+        #box(stroke: 1pt + accent, inset: 0.4em, radius: 4pt)[
+          ```
+          entry | interval_idx | x_begin | x_end
+          ------+--------------+---------+------
+            0   |      0 (A)   |    5    |   8
+            1   |      1 (B)   |   12    |  18
+            2   |      2 (C)   |   22    |  25
+          ```
+        ]
       ]
-    ],
-    [
-      == Structure
-      ```cpp
-      struct IntervalSubSet2D {
-        IntervalSet2D parent;  // Géométrie ref
-        interval_indices[];    // Index intervalles
-        x_begin[], x_end[];    // Sous-plages X
-        row_indices[];         // Index lignes
-        num_entries;
-        total_cells;
-      };
-      ```
 
-      #v(0.3em)
-      == Utilisation
-      ```cpp
-      // Construire le subset (intersection)
-      build_interval_subset(
-        field.geometry, mask, subset);
-
-      // Opérations sur la zone uniquement
-      fill_on_subset(field, subset, 0.0);
-      scale_on_subset(field, subset, 2.0);
-
-      // Functor personnalisé
-      apply_on_subset(field, subset,
-        KOKKOS_LAMBDA(x, y, val, idx) {
-          val = source(x, y);
-        });
-      ```
-
-      #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
-        *GPU-friendly* : parallélisme sur les entries
+      #align(center)[
+        #box(fill: rgb("#d4edda"), inset: 0.3em, radius: 4pt)[
+          *No data copy* — just indices + bounds
+        ]
       ]
     ]
   )
 ]
 
 // ============================================
-// SLIDE 11: Workspace & AMR
+// SLIDE 11: Field2DSubView
 // ============================================
-#slide(title: "Workspace & Support AMR")[
+#slide(title: "Field2DSubView — View on Field + Region")[
+  #set text(size: 11pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 1.5em,
+    [
+      == Structure
+      #set text(size: 10pt)
+      ```cpp
+      struct Field2DSubView<T> {
+        Field2D<T> parent;        // ref to field
+        IntervalSet2D region;     // where to operate
+        IntervalSubSet2D subset;  // lazy intersection
+      };
+      ```
+
+      #v(0.3em)
+      == Lazy Pattern
+      #set text(size: 9pt)
+      ```cpp
+      // 1. Create (no computation)
+      auto sub = make_subview(field, region);
+      // sub.subset is empty
+
+      // 2. First op with ctx → triggers build
+      fill_subview_device(sub, 0.0, &ctx);
+      // sub.subset = field.geo ∩ region
+
+      // 3. Next ops reuse cached subset
+      scale_subview_device(sub, 2.0);  // fast!
+      fill_subview_device(sub, 1.0);   // fast!
+      ```
+    ],
+    [
+      == Memory Mapping
+      #set text(size: 8pt)
+      #align(center)[
+        #box(stroke: 1pt + dark, inset: 0.5em, radius: 4pt, fill: light-gray.lighten(50%))[
+          ```
+          Geometry:   [==A==]    [==B==]    [==C==]
+                         ↓          ↓          ↓
+          values[]:  [░░███|░░░░░████░|██░░░░░░]
+                        ↑          ↑       ↑
+                     entry 0    entry 1  entry 2
+          ```
+        ]
+      ]
+      #align(center)[
+        #text(size: 7pt)[░ = skipped #h(1em) █ = accessed by SubSet]
+      ]
+
+      #v(0.4em)
+      == Access Formula
+      #set text(size: 9pt)
+      #align(center)[
+        #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt)[
+          `values[ offset[idx] + (x - interval.begin) ]`
+        ]
+      ]
+
+      #v(0.3em)
+      #align(center)[
+        #box(fill: rgb("#d4edda"), inset: 0.3em, radius: 4pt)[
+          #set text(size: 9pt)
+          *O(1)* per cell — no coordinate lookup
+        ]
+      ]
+    ]
+  )
+]
+
+// ============================================
+// SLIDE 12: Workspace & AMR
+// ============================================
+#slide(title: "Workspace & AMR Support")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
     [
       == UnifiedCsrWorkspace
-      Pool de buffers réutilisables
+      Pool of reusable buffers
 
       ```cpp
       struct UnifiedCsrWorkspace {
@@ -758,14 +815,16 @@
       };
       ```
 
-      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt)[
-        *Évite* allocations répétées GPU \
-        Crucial pour chaînage d'opérations
+      #align(center)[
+        #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt)[
+          *Avoids* repeated GPU allocations \
+          Crucial for chained operations
+        ]
       ]
     ],
     [
       == MultilevelGeo (AMR)
-      Grilles multi-résolution
+      Multi-resolution grids
 
       ```cpp
       template<class MemorySpace>
@@ -782,151 +841,197 @@
       ```
 
       #set text(size: 9pt)
-      ```
-      Level 0: ┌───┬───┬───┬───┐  dx=1.0
-               └───┴───┴───┴───┘
-      Level 1: ┌─┬─┬─┬─┬─┬─┬─┬─┐  dx=0.5
-               └─┴─┴█┴█┴█┴█┴─┴─┘  (raffiné)
-      Level 2:     ┌┬┬┬┬┬┬┬┐      dx=0.25
-                   └┴┴█┴█┴┴┴┘     (très fin)
-      ```
-    ]
-  )
-]
-
-// ============================================
-// SECTION: ALGORITHMES
-// ============================================
-#section-slide("IV. Algorithmes")
-
-// ============================================
-// SLIDE 12: Geometry Builders
-// ============================================
-#slide(title: "Constructeurs de Géométrie")[
-  #set text(size: 12pt)
-  #grid(
-    columns: (1fr, 1fr),
-    gutter: 1em,
-    [
-      == Formes primitives
-      ```cpp
-      // Rectangle
-      auto box = make_box_device(
-        Box2D{0, 100, 0, 50});
-
-      // Disque
-      auto disk = make_disk_device(
-        Disk2D{cx, cy, radius});
-
-      // Damier
-      auto checker = make_checkerboard_device(
-        domain, cell_size);
-      ```
-
-      == À partir de données
-      ```cpp
-      // Depuis bitmap (masque binaire)
-      auto geo = make_bitmap_device(
-        bitmap_view, corner_x, corner_y);
-
-      // Aléatoire (test/benchmark)
-      auto rand = make_random_device(
-        domain, fill_prob, seed);
-      ```
-    ],
-    [
-      == Pattern : build_interval_set_from_rows
-      #set text(size: 10pt)
-      ```cpp
-      template<class Compute, class Fill>
-      IntervalSet2D build_interval_set_from_rows(
-        int num_rows, Compute compute, Fill fill)
-      {
-        // 1. COUNT (parallel)
-        parallel_for(num_rows, [&](int r) {
-          counts[r] = compute(r).num_intervals;
-        });
-
-        // 2. SCAN → row_ptr
-        exclusive_scan(counts, row_ptr);
-
-        // 3. FILL (parallel)
-        parallel_for(num_rows, [&](int r) {
-          fill(r, &intervals[row_ptr[r]]);
-        });
-
-        // 4. SCAN → cell_offsets
-        compute_cell_offsets(intervals, offsets);
-      }
-      ```
-
-      #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
-        Pattern *Count-Scan-Fill* : allocation exacte
+      #align(center)[
+        ```
+        Level 0: ┌───┬───┬───┬───┐  dx=1.0
+                 └───┴───┴───┴───┘
+        Level 1: ┌─┬─┬─┬─┬─┬─┬─┬─┐  dx=0.5
+                 └─┴─┴█┴█┴█┴█┴─┴─┘  (refined)
+        Level 2:     ┌┬┬┬┬┬┬┬┐      dx=0.25
+                     └┴┴█┴█┴┴┴┘     (very fine)
+        ```
       ]
     ]
   )
 ]
 
 // ============================================
-// SLIDE 13: Set Algebra
+// SECTION: ALGORITHMS
 // ============================================
-#slide(title: "Algèbre Ensembliste — Opérations Binaires")[
+#section-slide("IV. Algorithms")
+
+// ============================================
+// SLIDE 12: Set Algebra
+// ============================================
+#slide(title: "Set Algebra — Binary Operations")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
-    gutter: 1em,
+    gutter: 1.5em,
     [
-      == Opérations supportées
+      == CsrSetAlgebraContext
+      #set text(size: 10pt)
       ```cpp
-      set_union_device(A, B, out, ctx);
-      set_intersection_device(A, B, out, ctx);
-      set_difference_device(A, B, out, ctx);
-      set_symmetric_difference_device(...);
+      struct CsrSetAlgebraContext {
+        UnifiedCsrWorkspace workspace;
+        // Pool of reusable GPU buffers:
+        // - int_bufs_[5], size_t_bufs_[2]
+        // - row_key_bufs_[2], interval_buf_
+        // Auto-grows on demand, never shrinks
+      };
       ```
 
-      #box(fill: light-gray, inset: 0.5em, radius: 4pt)[
-        #set text(size: 10pt)
-        ```
-        A:       ████████████░░░░░░░░░░░░░░░░
-        B:       ░░░░░░░░████████████░░░░░░░░
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          edge-stroke: 1.5pt + accent,
+          spacing: (6mm, 8mm),
 
-        A ∪ B:   ████████████████████░░░░░░░░
-        A ∩ B:   ░░░░░░░░████░░░░░░░░░░░░░░░░
-        A \ B:   ████████░░░░░░░░░░░░░░░░░░░░
-        A △ B:   ████████░░░░████████░░░░░░░░
+          node((0, 0), text(size: 9pt)[*ctx*], fill: rgb("#fff3cd"), corner-radius: 3pt, inset: 5pt, name: <ctx>),
+          edge(<ctx>, <op1>, "->"),
+          node((1, 0), text(size: 8pt)[op 1], fill: rgb("#d4edda"), corner-radius: 3pt, inset: 4pt, name: <op1>),
+          edge(<op1>, <op2>, "->"),
+          node((2, 0), text(size: 8pt)[op 2], fill: rgb("#d4edda"), corner-radius: 3pt, inset: 4pt, name: <op2>),
+          edge(<op2>, <op3>, "->"),
+          node((3, 0), text(size: 8pt)[op N], fill: rgb("#d4edda"), corner-radius: 3pt, inset: 4pt, name: <op3>),
+        )
+        #text(size: 9pt)[Same ctx reused → *zero allocations* after warmup]
+      ]
+
+      #v(0.3em)
+      == Complete Example
+      #set text(size: 9pt)
+      ```cpp
+      CsrSetAlgebraContext ctx;  // create once
+
+      auto domain = make_box_device({0,400,0,160});
+      auto obstacle = make_disk_device({80,80,20});
+
+      auto fluid = allocate_interval_set_device(
+          domain.num_rows,
+          domain.num_intervals + obstacle.num_intervals);
+
+      set_difference_device(domain, obstacle, fluid, ctx);
+      ```
+    ],
+    [
+      == Chaining with Buffer Reuse
+      #set text(size: 9pt)
+      ```cpp
+      CsrSetAlgebraContext ctx;
+
+      // Pre-allocate output buffers ONCE
+      auto set1 = allocate_interval_set_device(512, 2048);
+      auto set2 = allocate_interval_set_device(512, 2048);
+
+      // Compute: set1 = A ∪ B
+      set_union_device(A, B, set1, ctx);
+
+      // Compute: set2 = set1 \ C
+      set_difference_device(set1, C, set2, ctx);
+
+      // ... use set2 (e.g., create Field2D on it) ...
+
+      // Later: reuse same buffers!
+      set_intersection_device(D, E, set1, ctx);  // set1 reused
+      set_union_device(set1, F, set2, ctx);      // set2 reused
+      ```
+
+      #v(0.2em)
+      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt, width: 100%)[
+        #set text(size: 10pt)
+        *Allocate once* → reuse for entire simulation \
+        *ctx + set1 + set2*: zero GPU malloc in hot loop
+      ]
+    ]
+  )
+]
+
+// ============================================
+// SLIDE 13b: Intersection Internals
+// ============================================
+#slide(title: "Intersection — How It Works")[
+  #set text(size: 10pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 1.2em,
+    [
+      == Phase 1: Row Mapping
+      #set text(size: 8pt)
+      ```
+      A.row_keys:  [y=2, y=5, y=8]
+      B.row_keys:  [y=3, y=5, y=7, y=8]
+                         ↓         ↓
+      Binary search: A[1] ↔ B[1], A[2] ↔ B[3]
+      ```
+      #v(0.2em)
+      #box(stroke: 1pt + dark, inset: 0.3em, radius: 3pt, fill: light-gray.lighten(50%))[
+        ```
+        Output rows:  [y=5, y=8]
+        row_index_a:  [ 1,   2 ]
+        row_index_b:  [ 1,   3 ]
         ```
       ]
 
-      == Algorithme Two-Pointer
-      - *O(n + m)* par ligne
-      - Parallélisme sur les *lignes*
-      - Template `CountOnly` : même code count/fill
+      #v(0.4em)
+      == Phase 2: Interval Merge (per row)
+      #set text(size: 8pt)
+      ```
+      A: [===]     [=======]
+            2   6       10    18
+
+      B:     [=====] [===]
+              4    9  12  16
+
+      Sweep → max(begin), min(end):
+        [4,6] ∩  → output [4,6]
+        [10,18] ∩ [12,16] → output [12,16]
+      ```
+      #align(center)[
+        #box(fill: rgb("#d4edda"), inset: 0.2em, radius: 3pt)[
+          *O(n+m)* per row — linear merge
+        ]
+      ]
     ],
     [
-      == Architecture unifiée
-      ```cpp
-      template<class RowOp>
-      void apply_binary_csr_operation(
-        A, B, mapping, output, row_op)
-      {
-        int num_out_rows = mapping.num_rows;
+      == GPU Pattern: Count → Scan → Fill
+      #set text(size: 8pt)
 
-        // Phase 1: COUNT
-        parallel_for(num_out_rows, [&](int r) {
-          counts[r] = row_op.count(r, A, B);
-        });
+      #v(0.2em)
+      *1. COUNT* (parallel per row)
+      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%)[
+        ```cpp
+        row_counts[i] = count_intersection(
+            A.intervals[begin_a..end_a],
+            B.intervals[begin_b..end_b]);
+        ```
+      ]
 
-        // Phase 2: SCAN
-        exclusive_scan(counts, row_ptr);
+      #v(0.2em)
+      *2. SCAN* (exclusive prefix sum)
+      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%)[
+        ```cpp
+        row_ptr_out = exclusive_scan(row_counts)
+        // row_ptr_out[i] = where row i starts
+        ```
+      ]
 
-        // Phase 3: FILL
-        parallel_for(num_out_rows, [&](int r) {
-          row_op.fill(r, A, B, out_intervals);
-        });
-      }
-      ```
+      #v(0.2em)
+      *3. FILL* (parallel per row)
+      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%)[
+        ```cpp
+        fill_intersection(
+            A.intervals, B.intervals,
+            out.intervals, row_ptr_out[i]);
+        ```
+      ]
 
-      `RowOp` : UnionRowOp, IntersectionRowOp...
+      #v(0.3em)
+      #align(center)[
+        #box(fill: rgb("#fff3cd"), inset: 0.3em, radius: 3pt)[
+          Same pattern for ∪, \, ⊕
+        ]
+      ]
     ]
   )
 ]
@@ -934,66 +1039,70 @@
 // ============================================
 // SLIDE 14: Field Operations
 // ============================================
-#slide(title: "Opérations sur Champs")[
+#slide(title: "Field Operations")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
-    gutter: 1em,
+    gutter: 1.5em,
     [
-      == Algèbre élément par élément
+      == Basic Operations
+      #set text(size: 10pt)
       ```cpp
-      // Binaires
+      // Algebra & reductions
       field_add_device(a, b, result);
-      field_sub_device(a, b, result);
-      field_mul_device(a, b, result);
+      T dot = field_dot_device(a, b);
 
-      // Combinaison linéaire: α·a + β·b
-      field_axpby_device(alpha, a, beta, b, result);
-
-      // Réductions
-      T dot  = field_dot_device(a, b);
-      T norm = field_norm_l2_device(a);
+      // 5-point stencil (W, C, E, S, N)
+      apply_csr_stencil_on_set_device(
+        dst, src, region,
+        KOKKOS_LAMBDA(CsrStencilPoint p) {
+          return 0.25 * (p.west + p.east
+                       + p.south + p.north);
+        });
       ```
 
-      == Implémentation (Kokkos std algorithms)
+      #v(0.5em)
+      == AMR: Restrict & Prolong
+      #set text(size: 10pt)
       ```cpp
-      void field_add_device(a, b, result) {
-        Kokkos::Experimental::transform(
-          exec_space,
-          a.values, b.values, result.values,
-          KOKKOS_LAMBDA(T x, T y) {
-            return x + y;
-          });
-      }
+      // Fine → Coarse (average 4 cells)
+      restrict_field_device(fine, coarse);
+
+      // Coarse → Fine (interpolation)
+      prolong_field_device(coarse, fine);
       ```
     ],
     [
-      == Opérations sur sous-ensembles
+      == Threshold: Field → Geometry
+      #set text(size: 10pt)
       ```cpp
-      // Remplir avec une valeur
-      fill_on_subset_device(field, subset, val);
-
-      // Multiplier par un scalaire
-      scale_on_subset_device(field, subset, k);
-
-      // Copier
-      copy_on_subset_device(src, dst, subset);
+      // Select cells where |value| > epsilon
+      IntervalSet2DDevice active =
+          threshold_field(field, epsilon);
+      // Use case: detect shock, refine there
       ```
 
-      == Implémentation TeamPolicy
+      #v(0.5em)
+      == Remap: Change Geometry
+      #set text(size: 10pt)
       ```cpp
-      TeamPolicy policy(num_entries, AUTO);
-      parallel_for(policy, KOKKOS_LAMBDA(team) {
-        int e = team.league_rank();
-        Coord x0 = subset.x_begin[e];
-        Coord x1 = subset.x_end[e];
-
-        TeamThreadRange(team, x0, x1,
-          [&](Coord x) {
-            field.at(e, x) = value;
-          });
-      });
+      // Project src onto dst geometry
+      // (overlap → copy, else → default)
+      remap_field_device(src, dst, default_val);
       ```
+
+      #v(0.3em)
+      #align(center)[
+        #box(fill: light-gray, inset: 0.4em, radius: 4pt)[
+          #set text(size: 9pt)
+          ```
+          src geo:  ████████░░░░░░░░
+          dst geo:  ░░░░████████████
+          result:   ░░░░████░░░░░░░░
+                    copy ↑   ↑ default
+          ```
+        ]
+      ]
     ]
   )
 ]
@@ -1001,57 +1110,61 @@
 // ============================================
 // SLIDE 15: Morphology & AMR
 // ============================================
-#slide(title: "Morphologie Mathématique & AMR")[
+#slide(title: "Mathematical Morphology & AMR")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1em,
     [
-      == Dilatation / Érosion
+      == Dilation / Erosion
       ```cpp
-      // Union N-way avec décalage ±radius
+      // N-way union with ±radius offset
       row_n_way_union_impl(rows[], radius, out)
 
-      // Intersection N-way avec shrink
+      // N-way intersection with shrink
       row_n_way_intersection_impl(rows[], r, out)
       ```
 
       #set text(size: 9pt)
-      ```
-      Original:  ░░░░████████░░░░░░░░
-      Dilate(1): ░░░█████████░░░░░░░░  (+1 côtés)
-      Erode(1):  ░░░░░██████░░░░░░░░░  (-1 côtés)
-      ```
+      #align(center)[
+        ```
+        Original:  ░░░░████████░░░░░░░░
+        Dilate(1): ░░░█████████░░░░░░░░  (+1 sides)
+        Erode(1):  ░░░░░██████░░░░░░░░░  (-1 sides)
+        ```
+      ]
 
-      == Extension 2D
-      - Considérer lignes y-r à y+r
-      - Fusionner avec opération N-way
-      - Structuring element implicite (carré)
+      == 2D Extension
+      - Consider rows y-r to y+r
+      - Merge with N-way operation
+      - Implicit structuring element (square)
     ],
     [
-      == Opérations AMR
+      == AMR Operations
       ```cpp
-      // Coarsening: fin → grossier
+      // Coarsening: fine → coarse
       build_row_coarsen_mapping(fine, ws)
-      // y_coarse = y_fine / 2, fusionner X
+      // y_coarse = y_fine / 2, merge X
 
-      // Refinement: grossier → fin
+      // Refinement: coarse → fine
       refine_level_up_device(coarse, ws)
-      // [a,b) → [2a, 2b), doubler Y
+      // [a,b) → [2a, 2b), double Y
       ```
 
       #set text(size: 9pt)
-      ```
-      Fine (level 1):        Coarse (level 0):
-      Y=3: ████████          Y=1: ████████
-      Y=2: ████████    →          (fusion Y=2,3)
-      Y=1: ░░░░████          Y=0: ░░░░████
-      Y=0: ░░░░████               (fusion Y=0,1)
-      ```
+      #align(center)[
+        ```
+        Fine (level 1):        Coarse (level 0):
+        Y=3: ████████          Y=1: ████████
+        Y=2: ████████    →          (merge Y=2,3)
+        Y=1: ░░░░████          Y=0: ░░░░████
+        Y=0: ░░░░████               (merge Y=0,1)
+        ```
+      ]
 
-      == Transfert de champs
+      == Field Transfer
       ```cpp
-      // Projection fine → coarse (moyenne)
+      // Projection fine → coarse (average)
       // Prolongation coarse → fine (interp)
       build_amr_interval_mapping(coarse, fine)
       ```
@@ -1062,63 +1175,65 @@
 // ============================================
 // SECTION: DEMO
 // ============================================
-#section-slide("V. Démonstration")
+#section-slide("V. Demo")
 
 // ============================================
 // SLIDE 16: Mach2 Cylinder Overview
 // ============================================
-#slide(title: "Mach2 Cylinder — Simulation AMR Multi-Niveaux")[
+#slide(title: "Mach2 Cylinder — Multi-Level AMR Simulation")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1em,
     [
       == Description
-      Simulation d'écoulement compressible 2D :
-      - *Mach 2* supersonique autour d'un cylindre
-      - Schéma Godunov 1er ordre + flux Rusanov
-      - *AMR dynamique* : jusqu'à 6 niveaux
+      2D compressible flow simulation:
+      - *Mach 2* supersonic around a cylinder
+      - 1st order Godunov scheme + Rusanov flux
+      - *Dynamic AMR*: up to 6 levels
 
       #v(0.3em)
-      == Utilisation de Subsetix
+      == Subsetix Usage
       ```cpp
-      // Géométrie fluide = domaine - obstacle
+      // Fluid geometry = domain - obstacle
       auto fluid = set_difference_device(
         make_box_device(domain),
         make_disk_device(cylinder),
         ctx);
 
-      // Champs conservés (ρ, ρu, ρv, E)
+      // Conserved fields (ρ, ρu, ρv, E)
       Field2DDevice<Real> rho(fluid);
       Field2DDevice<Real> rhou(fluid);
       // ...
       ```
     ],
     [
-      == Architecture AMR
+      == AMR Architecture
       #set text(size: 10pt)
-      ```
-      ┌─────────────────────────────────────┐
-      │  Level 0 (coarse)                   │
-      │  ┌─────────────────────────────┐    │
-      │  │ Flux + Update (dt_coarse)  │    │
-      │  └─────────────────────────────┘    │
-      │         ▲ restrict    │ prolong     │
-      │  ┌──────┴─────────────▼────────┐    │
-      │  │  Level 1 (finer)            │    │
-      │  │  ┌─────────────────────┐    │    │
-      │  │  │ Flux + Update (dt)  │    │    │
-      │  │  └─────────────────────┘    │    │
-      │  │       ▲         │               │
-      │  │  Level 2 (finest around shock)  │
-      │  └─────────────────────────────┘    │
-      └─────────────────────────────────────┘
-      ```
+      #align(center)[
+        ```
+        ┌─────────────────────────────────────┐
+        │  Level 0 (coarse)                   │
+        │  ┌─────────────────────────────┐    │
+        │  │ Flux + Update (dt_coarse)  │    │
+        │  └─────────────────────────────┘    │
+        │         ▲ restrict    │ prolong     │
+        │  ┌──────┴─────────────▼────────┐    │
+        │  │  Level 1 (finer)            │    │
+        │  │  ┌─────────────────────┐    │    │
+        │  │  │ Flux + Update (dt)  │    │    │
+        │  │  └─────────────────────┘    │    │
+        │  │       ▲         │               │
+        │  │  Level 2 (finest around shock)  │
+        │  └─────────────────────────────┘    │
+        └─────────────────────────────────────┘
+        ```
+      ]
 
-      == Raffinement dynamique
-      - Indicateur : gradient de densité
-      - `expand_device()` pour zones de garde
-      - Remaillage tous les N pas de temps
+      == Dynamic Refinement
+      - Indicator: density gradient
+      - `expand_device()` for guard zones
+      - Remeshing every N time steps
     ]
   )
 ]
@@ -1126,13 +1241,13 @@
 // ============================================
 // SLIDE 17: Mach2 Results
 // ============================================
-#slide(title: "Mach2 Cylinder — Résultats & Visualisation")[
+#slide(title: "Mach2 Cylinder — Results & Visualization")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1em,
     [
-      == Outputs générés
+      == Generated Outputs
       ```
       output/
       ├── fluid_geometry.vtk
@@ -1144,7 +1259,7 @@
       └── ...
       ```
 
-      == Commande d'exécution
+      == Execution Command
       ```bash
       ./mach2_cylinder \
         --nx 400 --ny 160 \
@@ -1156,25 +1271,29 @@
       ```
     ],
     [
-      == Phénomènes observés
-      #box(fill: light-gray, inset: 0.5em, radius: 4pt)[
-        - *Choc d'étrave* (bow shock) devant le cylindre
-        - Zone subsonique dans le sillage
-        - Allée de *Von Kármán* (vortex)
-        - Raffinement automatique près du choc
+      == Observed Phenomena
+      #align(center)[
+        #box(fill: light-gray, inset: 0.5em, radius: 4pt)[
+          - *Bow shock* in front of the cylinder
+          - Subsonic zone in the wake
+          - *Von Kármán* vortex street
+          - Automatic refinement near the shock
+        ]
       ]
 
       #v(0.3em)
-      == Points techniques clés
-      - Stencil CSR : `apply_csr_stencil_on_set_device()`
-      - Struct-of-Arrays pour cache efficiency
-      - `prolong_guard_from_coarse()` : interpolation
-      - `restrict_fine_to_coarse()` : conservation
-      - Export VTK multi-niveau pour ParaView
+      == Key Technical Points
+      - CSR stencil: `apply_csr_stencil_on_set_device()`
+      - Struct-of-Arrays for cache efficiency
+      - `prolong_guard_from_coarse()`: interpolation
+      - `restrict_fine_to_coarse()`: conservation
+      - Multi-level VTK export for ParaView
 
       #v(0.3em)
-      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt)[
-        *Sparse* : calcul uniquement sur cellules fluides !
+      #align(center)[
+        #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt)[
+          *Sparse*: computation only on fluid cells!
+        ]
       ]
     ]
   )
@@ -1183,7 +1302,7 @@
 // ============================================
 // SLIDE 18: Live Demo
 // ============================================
-#slide(title: "Démonstration Live")[
+#slide(title: "Live Demo")[
   #set text(size: 14pt)
   #align(center)[
     #v(1em)
@@ -1199,32 +1318,32 @@
       [
         == Construction
         - Box, Disk, Bitmap
-        - Différence (obstacle)
-        - Affichage CSR
+        - Difference (obstacle)
+        - CSR display
       ],
       [
-        == Opérations
+        == Operations
         - Union / Intersection
         - Field algebra
         - Stencil
       ],
       [
         == Mach2
-        - Lancement simulation
-        - Visualisation ParaView
-        - AMR en action
+        - Launch simulation
+        - ParaView visualization
+        - AMR in action
       ]
     )
 
     #v(2em)
     #box(fill: light-gray, inset: 1em, radius: 4pt)[
-      _Démonstration en direct..._
+      _Live demonstration..._
     ]
   ]
 ]
 
 // ============================================
-// SLIDE 19: FIN
+// SLIDE 19: END
 // ============================================
 #pagebreak()
 #set page(
@@ -1238,11 +1357,11 @@
 #set text(fill: white)
 
 #align(center + horizon)[
-  #text(size: 38pt, weight: "bold")[Merci !]
+  #text(size: 38pt, weight: "bold")[Thank You!]
 
   #v(0.8em)
 
-  #text(size: 22pt, fill: accent)[Questions ?]
+  #text(size: 22pt, fill: accent)[Questions?]
 
   #v(1.5em)
 
@@ -1251,73 +1370,73 @@
     columns: (1fr, 1fr),
     gutter: 2em,
     [
-      == Points clés
-      - Représentation CSR d'intervalles
-      - Pattern Count-Scan-Fill
-      - Parallélisme Kokkos (CPU/GPU)
-      - Workspace pour réutilisation mémoire
-      - AMR multi-niveaux (Mach2)
+      == Key Points
+      - CSR interval representation
+      - Count-Scan-Fill pattern
+      - Kokkos parallelism (CPU/GPU)
+      - Workspace for memory reuse
+      - Multi-level AMR (Mach2)
     ],
     [
       == Contact
       Sébastien DUBOIS \
-      Équipe HPC\@Maths
+      HPC\@Maths Team
 
       #v(0.5em)
-      Code : `include/subsetix/` \
-      Demo : `examples/mach2_cylinder/`
+      Code: `include/subsetix/` \
+      Demo: `examples/mach2_cylinder/`
     ]
   )
 ]
 
 // ============================================
-// SECTION: ANNEXES
+// SECTION: APPENDICES
 // ============================================
-#section-slide("Annexes")
+#section-slide("Appendices")
 
 // ============================================
-// ANNEXE A: Évolution du projet
+// APPENDIX A: Project Evolution
 // ============================================
-#slide(title: "Annexe A : Évolution du Projet")[
+#slide(title: "Appendix A: Project Evolution")[
   #set text(size: 11pt)
 
-  == Historique des implémentations
+  == Implementation History
 
   #table(
     columns: (auto, 1fr, auto, auto),
     inset: 5pt,
     align: (center, left, center, center),
     fill: (x, y) => if y == 0 { rgb("#3498db").lighten(70%) } else if calc.odd(y) { rgb("#ecf0f1") } else { white },
-    [*Version*], [*Description*], [*Performance*], [*Statut*],
+    [*Version*], [*Description*], [*Performance*], [*Status*],
 
     [*v1*],
     [CPU only, Sparse CSR + Workspaces \
-     Première implémentation séquentielle],
+     First sequential implementation],
     [Faster than baseline],
     [✓ Stable],
 
     [*v2*],
     [Multithreaded *Tiled* Sparse CSR \
-     Backends OpenMP et TBB \
-     Découpage en tuiles pour localité],
-    [Excellent sur gros mesh],
-    [⚠ Complexe \
-     Bugs probables],
+     OpenMP and TBB backends \
+     Tiling for locality],
+    [Excellent on large mesh],
+    [⚠ Complex \
+     Likely bugs],
 
     [*v3*],
     [CUDA only \
-     Algèbre d'ensembles GPU \
+     GPU set algebra \
      Proof of concept],
-    [*Plus rapide*],
-    [✓ PoC validé],
+    [*Fastest*],
+    [✓ PoC validated],
 
     [*v4*],
-    [*Kokkos* (version actuelle) \
+    [*Kokkos* (current version) \
      Non-tiled Sparse CSR \
-     Portabilité OpenMP + CUDA],
-    [Plus lent que v2/v3],
-    [✓✓ *Fiable* \
-     Vérifié],
+     OpenMP + CUDA portability],
+    [Slower than v2/v3],
+    [✓✓ *Reliable* \
+     Verified],
   )
 
   #v(0.3em)
@@ -1325,32 +1444,32 @@
     columns: (1fr, 1fr),
     gutter: 1em,
     [
-      == Leçons apprises
-      - Le *tiling* améliore la localité mais complexifie énormément
-      - CUDA natif plus rapide mais moins portable
-      - Kokkos = meilleur compromis *fiabilité/portabilité*
+      == Lessons Learned
+      - *Tiling* improves locality but greatly increases complexity
+      - Native CUDA faster but less portable
+      - Kokkos = best *reliability/portability* tradeoff
     ],
     [
-      == Choix final : Kokkos
-      - Code *unique* pour CPU et GPU
-      - Maintenance simplifiée
-      - Facilité de test et vérification
-      - Écosystème actif (Sandia, Trilinos)
+      == Final Choice: Kokkos
+      - *Single* code for CPU and GPU
+      - Simplified maintenance
+      - Easy testing and verification
+      - Active ecosystem (Sandia, Trilinos)
     ]
   )
 ]
 
 // ============================================
-// ANNEXE B: Pourquoi Kokkos
+// APPENDIX B: Why Kokkos
 // ============================================
-#slide(title: "Annexe B : Pourquoi Kokkos ?")[
+#slide(title: "Appendix B: Why Kokkos?")[
   #set text(size: 11pt)
 
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
     [
-      == Comparaison avec CUDA natif
+      == Comparison with Native CUDA
 
       #table(
         columns: (auto, 1fr, 1fr),
@@ -1358,115 +1477,115 @@
         align: (left, center, center),
         fill: (x, y) => if y == 0 { accent.lighten(70%) } else { white },
         [*Aspect*], [*CUDA*], [*Kokkos*],
-        [Portabilité], [NVIDIA only], [*Multi-vendor*],
-        [Syntaxe], [`<<<>>>`], [*C++ standard*],
+        [Portability], [NVIDIA only], [*Multi-vendor*],
+        [Syntax], [`<<<>>>`], [*C++ standard*],
         [Memory], [cudaMalloc], [*View\<T\*\>*],
-        [Debug CPU], [Difficile], [*Facile (Serial)*],
-        [Maintenance], [Code dupliqué], [*Code unique*],
+        [CPU Debug], [Difficult], [*Easy (Serial)*],
+        [Maintenance], [Duplicated code], [*Single code*],
         [Performance], [*Optimal*], [~90-95%],
       )
 
       #v(0.3em)
-      == Backends supportés
-      - *OpenMP* : CPU multi-thread
-      - *CUDA* : NVIDIA GPU
-      - *HIP* : AMD GPU
-      - *SYCL* : Intel GPU
-      - *Serial* : debug et tests
+      == Supported Backends
+      - *OpenMP*: CPU multi-thread
+      - *CUDA*: NVIDIA GPU
+      - *HIP*: AMD GPU
+      - *SYCL*: Intel GPU
+      - *Serial*: debug and tests
     ],
     [
-      == Avantages pour ce projet
+      == Benefits for This Project
 
       #box(fill: rgb("#d4edda"), inset: 0.5em, radius: 4pt)[
-        *1. Développement plus rapide* \
-        Debug sur CPU (Serial/OpenMP), deploy sur GPU
+        *1. Faster Development* \
+        Debug on CPU (Serial/OpenMP), deploy on GPU
       ]
 
       #v(0.3em)
       #box(fill: rgb("#e8f4f8"), inset: 0.5em, radius: 4pt)[
-        *2. Tests fiables* \
-        Même code testé sur CPU et GPU \
-        Pas de bugs "GPU-only" cachés
+        *2. Reliable Tests* \
+        Same code tested on CPU and GPU \
+        No hidden "GPU-only" bugs
       ]
 
       #v(0.3em)
       #box(fill: rgb("#fff3cd"), inset: 0.5em, radius: 4pt)[
         *3. Std Algorithms* \
         `transform`, `reduce`, `scan`, `copy`... \
-        API familière, optimisée par plateforme
+        Familiar API, platform-optimized
       ]
 
       #v(0.3em)
       #box(fill: light-gray, inset: 0.5em, radius: 4pt)[
-        *4. Écosystème* \
+        *4. Ecosystem* \
         Trilinos, ArborX, Cabana... \
-        Support Sandia National Labs
+        Sandia National Labs support
       ]
     ]
   )
 ]
 
 // ============================================
-// ANNEXE C: Méthodologie
+// APPENDIX C: Methodology
 // ============================================
-#slide(title: "Annexe C : Méthodologie de Développement")[
+#slide(title: "Appendix C: Development Methodology")[
   #set text(size: 12pt)
 
-  == Utilisation Intensive de LLMs
+  == Intensive Use of LLMs
 
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
     [
-      === Modèles utilisés
+      === Models Used
       - *Claude Opus 4* (Anthropic)
       - *Claude Sonnet 4* (Anthropic)
 
       #v(0.5em)
-      === Pattern de travail
+      === Work Pattern
       #box(fill: light-gray, inset: 0.5em, radius: 4pt)[
         ```
         1. PLAN
-           Architecture et interfaces
-           Discussion des alternatives
+           Architecture and interfaces
+           Discussion of alternatives
 
         2. QUESTION
-           Détails d'implémentation
+           Implementation details
            Edge cases
 
         3. IMPLEMENTATION
-           Génération du code
-           Revue et itération
+           Code generation
+           Review and iteration
         ```
       ]
     ],
     [
-      === Avantages observés
-      - *Exploration rapide* des designs
-      - Documentation inline générée
-      - Tests suggérés automatiquement
-      - Refactoring assisté
+      === Observed Benefits
+      - *Rapid exploration* of designs
+      - Generated inline documentation
+      - Automatically suggested tests
+      - Assisted refactoring
 
       #v(0.5em)
-      === Points d'attention
-      - Vérification systématique du code
-      - LLMs peuvent halluciner des APIs
-      - Toujours compiler et tester
-      - Garder le *contrôle architectural*
+      === Points of Attention
+      - Systematic code verification
+      - LLMs can hallucinate APIs
+      - Always compile and test
+      - Maintain *architectural control*
 
       #v(0.5em)
       #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt)[
-        LLM = *accélérateur*, pas remplacement \
-        L'expertise humaine reste essentielle
+        LLM = *accelerator*, not replacement \
+        Human expertise remains essential
       ]
     ]
   )
 ]
 
 // ============================================
-// ANNEXE D: Références
+// APPENDIX D: References
 // ============================================
-#slide(title: "Annexe D : Références & Ressources")[
+#slide(title: "Appendix D: References & Resources")[
   #set text(size: 12pt)
 
   #grid(
@@ -1474,9 +1593,9 @@
     gutter: 2em,
     [
       == Kokkos
-      - Site : kokkos.org
-      - GitHub : github.com/kokkos/kokkos
-      - Wiki : kokkos.org/kokkos-core-wiki
+      - Website: kokkos.org
+      - GitHub: github.com/kokkos/kokkos
+      - Wiki: kokkos.org/kokkos-core-wiki
 
       #v(0.5em)
       == CUDA
@@ -1484,29 +1603,29 @@
       - CUDA C++ Programming Guide
 
       #v(0.5em)
-      == Visualisation
-      - VTK : vtk.org
-      - ParaView : paraview.org
+      == Visualization
+      - VTK: vtk.org
+      - ParaView: paraview.org
     ],
     [
-      == Morphologie Mathématique
+      == Mathematical Morphology
       - Serra, J. "Image Analysis and \
         Mathematical Morphology" (1982)
       - Soille, P. "Morphological Image \
         Analysis" (2003)
 
       #v(0.5em)
-      == Code source
+      == Source Code
       ```
       include/subsetix/
       ├── geometry/      # IntervalSet2D
       ├── field/         # Field2D
-      ├── csr_ops/       # Algorithmes
+      ├── csr_ops/       # Algorithms
       ├── multilevel/    # AMR
-      └── detail/        # Utilitaires
+      └── detail/        # Utilities
 
       examples/mach2_cylinder/
-      └── mach2_cylinder.cpp  # Demo AMR
+      └── mach2_cylinder.cpp  # AMR Demo
       ```
     ]
   )
