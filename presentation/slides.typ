@@ -957,79 +957,127 @@
     gutter: 1.2em,
     [
       == Phase 1: Row Mapping
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          edge-stroke: 1.5pt + accent,
+          spacing: (8mm, 12mm),
+
+          // Labels
+          node((-0.8, 0), text(size: 8pt, weight: "bold")[A:], stroke: none, fill: none),
+          node((-0.8, 1), text(size: 8pt, weight: "bold")[B:], stroke: none, fill: none),
+
+          // A row_keys
+          node((0, 0), text(size: 8pt)[y=2], corner-radius: 3pt, fill: rgb("#f8d7da"), inset: 4pt, name: <a0>),
+          node((1, 0), text(size: 8pt)[y=5], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 4pt, name: <a1>),
+          node((2, 0), text(size: 8pt)[y=8], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 4pt, name: <a2>),
+
+          // B row_keys
+          node((0, 1), text(size: 8pt)[y=3], corner-radius: 3pt, fill: rgb("#f8d7da"), inset: 4pt, name: <b0>),
+          node((1, 1), text(size: 8pt)[y=5], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 4pt, name: <b1>),
+          node((2, 1), text(size: 8pt)[y=7], corner-radius: 3pt, fill: rgb("#f8d7da"), inset: 4pt, name: <b2>),
+          node((3, 1), text(size: 8pt)[y=8], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 4pt, name: <b3>),
+
+          // Matching arrows
+          edge(<a1>, <b1>, "<->", stroke: 2pt + rgb("#28a745")),
+          edge(<a2>, <b3>, "<->", stroke: 2pt + rgb("#28a745")),
+        )
+      ]
       #set text(size: 8pt)
-      ```
-      A.row_keys:  [y=2, y=5, y=8]
-      B.row_keys:  [y=3, y=5, y=7, y=8]
-                         ↓         ↓
-      Binary search: A[1] ↔ B[1], A[2] ↔ B[3]
-      ```
-      #v(0.2em)
-      #box(stroke: 1pt + dark, inset: 0.3em, radius: 3pt, fill: light-gray.lighten(50%))[
-        ```
-        Output rows:  [y=5, y=8]
-        row_index_a:  [ 1,   2 ]
-        row_index_b:  [ 1,   3 ]
-        ```
+      #align(center)[
+        #box(fill: light-gray.lighten(50%), inset: 0.3em, radius: 3pt)[
+          Binary search: O(log n) per row
+        ]
       ]
 
-      #v(0.4em)
-      == Phase 2: Interval Merge (per row)
-      #set text(size: 8pt)
-      ```
-      A: [===]     [=======]
-            2   6       10    18
+      #v(0.3em)
+      == Phase 2: Interval Merge
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          edge-stroke: 1pt + gray,
+          spacing: (3mm, 8mm),
 
-      B:     [=====] [===]
-              4    9  12  16
+          // Number line labels
+          node((-1, 0), text(size: 7pt, weight: "bold")[A:], stroke: none, fill: none),
+          node((-1, 1), text(size: 7pt, weight: "bold")[B:], stroke: none, fill: none),
+          node((-1, 2), text(size: 7pt, weight: "bold")[∩:], stroke: none, fill: none),
 
-      Sweep → max(begin), min(end):
-        [4,6] ∩  → output [4,6]
-        [10,18] ∩ [12,16] → output [12,16]
-      ```
+          // A intervals: [2,6] and [10,18]
+          node((0.5, 0), text(size: 7pt)[[2,6]], corner-radius: 2pt, fill: hpc-light, inset: 3pt, width: 12mm, name: <a1i>),
+          node((3.5, 0), text(size: 7pt)[[10,18]], corner-radius: 2pt, fill: hpc-light, inset: 3pt, width: 18mm, name: <a2i>),
+
+          // B intervals: [4,9] and [12,16]
+          node((1.5, 1), text(size: 7pt)[[4,9]], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, width: 14mm, name: <b1i>),
+          node((4, 1), text(size: 7pt)[[12,16]], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, width: 11mm, name: <b2i>),
+
+          // Result intervals
+          node((0.8, 2), text(size: 7pt)[[4,6]], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, width: 10mm, name: <r1>),
+          node((4, 2), text(size: 7pt)[[12,16]], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, width: 11mm, name: <r2>),
+
+          // Overlap arrows
+          edge(<a1i>, <r1>, "->", stroke: 1pt + rgb("#28a745"), bend: 20deg),
+          edge(<b1i>, <r1>, "->", stroke: 1pt + rgb("#28a745"), bend: -20deg),
+          edge(<a2i>, <r2>, "->", stroke: 1pt + rgb("#28a745"), bend: 20deg),
+          edge(<b2i>, <r2>, "->", stroke: 1pt + rgb("#28a745"), bend: -20deg),
+        )
+      ]
       #align(center)[
         #box(fill: rgb("#d4edda"), inset: 0.2em, radius: 3pt)[
-          *O(n+m)* per row — linear merge
+          #text(size: 8pt)[*O(n+m)* linear merge — max(begin), min(end)]
         ]
       ]
     ],
     [
-      == GPU Pattern: Count → Scan → Fill
+      == GPU Pattern
+      #v(0.3em)
+      #align(center)[
+        #diagram(
+          node-stroke: 1.5pt + dark,
+          edge-stroke: 2pt + accent,
+          spacing: (12mm, 6mm),
+
+          // Main flow
+          node((0, 0), text(size: 9pt, weight: "bold")[COUNT], corner-radius: 4pt, fill: rgb("#e3f2fd"), inset: 6pt, name: <count>),
+          edge(<count>, <scan>, "->"),
+          node((1, 0), text(size: 9pt, weight: "bold")[SCAN], corner-radius: 4pt, fill: rgb("#fff3cd"), inset: 6pt, name: <scan>),
+          edge(<scan>, <fill>, "->"),
+          node((2, 0), text(size: 9pt, weight: "bold")[FILL], corner-radius: 4pt, fill: rgb("#d4edda"), inset: 6pt, name: <fill>),
+
+          // Descriptions below
+          node((0, 1), text(size: 7pt)[∥ per row], stroke: none, fill: none),
+          node((1, 1), text(size: 7pt)[prefix sum], stroke: none, fill: none),
+          node((2, 1), text(size: 7pt)[∥ per row], stroke: none, fill: none),
+        )
+      ]
+
+      #v(0.4em)
       #set text(size: 8pt)
-
-      #v(0.2em)
-      *1. COUNT* (parallel per row)
-      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%)[
+      *1. COUNT*
+      #box(stroke: 1pt + gray, inset: 0.25em, radius: 3pt, width: 100%)[
         ```cpp
-        row_counts[i] = count_intersection(
-            A.intervals[begin_a..end_a],
-            B.intervals[begin_b..end_b]);
+        row_counts[i] = count_intersect(A[i], B[i])
         ```
       ]
 
-      #v(0.2em)
-      *2. SCAN* (exclusive prefix sum)
-      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%)[
+      *2. SCAN*
+      #box(stroke: 1pt + gray, inset: 0.25em, radius: 3pt, width: 100%)[
         ```cpp
-        row_ptr_out = exclusive_scan(row_counts)
-        // row_ptr_out[i] = where row i starts
+        row_ptr = exclusive_scan(row_counts)
         ```
       ]
 
-      #v(0.2em)
-      *3. FILL* (parallel per row)
-      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%)[
+      *3. FILL*
+      #box(stroke: 1pt + gray, inset: 0.25em, radius: 3pt, width: 100%)[
         ```cpp
-        fill_intersection(
-            A.intervals, B.intervals,
-            out.intervals, row_ptr_out[i]);
+        fill_intersect(A[i], B[i], out, row_ptr[i])
         ```
       ]
 
       #v(0.3em)
       #align(center)[
         #box(fill: rgb("#fff3cd"), inset: 0.3em, radius: 3pt)[
-          Same pattern for ∪, \, ⊕
+          Same pattern for *∪*, *\\*, *⊕*
         ]
       ]
     ]
