@@ -9,6 +9,14 @@
 #set page(..slide-page-config)
 #set text(..slide-text-config)
 
+// Code block style (must be here - #show rules don't export via #import)
+#show raw.where(block: true): block.with(
+  fill: light-gray,
+  inset: 8pt,
+  radius: 4pt,
+  width: 100%,
+)
+
 // ============================================
 // SLIDE: TITLE
 // ============================================
