@@ -19,6 +19,7 @@
   paper: "presentation-16-9",
   margin: (x: 1.2cm, y: 1cm),
   numbering: "1 / 1",
+  fill: white,
   footer: context [
     #set text(size: 10pt, fill: rgb("#7f8c8d"))
     #h(1fr)
@@ -29,11 +30,14 @@
 #let slide-text-config = (
   font: "DejaVu Sans",
   size: 16pt,
+  fill: black,
 )
 
-// Slide helper function
+// Slide helper function (standard content slide)
 #let slide(title: none, body) = {
   pagebreak(weak: true)
+  set page(..slide-page-config)
+  set text(..slide-text-config)
   if title != none {
     align(left, text(size: 24pt, weight: "bold", fill: dark, title))
     line(length: 100%, stroke: 2pt + accent)
