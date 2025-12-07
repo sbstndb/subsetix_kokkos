@@ -250,7 +250,7 @@
           fill: (x, y) => if y == 0 { accent.lighten(70%) } else { white },
           [], [*GPU B200*], [*CPU EPYC 9965*],
           [Bandwidth], [*8 TB/s*], [576 GB/s],
-          [FP32], [*80 TFlops*], [~14 TFlops],
+          [FP32], [*90 TFlops*], [~14 TFlops],
         )
       ]
     ]
@@ -821,6 +821,15 @@
           Crucial for chained operations
         ]
       ]
+
+      #v(0.2em)
+      #align(center)[
+        #box(fill: rgb("#fff3cd"), inset: 0.3em, radius: 4pt)[
+          #set text(size: 9pt)
+          *Note*: Outputs must be pre-allocated \
+          Use `allocate_interval_set_device()`
+        ]
+      ]
     ],
     [
       == MultilevelGeo (AMR)
@@ -948,6 +957,73 @@
 ]
 
 // ============================================
+// SLIDE 13a-bis: Row Mapping (Prerequisite)
+// ============================================
+#slide(title: "Row Mapping — Finding Common Rows")[
+  #set text(size: 10pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 1em,
+    [
+      == Why Row Mapping?
+      Before any binary op (∪, ∩, \\), we must find which rows participate.
+
+      #v(0.3em)
+      == Binary Search Phase
+      For each row in A, search for matching Y in B:
+      #set text(size: 8pt)
+      ```cpp
+      parallel_for(num_rows_a, KOKKOS_LAMBDA(int i) {
+        Coord y = A.row_keys[i];
+        map_a_to_b[i] = binary_search(B.row_keys, y);
+      });
+      ```
+      #align(center)[
+        #box(fill: light-gray, inset: 0.3em, radius: 3pt)[
+          *O(R#sub[A] × log R#sub[B])* — fully parallel
+        ]
+      ]
+    ],
+    [
+      == Flag-Scan-Compact Pattern
+      Extract B-only rows (for union):
+
+      #v(0.2em)
+      *1. FLAG* — mark unmatched B rows
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e3f2fd").lighten(70%))[
+        #set text(size: 8pt)
+        ```cpp
+        flags[j] = (map_b_to_a[j] < 0) ? 1 : 0;
+        ```
+      ]
+
+      *2. SCAN* — compute write positions
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#fff3cd").lighten(70%))[
+        #set text(size: 8pt)
+        ```cpp
+        positions = exclusive_scan(flags);
+        ```
+      ]
+
+      *3. COMPACT* — gather flagged rows
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
+        #set text(size: 8pt)
+        ```cpp
+        if (flags[j]) out[positions[j]] = B.row_keys[j];
+        ```
+      ]
+
+      #v(0.3em)
+      #align(center)[
+        #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
+          Result: sorted list of output row keys
+        ]
+      ]
+    ]
+  )
+]
+
+// ============================================
 // SLIDE 13b: Intersection Internals
 // ============================================
 #slide(title: "Intersection — How It Works")[
@@ -1038,7 +1114,7 @@
     [
       == GPU Pattern: Count-Scan-Fill
       #set text(size: 8pt)
-      Output size unknown → 3-phase approach:
+      *Why?* GPU threads can't dynamically allocate — output size must be known before parallel write.
 
       #v(0.2em)
       #align(center)[
@@ -1197,7 +1273,149 @@
 ]
 
 // ============================================
-// SLIDE 13d: AMR Restrict & Prolong
+// SLIDE 13d: Morphological Expand (Dilation)
+// ============================================
+#slide(title: "Expand (Dilation) — How It Works")[
+  #set text(size: 10pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 1em,
+    [
+      == Phase 1: Row Mapping
+      Input row y → output rows \[y-ry, y+ry\]
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          edge-stroke: 1.5pt + rgb("#28a745"),
+          spacing: (7mm, 10mm),
+
+          // Labels
+          node((-1.2, 0), text(size: 8pt, weight: "bold")[In:], stroke: none, fill: none),
+          node((-1.2, 1), text(size: 8pt, weight: "bold")[Out:], stroke: none, fill: none),
+
+          // Input rows (sparse)
+          node((0, 0), text(size: 7pt)[y=2], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 4pt, name: <i0>),
+          node((2, 0), text(size: 7pt)[y=5], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 4pt, name: <i1>),
+
+          // Output rows (dense after expand with ry=1)
+          node((0, 1), text(size: 6pt)[1], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o1>),
+          node((0.6, 1), text(size: 6pt)[2], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o2>),
+          node((1.2, 1), text(size: 6pt)[3], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o3>),
+          node((1.8, 1), text(size: 6pt)[4], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o4>),
+          node((2.4, 1), text(size: 6pt)[5], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o5>),
+          node((3, 1), text(size: 6pt)[6], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o6>),
+
+          // Contribution arrows
+          edge(<i0>, <o1>, "->", bend: 20deg),
+          edge(<i0>, <o2>, "->"),
+          edge(<i0>, <o3>, "->", bend: -20deg),
+          edge(<i1>, <o4>, "->", bend: 20deg),
+          edge(<i1>, <o5>, "->"),
+          edge(<i1>, <o6>, "->", bend: -20deg),
+        )
+      ]
+      #align(center)[
+        #text(size: 7pt, fill: gray)[ry=1: row 2 → {1,2,3}, row 5 → {4,5,6}]
+      ]
+
+      #v(0.3em)
+      == Phase 2: N-way Union (per row)
+      #set text(size: 8pt)
+      #align(center)[
+        #box(stroke: 1pt + gray, inset: 0.4em, radius: 4pt, fill: light-gray.lighten(70%))[
+          #text(weight: "bold")[Output row y=3] — inputs: rows 2,3,4
+        ]
+      ]
+      #v(0.2em)
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          edge-stroke: 1.5pt + rgb("#28a745"),
+          spacing: (5mm, 8mm),
+
+          // Row labels
+          node((-1.3, 0), text(size: 7pt)[row 2:], stroke: none, fill: none),
+          node((-1.3, 1), text(size: 7pt)[row 4:], stroke: none, fill: none),
+          node((-1.3, 2), text(size: 7pt)[∪:], stroke: none, fill: none),
+
+          // Row 2 expanded interval
+          node((0.5, 0), text(size: 6pt)[[1,7]], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, name: <r2>),
+
+          // Row 4 expanded interval
+          node((1.5, 1), text(size: 6pt)[[8,14]], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, name: <r4>),
+
+          // Result (union)
+          node((0.5, 2), text(size: 6pt, weight: "bold")[[1,7]], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <u1>),
+          node((1.5, 2), text(size: 6pt, weight: "bold")[[8,14]], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <u2>),
+
+          edge(<r2>, <u1>, "->"),
+          edge(<r4>, <u2>, "->"),
+        )
+      ]
+      #align(center)[
+        #text(size: 7pt)[Expand: \[b,e) → \[b-rx, e+rx)]
+      ]
+    ],
+    [
+      == Interval Expansion
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          spacing: (3mm, 8mm),
+
+          node((-0.5, 0), text(size: 8pt)[Original:], stroke: none, fill: none),
+          node((2, 0), text(size: 8pt)[[4,8]], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 5pt),
+
+          node((-0.5, 1), text(size: 8pt)[rx=2:], stroke: none, fill: none),
+          node((2, 1), text(size: 8pt, weight: "bold")[[2,10]], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 5pt),
+        )
+      ]
+      #align(center)[
+        #box(fill: rgb("#e8f4f8"), inset: 0.2em, radius: 3pt)[
+          `[begin-rx, end+rx)`
+        ]
+      ]
+
+      #v(0.4em)
+      == GPU Pattern: Count → Scan → Fill
+      #set text(size: 8pt)
+
+      *1. COUNT* — N-way union count
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e3f2fd").lighten(70%))[
+        ```cpp
+        row_counts[i] = n_way_union_count(
+            rows[map_start[i]..map_end[i]], rx);
+        ```
+      ]
+
+      *2. SCAN*
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#fff3cd").lighten(70%))[
+        ```cpp
+        row_ptr = exclusive_scan(row_counts);
+        ```
+      ]
+
+      *3. FILL* — N-way union write
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
+        ```cpp
+        n_way_union_fill(
+            rows[map_start[i]..map_end[i]], rx,
+            out, row_ptr[i]);
+        ```
+      ]
+
+      #v(0.2em)
+      #align(center)[
+        #box(fill: rgb("#f8d7da"), inset: 0.2em, radius: 3pt)[
+          *Shrink*: N-way ∩, \[b+rx, e-rx\)
+        ]
+      ]
+    ]
+  )
+]
+
+// ============================================
+// SLIDE 13e: AMR Restrict & Prolong
 // ============================================
 #slide(title: "AMR — Restrict & Prolong")[
   #set text(size: 10pt)
@@ -1461,7 +1679,7 @@
       2D compressible flow simulation:
       - *Mach 2* supersonic around a cylinder
       - 1st order Godunov scheme + Rusanov flux
-      - *Dynamic AMR*: up to 6 levels
+      - *Dynamic AMR*: 4 levels
 
       #v(0.3em)
       == Subsetix Usage
@@ -1519,26 +1737,31 @@
     gutter: 1em,
     [
       == Generated Outputs
+      #set text(size: 9pt)
       ```
-      output/
+      mach2_cylinder/
       ├── fluid_geometry.vtk
       ├── obstacle_geometry.vtk
-      ├── level_0_density_0000.vtk
-      ├── level_0_density_0050.vtk
-      ├── level_1_density_0050.vtk
-      ├── level_2_density_0050.vtk
+      ├── refine_mask_lvl{1,2,3}.vtk
+      ├── fine_geometry_lvl{1,2,3}.vtk
+      ├── step_00001_density.vtk
+      ├── step_00001_l0_density.vtk
+      ├── step_00001_l1_density.vtk
+      ├── step_00001_mach.vtk
+      ├── step_00001_pressure.vtk
       └── ...
       ```
 
       == Execution Command
+      #set text(size: 9pt)
       ```bash
       ./mach2_cylinder \
         --nx 400 --ny 160 \
         --radius 20 \
         --mach-inlet 2.0 \
-        --max-steps 1000 \
+        --max-steps 5000 \
         --output-stride 50 \
-        --amr
+        --amr --amr-levels 4
       ```
     ],
     [
@@ -1546,19 +1769,20 @@
       #align(center)[
         #box(fill: light-gray, inset: 0.5em, radius: 4pt)[
           - *Bow shock* in front of the cylinder
-          - Subsonic zone in the wake
-          - *Von Kármán* vortex street
-          - Automatic refinement near the shock
+          - Density/pressure gradient captured
+          - AMR refinement follows the shock
         ]
       ]
 
       #v(0.3em)
       == Key Technical Points
-      - CSR stencil: `apply_csr_stencil_on_set_device()`
-      - Struct-of-Arrays for cache efficiency
-      - `prolong_guard_from_coarse()`: interpolation
-      - `restrict_fine_to_coarse()`: conservation
-      - Multi-level VTK export for ParaView
+      #set text(size: 10pt)
+      - 1st order Godunov + Rusanov flux
+      - Struct-of-Arrays: `ConservedFields` (ρ, ρu, ρv, E)
+      - `threshold_field()` → detect shock gradient
+      - `expand_device()` → guard cells around refined zone
+      - `restrict_fine_to_coarse()` / `prolong_guard_from_coarse()`
+      - `write_multilevel_field_vtk()` for ParaView
 
       #v(0.3em)
       #align(center)[
@@ -1571,7 +1795,52 @@
 ]
 
 // ============================================
-// SLIDE 18: Live Demo
+// SLIDE 18: Mach2 Visual Results
+// ============================================
+#slide(title: "Mach2 Cylinder — Visual Results")[
+  #set text(size: 10pt)
+  #grid(
+    columns: (1fr, 1fr, 1fr),
+    gutter: 0.8em,
+    [
+      == Density Field
+      #align(center)[
+        #image("mach2_field.png", width: 100%)
+      ]
+      #align(center)[
+        #text(size: 8pt)[Bow shock in front of cylinder \ Colormap: blue (low) → red (high)]
+      ]
+    ],
+    [
+      == AMR Levels
+      #align(center)[
+        #image("mach2_levels.png", width: 100%)
+      ]
+      #align(center)[
+        #text(size: 8pt)[Automatic refinement zones \ near the shock front]
+      ]
+    ],
+    [
+      == Mesh Zoom
+      #align(center)[
+        #image("mach2_zoom.png", width: 100%)
+      ]
+      #align(center)[
+        #text(size: 8pt)[Multi-level AMR resolution \ near the bow shock]
+      ]
+    ]
+  )
+
+  #v(0.5em)
+  #align(center)[
+    #box(fill: rgb("#d4edda"), inset: 0.5em, radius: 4pt)[
+      #text(size: 11pt)[*4 AMR levels* (9–12) — Automatic refinement based on density gradient]
+    ]
+  ]
+]
+
+// ============================================
+// SLIDE 19: Live Demo
 // ============================================
 #slide(title: "Live Demo")[
   #set text(size: 14pt)
