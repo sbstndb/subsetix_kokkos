@@ -870,7 +870,84 @@
 #section-slide("IV. Algorithms")
 
 // ============================================
-// SLIDE 12: Set Algebra
+// SLIDE 12a: Binary Search Lookups
+// ============================================
+#slide(title: "Binary Search — O(log n) Lookups Everywhere")[
+  #set text(size: 10pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 1.2em,
+    [
+      == CSR Requires Sorted Data
+      All lookups rely on binary search:
+
+      #v(0.3em)
+      *1. Find row by Y coordinate*
+      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%, fill: light-gray.lighten(70%))[
+        #set text(size: 9pt)
+        ```cpp
+        int find_row_by_y(row_keys, num_rows, y) {
+          // Binary search in row_keys[]
+          return lower_bound(row_keys, y);
+        }
+        ```
+      ]
+      #align(center)[#text(size: 8pt)[*O(log R)* — R = number of rows]]
+
+      #v(0.3em)
+      *2. Find interval by X coordinate*
+      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%, fill: light-gray.lighten(70%))[
+        #set text(size: 9pt)
+        ```cpp
+        int find_interval_by_x(intervals, begin, end, x) {
+          // Binary search in intervals[begin..end]
+          return lower_bound(intervals, x);
+        }
+        ```
+      ]
+      #align(center)[#text(size: 8pt)[*O(log I#sub[row])* — I = intervals in row]]
+    ],
+    [
+      == Combined: Cell Lookup
+      #set text(size: 9pt)
+      ```cpp
+      bool try_get(Coord x, Coord y, T& out) {
+        // Step 1: find row
+        int row = find_row_by_y(row_keys, y);
+        if (row < 0) return false;
+
+        // Step 2: find interval in row
+        int iv = find_interval_by_x(
+          intervals, row_ptr[row], row_ptr[row+1], x);
+        if (iv < 0) return false;
+
+        // Step 3: compute offset
+        out = values[offsets[iv] + (x - intervals[iv].begin)];
+        return true;
+      }
+      ```
+
+      #v(0.3em)
+      #align(center)[
+        #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt)[
+          Total: *O(log R + log I)*
+        ]
+      ]
+
+      #v(0.3em)
+      #align(center)[
+        #box(fill: rgb("#f8d7da"), inset: 0.3em, radius: 4pt)[
+          #set text(size: 9pt)
+          *Invariant*: Data must stay sorted! \
+          (enforced by construction)
+        ]
+      ]
+    ]
+  )
+]
+
+// ============================================
+// SLIDE 12b: Set Algebra
 // ============================================
 #slide(title: "Set Algebra — Binary Operations")[
   #set text(size: 11pt)
@@ -959,64 +1036,96 @@
 // ============================================
 // SLIDE 13a-bis: Row Mapping (Prerequisite)
 // ============================================
-#slide(title: "Row Mapping — Finding Common Rows")[
-  #set text(size: 10pt)
+#slide(title: "Row Mapping — Why and How")[
+  #set text(size: 9pt)
   #grid(
-    columns: (1fr, 1fr),
+    columns: (1fr, 1.2fr),
     gutter: 1em,
     [
-      == Why Row Mapping?
-      Before any binary op (∪, ∩, \\), we must find which rows participate.
-
-      #v(0.3em)
-      == Binary Search Phase
-      For each row in A, search for matching Y in B:
-      #set text(size: 8pt)
-      ```cpp
-      parallel_for(num_rows_a, KOKKOS_LAMBDA(int i) {
-        Coord y = A.row_keys[i];
-        map_a_to_b[i] = binary_search(B.row_keys, y);
-      });
-      ```
+      == GPU Constraint
       #align(center)[
-        #box(fill: light-gray, inset: 0.3em, radius: 3pt)[
-          *O(R#sub[A] × log R#sub[B])* — fully parallel
+        #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt)[
+          *1 thread = 1 output row*
         ]
       ]
+      We need to know output rows *before* parallel processing.
+
+      #v(0.3em)
+      == Which Rows Participate?
+      #set text(size: 8pt)
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          spacing: (4mm, 6mm),
+
+          // Labels
+          node((-0.8, 0), text(size: 7pt, weight: "bold")[A:], stroke: none, fill: none),
+          node((-0.8, 1), text(size: 7pt, weight: "bold")[B:], stroke: none, fill: none),
+
+          // A rows
+          node((0, 0), text(size: 6pt)[2], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
+          node((1, 0), text(size: 6pt)[5], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
+          node((2, 0), text(size: 6pt)[8], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
+
+          // B rows
+          node((0, 1), text(size: 6pt)[3], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
+          node((1, 1), text(size: 6pt)[5], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
+          node((2, 1), text(size: 6pt)[8], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
+          node((3, 1), text(size: 6pt)[9], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
+        )
+      ]
+
+      #v(0.3em)
+      #table(
+        columns: (auto, auto, auto),
+        inset: 4pt,
+        align: center,
+        fill: (x, y) => if y == 0 { accent.lighten(70%) } else { white },
+        stroke: 0.5pt + gray,
+        [*Op*], [*Output rows*], [*Count*],
+        [A ∩ B], [{5, 8}], [2],
+        [A ∪ B], [{2,3,5,8,9}], [5],
+        [A \\ B], [{2}], [1],
+      )
     ],
     [
-      == Flag-Scan-Compact Pattern
-      Extract B-only rows (for union):
+      == Row Mapping per Operation
+      #set text(size: 8pt)
+
+      *Intersection* — rows in both A and B
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
+        ```cpp
+        // Binary search A rows in B
+        map[i] = binary_search(B.row_keys, A.row_keys[i]);
+        // Keep only matched rows (map[i] >= 0)
+        ```
+      ]
 
       #v(0.2em)
-      *1. FLAG* — mark unmatched B rows
+      *Union* — rows in A or B (merge sorted)
       #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e3f2fd").lighten(70%))[
-        #set text(size: 8pt)
         ```cpp
-        flags[j] = (map_b_to_a[j] < 0) ? 1 : 0;
+        // 1. Search A→B and B→A
+        // 2. Flag-Scan-Compact: extract B-only rows
+        // 3. Interleave A + B-only maintaining order
         ```
       ]
 
-      *2. SCAN* — compute write positions
+      #v(0.2em)
+      *Difference* — rows in A (check B for each)
       #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#fff3cd").lighten(70%))[
-        #set text(size: 8pt)
         ```cpp
-        positions = exclusive_scan(flags);
-        ```
-      ]
-
-      *3. COMPACT* — gather flagged rows
-      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
-        #set text(size: 8pt)
-        ```cpp
-        if (flags[j]) out[positions[j]] = B.row_keys[j];
+        // Output = A.row_keys (same structure)
+        // map[i] = search A.row_keys[i] in B
+        // If found: must subtract intervals
         ```
       ]
 
       #v(0.3em)
       #align(center)[
         #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
-          Result: sorted list of output row keys
+          *Result*: output row list + per-row mapping \
+          → enables `parallel_for(num_output_rows, ...)`
         ]
       ]
     ]
@@ -1461,16 +1570,16 @@
       ]
 
       #v(0.3em)
-      == Interval Mapping
+      == Floor/Ceil for Negative Coords
       #set text(size: 8pt)
-      ```cpp
-      struct AmrIntervalMapping {
-        View<int*> coarse_to_fine_first;  // row 2y
-        View<int*> coarse_to_fine_second; // row 2y+1
-        View<int*> fine_to_coarse;
-      };
-      ```
-      #text(size: 7pt, fill: gray)[Condition: same interval count, aligned bounds]
+      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e8f4f8"))[
+        ```cpp
+        // Handles negative coordinates correctly
+        floor_div2(x) = (x>=0) ? x/2 : (x-1)/2;
+        ceil_div2(x)  = (x>=0) ? (x+1)/2 : x/2;
+        // Example: floor_div2(-3) = -2, not -1
+        ```
+      ]
     ],
     [
       == Prolong (Coarse → Fine)

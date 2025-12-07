@@ -1210,7 +1210,7 @@ RunConfig parse_args(int argc, char* argv[]) {
     cfg.cy = cfg.ny / 2;
   }
   cfg.amr_fraction = std::clamp(cfg.amr_fraction,
-                                static_cast<Real>(0.05),
+                                static_cast<Real>(1e-8),
                                 static_cast<Real>(0.95));
   if (cfg.amr_guard < 1) {
     cfg.amr_guard = 1;
