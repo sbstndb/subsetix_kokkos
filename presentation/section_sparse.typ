@@ -42,7 +42,7 @@
 
     ],
     [
-      == CSR Representation
+      == Sparse-CSR-like Representation
       ```cpp
       // 5 rows, HOLE Y=4,5
       row_keys = [1, 2, 3, 6, 7]  // skips 4,5!
