@@ -11,6 +11,63 @@
 #section-slide("I. Context: GPU & Kokkos")
 
 // ============================================
+// SLIDE: Project Context
+// ============================================
+#slide(title: "Project Context — Towards Exascale")[
+  #set text(size: 14pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 2em,
+    [
+      == Background
+      #v(0.3em)
+      - *Numpex Project*: French initiative pushing \
+        scientific computing to exascale
+      - *Samurai*: AMR library with unique sparse \
+        data structure (interval-based)
+      - *Challenge*: No prior GPU implementation \
+        of Samurai's core concepts
+
+      #v(0.8em)
+      == Objective
+      #v(0.3em)
+      _How can Samurai's strategy evolve for exascale?_
+      - GPU acceleration (today's focus)
+      - Multi-node distribution (future work)
+    ],
+    [
+      == Approach
+      #v(0.3em)
+      #box(
+        fill: light-gray,
+        inset: 10pt,
+        radius: 4pt,
+        width: 100%,
+      )[
+        *Proof of Concept Strategy*
+        #v(0.3em)
+        1. *Simplify* — Isolate core problems
+        2. *Prototype* — Build independent bricks
+        3. *Validate* — Test on real simulations
+        4. *Integrate* — Path back to Samurai
+      ]
+
+      #v(0.8em)
+      #align(center)[
+        #box(
+          stroke: 2pt + accent,
+          inset: 8pt,
+          radius: 4pt,
+        )[
+          *This work*: GPU-native sparse 2D geometry \
+          as a standalone proof of concept
+        ]
+      ]
+    ]
+  )
+]
+
+// ============================================
 // SLIDE: GPU & CUDA Essentials (condensed)
 // ============================================
 #slide(title: "GPU Architecture — Massively Parallel")[
@@ -105,89 +162,82 @@
 // SLIDE: Kokkos Introduction
 // ============================================
 #slide(title: "Kokkos — Performance Portability")[
-  #set text(size: 12pt)
-  #grid(
-    columns: (1fr, 1fr),
-    gutter: 1em,
-    [
-      == The Problem
-      #set text(size: 11pt)
-      - CUDA = NVIDIA only
-      - OpenMP = CPU only (limited GPU)
-      - HIP = AMD only
-      - Rewrite for each platform?
+  #set text(size: 14pt)
+  #align(horizon)[
+    #grid(
+      columns: (1fr, 1fr),
+      gutter: 2em,
+      [
+        == The Problem
+        - CUDA = NVIDIA only
+        - OpenMP = CPU only (limited GPU)
+        - HIP = AMD only
+        - Rewrite for each platform?
 
-      == The Solution: Kokkos
-      #set text(size: 10pt)
-      ```cpp
-      // 1. COUNT — unknown result size
-      parallel_for(num_rows, KOKKOS_LAMBDA(int r) {
-        counts[r] = count_intervals(r);
-      });
-      // 2. SCAN — compute offsets
-      exclusive_scan(counts, row_ptr);
-      // 3. FILL — parallel write
-      parallel_for(num_rows, KOKKOS_LAMBDA(int r) {
-        fill_intervals(r, &out[row_ptr[r]]);
-      });
-      ```
-    ],
-    [
-      == CUDA vs Kokkos
-      #set text(size: 9pt)
-      #grid(
-        columns: (1fr, 1fr),
-        gutter: 0.5em,
-        [
-          *Native CUDA*
-          ```cpp
-          // Allocation
-          double* d_data;
-          cudaMalloc(&d_data, n*8);
+        #v(0.5em)
+        == The Solution: Kokkos
+        #set text(size: 11pt)
+        ```cpp
+        // 1. COUNT — unknown result size
+        parallel_for(num_rows, KOKKOS_LAMBDA(int r) {
+          counts[r] = count_intervals(r);
+        });
+        // 2. SCAN — compute offsets
+        exclusive_scan(counts, row_ptr);
+        // 3. FILL — parallel write
+        parallel_for(num_rows, KOKKOS_LAMBDA(int r) {
+          fill_intervals(r, &out[row_ptr[r]]);
+        });
+        ```
+      ],
+      [
+        == CUDA vs Kokkos
+        #set text(size: 10pt)
+        #grid(
+          columns: (1fr, 1fr),
+          gutter: 0.8em,
+          [
+            *Native CUDA*
+            ```cpp
+            double* d_data;
+            cudaMalloc(&d_data, n*8);
 
-          // Copy Host → Device
-          cudaMemcpy(d_data, h_data,
-            n*8, HostToDevice);
+            cudaMemcpy(d_data, h_data,
+              n*8, HostToDevice);
 
-          // Kernel
-          kernel<<<B,T>>>(d_data, n);
+            kernel<<<B,T>>>(d_data, n);
 
-          // Copy Device → Host
-          cudaMemcpy(h_data, d_data,
-            n*8, DeviceToHost);
+            cudaMemcpy(h_data, d_data,
+              n*8, DeviceToHost);
 
-          // Free
-          cudaFree(d_data);
-          ```
-        ],
-        [
-          *Kokkos*
-          ```cpp
-          // Allocation + auto mirror
-          View<double*> data("d", n);
-          auto h_data = create_mirror_view(data);
+            cudaFree(d_data);
+            ```
+          ],
+          [
+            *Kokkos*
+            ```cpp
+            View<double*> data("d", n);
+            auto h = create_mirror_view(data);
 
-          // Copy Host → Device
-          deep_copy(data, h_data);
+            deep_copy(data, h);
 
-          // Parallel (CPU or GPU)
-          parallel_for(n, KOKKOS_LAMBDA(int i){
-            data(i) = compute(i);
-          });
+            parallel_for(n, KOKKOS_LAMBDA(int i){
+              data(i) = compute(i);
+            });
 
-          // Copy Device → Host
-          deep_copy(h_data, data);
+            deep_copy(h, data);
+            // Automatic cleanup (RAII)
+            ```
+          ]
+        )
+      ]
+    )
 
-          // Automatic cleanup (RAII)
-          ```
-        ]
-      )
-    ]
-  )
-
-  #align(center)[
-    #box(fill: rgb("#d4edda"), inset: 0.5em, radius: 4pt)[
-      *Single source code* → compiles for OpenMP, CUDA, HIP, SYCL, Serial — specializable if needed
+    #v(0.8em)
+    #align(center)[
+      #box(fill: rgb("#d4edda"), inset: 0.6em, radius: 4pt)[
+        #text(size: 14pt)[*Single source code* → compiles for OpenMP, CUDA, HIP, SYCL, Serial]
+      ]
     ]
   ]
 ]
