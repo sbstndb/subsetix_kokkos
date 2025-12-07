@@ -10,7 +10,7 @@
 #set text(..slide-text-config)
 
 // ============================================
-// SLIDE 1: TITLE
+// SLIDE: TITLE
 // ============================================
 #title-slide(
   "Subsetix: Sparse 2D Geometry on GPU",
@@ -22,7 +22,7 @@
 )
 
 // ============================================
-// SLIDE 2: OUTLINE
+// SLIDE: OUTLINE
 // ============================================
 #slide(title: "Outline")[
   #set text(size: 15pt)
@@ -90,7 +90,7 @@
 #include "section_demo.typ"
 
 // ============================================
-// SLIDE 19: END
+// SLIDE: END
 // ============================================
 #pagebreak()
 #set page(

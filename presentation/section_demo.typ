@@ -11,7 +11,7 @@
 #section-slide("V. Demo")
 
 // ============================================
-// SLIDE 16: Mach2 Cylinder Overview
+// SLIDE: Mach2 Cylinder Overview
 // ============================================
 #slide(title: "Mach2 Cylinder — Multi-Level AMR Simulation")[
   #set text(size: 11pt)
@@ -72,7 +72,7 @@
 ]
 
 // ============================================
-// SLIDE 17: Mach2 Results
+// SLIDE: Mach2 Results
 // ============================================
 #slide(title: "Mach2 Cylinder — Results & Visualization")[
   #set text(size: 11pt)
@@ -139,7 +139,7 @@
 ]
 
 // ============================================
-// SLIDE 18: Mach2 Visual Results
+// SLIDE: Mach2 Visual Results
 // ============================================
 #slide(title: "Mach2 Cylinder — Visual Results")[
   #set text(size: 10pt)
@@ -184,7 +184,7 @@
 ]
 
 // ============================================
-// SLIDE 19: Live Demo
+// SLIDE: Live Demo
 // ============================================
 #slide(title: "Live Demo")[
   #set text(size: 14pt)

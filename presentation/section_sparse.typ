@@ -11,7 +11,7 @@
 #section-slide("II. Sparse Representation")
 
 // ============================================
-// SLIDE 5: 2D Sparse Mesh Example
+// SLIDE: 2D Sparse Mesh Example
 // ============================================
 #slide(title: "Example: 2D Sparse Mesh with Intervals")[
   #set text(size: 11pt)

@@ -11,7 +11,7 @@
 #section-slide("I. Context: GPU & Kokkos")
 
 // ============================================
-// SLIDE 3: GPU & CUDA Essentials (condensed)
+// SLIDE: GPU & CUDA Essentials (condensed)
 // ============================================
 #slide(title: "GPU Architecture — Massively Parallel")[
   #set text(size: 13pt)
@@ -102,7 +102,7 @@
 ]
 
 // ============================================
-// SLIDE 4: Kokkos Introduction
+// SLIDE: Kokkos Introduction
 // ============================================
 #slide(title: "Kokkos — Performance Portability")[
   #set text(size: 12pt)

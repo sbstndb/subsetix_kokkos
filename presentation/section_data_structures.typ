@@ -11,7 +11,7 @@
 #section-slide("III. Data Structures")
 
 // ============================================
-// SLIDE 7: Overview — Device Structures
+// SLIDE: Overview — Device Structures
 // ============================================
 #slide(title: "Overview — Device Structures")[
   #set text(size: 11pt)
@@ -107,7 +107,7 @@
 ]
 
 // ============================================
-// SLIDE 8: IntervalSet2D Structure
+// SLIDE: IntervalSet2D Structure
 // ============================================
 #slide(title: "IntervalSet2D — Complete CSR Structure")[
   #set text(size: 12pt)
@@ -155,7 +155,7 @@
 ]
 
 // ============================================
-// SLIDE 9: Field2D
+// SLIDE: Field2D
 // ============================================
 #slide(title: "Field2D — Field on Sparse Geometry")[
   #set text(size: 11pt)
@@ -212,7 +212,7 @@
 ]
 
 // ============================================
-// SLIDE 10: SubSet — Targeted Region Operations
+// SLIDE: SubSet — Targeted Region Operations
 // ============================================
 #slide(title: "SubSet — Targeted Region Operations")[
   #set text(size: 11pt)
@@ -297,7 +297,7 @@
 ]
 
 // ============================================
-// SLIDE 11: Field2DSubView
+// SLIDE: Field2DSubView
 // ============================================
 #slide(title: "Field2DSubView — View on Field + Region")[
   #set text(size: 11pt)
@@ -371,7 +371,7 @@
 ]
 
 // ============================================
-// SLIDE 12: Workspace & AMR
+// SLIDE: Workspace & AMR
 // ============================================
 #slide(title: "Workspace & AMR Support")[
   #set text(size: 11pt)

@@ -11,7 +11,7 @@
 #section-slide("IV. Algorithms")
 
 // ============================================
-// SLIDE 12a: Binary Search Lookups
+// SLIDE: Binary Search Lookups
 // ============================================
 #slide(title: "Binary Search — O(log n) Lookups Everywhere")[
   #set text(size: 10pt)
@@ -89,7 +89,7 @@
 
 
 // ============================================
-// SLIDE 12b: Set Algebra
+// SLIDE: Set Algebra
 // ============================================
 #slide(title: "Set Algebra — Binary Operations")[
   #set text(size: 11pt)
@@ -176,7 +176,7 @@
 ]
 
 // ============================================
-// SLIDE 13a-bis: Row Mapping (Prerequisite)
+// SLIDE: Row Mapping (Prerequisite)
 // ============================================
 #slide(title: "Row Mapping — Why and How")[
   #set text(size: 9pt)
@@ -275,7 +275,7 @@
 ]
 
 // ============================================
-// SLIDE 13b: Intersection Internals
+// SLIDE: Intersection Internals
 // ============================================
 #slide(title: "Intersection — How It Works")[
   #set text(size: 10pt)
@@ -418,7 +418,7 @@
 ]
 
 // ============================================
-// SLIDE 13c: Stencil Access on Sparse Geometry
+// SLIDE: Stencil Access on Sparse Geometry
 // ============================================
 #slide(title: "Stencil Access — Sparse Geometry")[
   #set text(size: 10pt)
@@ -524,7 +524,7 @@
 ]
 
 // ============================================
-// SLIDE 13d: Morphological Expand (Dilation)
+// SLIDE: Morphological Expand (Dilation)
 // ============================================
 #slide(title: "Expand (Dilation) — How It Works")[
   #set text(size: 10pt)
@@ -666,7 +666,7 @@
 ]
 
 // ============================================
-// SLIDE 13e: AMR Restrict & Prolong
+// SLIDE: AMR Restrict & Prolong
 // ============================================
 #slide(title: "AMR — Restrict & Prolong")[
   #set text(size: 10pt)
@@ -777,7 +777,7 @@
 ]
 
 // ============================================
-// SLIDE 14: Field Operations
+// SLIDE: Field Operations
 // ============================================
 #slide(title: "Field Operations")[
   #set text(size: 11pt)
@@ -848,7 +848,7 @@
 ]
 
 // ============================================
-// SLIDE 15: Morphology & AMR
+// SLIDE: Morphology & AMR
 // ============================================
 #slide(title: "Mathematical Morphology & AMR")[
   #set text(size: 11pt)
