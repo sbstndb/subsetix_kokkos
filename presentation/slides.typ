@@ -3,24 +3,11 @@
 // ============================================
 
 // Shared theme (styles, colors, helpers)
-#import "theme.typ": slide, title-slide, section-slide, hpc-dark, hpc-medium, hpc-light, accent, dark, light-gray, green, orange, diagram, node, edge
+#import "theme.typ": slide, title-slide, section-slide, hpc-dark, hpc-medium, hpc-light, accent, dark, light-gray, green, orange, diagram, node, edge, slide-page-config, slide-text-config
 
 // Base page/text styles for the deck
-#set page(
-  paper: "presentation-16-9",
-  margin: (x: 1.2cm, y: 1cm),
-  numbering: "1 / 1",
-  footer: context [
-    #set text(size: 10pt, fill: rgb("#7f8c8d"))
-    #h(1fr)
-    #counter(page).display("1 / 1", both: true)
-  ]
-)
-
-#set text(
-  font: "DejaVu Sans",
-  size: 16pt,
-)
+#set page(..slide-page-config)
+#set text(..slide-text-config)
 
 // ============================================
 // SLIDE 1: TITLE

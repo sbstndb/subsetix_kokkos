@@ -14,24 +14,22 @@
 #let green = rgb("#27ae60")
 #let orange = rgb("#e67e22")
 
-// Apply base page and text style for the deck
-#let apply-presentation-theme() = {
-  set page(
-    paper: "presentation-16-9",
-    margin: (x: 1.2cm, y: 1cm),
-    numbering: "1 / 1",
-    footer: context [
-      #set text(size: 10pt, fill: rgb("#7f8c8d"))
-      #h(1fr)
-      #counter(page).display("1 / 1", both: true)
-    ]
-  )
+// Shared page and text configuration for slides
+#let slide-page-config = (
+  paper: "presentation-16-9",
+  margin: (x: 1.2cm, y: 1cm),
+  numbering: "1 / 1",
+  footer: context [
+    #set text(size: 10pt, fill: rgb("#7f8c8d"))
+    #h(1fr)
+    #counter(page).display("1 / 1", both: true)
+  ],
+)
 
-  set text(
-    font: "DejaVu Sans",
-    size: 16pt,
-  )
-}
+#let slide-text-config = (
+  font: "DejaVu Sans",
+  size: 16pt,
+)
 
 // Slide helper function
 #let slide(title: none, body) = {
@@ -116,4 +114,3 @@
 
 // Fletcher for diagrams (re-export helpers)
 #import "@preview/fletcher:0.4.5" as fletcher: diagram, node, edge
-
