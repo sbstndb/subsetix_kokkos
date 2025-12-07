@@ -1,0 +1,87 @@
+// Shared theme for slides
+#import "theme.typ": slide, title-slide, section-slide, hpc-dark, hpc-medium, hpc-light, accent, dark, light-gray, green, orange, diagram, node, edge
+
+// Ensure slide page format (16:9) when compiling this file directly
+#set page(
+  paper: "presentation-16-9",
+  margin: (x: 1.2cm, y: 1cm),
+  numbering: "1 / 1",
+  footer: context [
+    #set text(size: 10pt, fill: rgb("#7f8c8d"))
+    #h(1fr)
+    #counter(page).display("1 / 1", both: true)
+  ]
+)
+
+#set text(
+  font: "DejaVu Sans",
+  size: 16pt,
+)
+
+// ============================================
+// SECTION: SPARSE REPRESENTATION
+// ============================================
+#section-slide("II. Sparse Representation")
+
+// ============================================
+// SLIDE 5: 2D Sparse Mesh Example
+// ============================================
+#slide(title: "Example: 2D Sparse Mesh with Intervals")[
+  #set text(size: 11pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 1em,
+    [
+      == "Smiley" Geometry :-)
+      #align(center)[
+        #box(stroke: 1pt + dark, inset: 0.5em, radius: 4pt)[
+          ```
+          Y
+          9│ . . . . . . . . . .    (empty)
+          8│ . . . . . . . . . .    (empty)
+          7│ . . ▓ ▓ . . ▓ ▓ . .    EYES
+          6│ . . ▓ ▓ . . ▓ ▓ . .    EYES
+          5│ . . . . . . . . . .    (HOLE)
+          4│ . . . . . . . . . .    (HOLE)
+          3│ . ▓ ▓ . . . . ▓ ▓ .    SMILE
+          2│ . . ▓ ▓ . . ▓ ▓ . .    SMILE
+          1│ . . . ▓ ▓ ▓ ▓ . . .    SMILE
+          0│ . . . . . . . . . .    (empty)
+           └──────────────────── X
+             0 1 2 3 4 5 6 7 8 9
+          ```
+        ]
+      ]
+
+    ],
+    [
+      == CSR Representation
+      ```cpp
+      // 5 rows, HOLE Y=4,5
+      row_keys = [1, 2, 3, 6, 7]  // skips 4,5!
+      num_rows = 5
+
+      // Rows with 1 or 2 intervals
+      row_ptr = [0, 1, 3, 5, 7, 9]
+
+      intervals = [
+        {3, 7},        // Y=1: smile bottom
+        {2, 4}, {6, 8},// Y=2: smile thick
+        {1, 3}, {7, 9},// Y=3: smile corners
+        {2, 4}, {6, 8},// Y=6: EYES bottom
+        {2, 4}, {6, 8},// Y=7: EYES top
+      ]
+      num_intervals = 9
+
+      cell_offsets = [0,4,6,8,10,12,14,16,18,20]
+      total_cells = 20
+      ```
+
+      #align(center)[
+        #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
+          *Hole Y=4,5*: row_keys jumps from 3 to 6
+        ]
+      ]
+    ]
+  )
+]
