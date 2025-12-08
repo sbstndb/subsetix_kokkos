@@ -96,13 +96,13 @@
 // SLIDE: Mach2 AMR Operations
 // ============================================
 #slide(title: "Mach2 Cylinder — Subsetix Usage")[
-  #set text(size: 7pt)
+  #set text(size: 8pt)
   #grid(
     columns: (1fr, 1fr),
-    gutter: 1em,
+    gutter: 1.5em,
     [
       == 1. Fluid Geometry
-      #box(fill: rgb("#e8f4f8"), inset: 0.4em, radius: 4pt, width: 100%)[
+      #box(fill: rgb("#e8f4f8"), inset: 0.5em, radius: 4pt, width: 100%)[
         ```cpp
         auto domain = make_box_device({0, nx, 0, ny});
         auto obstacle = make_disk_device({cx, cy, radius});
@@ -110,10 +110,11 @@
         set_difference_device(domain, obstacle, fluid, ctx);
         ```
       ]
+      #align(center)[#text(size: 7pt)[`fluid = domain \ obstacle`]]
 
-      #v(0.2em)
+      #v(0.4em)
       == 2. Refinement Mask (detect shock)
-      #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt, width: 100%)[
+      #box(fill: rgb("#fff3cd"), inset: 0.5em, radius: 4pt, width: 100%)[
         ```cpp
         IntervalSet2DDevice interior;
         shrink_device(fluid, 1, 1, interior, ctx);
@@ -125,53 +126,26 @@
         auto mask = threshold_field(indicator, thresh);
         ```
       ]
-
-      #v(0.2em)
-      == 3. Guard Zone Extraction
-      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt, width: 100%)[
-        ```cpp
-        IntervalSet2DDevice expanded;
-        expand_device(mask, guard, guard, expanded, ctx);
-
-        auto with_guard = allocate_interval_set_device(...);
-        set_intersection_device(expanded, fluid, with_guard, ctx);
-
-        auto guard_only = allocate_interval_set_device(...);
-        set_difference_device(with_guard, mask, guard_only, ctx);
-        ```
-      ]
+      #align(center)[#text(size: 7pt)[`shrink → stencil → threshold`]]
     ],
     [
-      == 4. Coarse Active (exclude fine level)
-      #box(fill: rgb("#f8d7da"), inset: 0.4em, radius: 4pt, width: 100%)[
+      == 3. Coarse Active (exclude fine level)
+      #box(fill: rgb("#d4edda"), inset: 0.5em, radius: 4pt, width: 100%)[
         ```cpp
         IntervalSet2DDevice fine_proj;
         project_level_down_device(fine_geo, fine_proj, ctx);
 
         auto coarse_active = allocate_interval_set_device(...);
-        set_difference_device(coarse_geo, fine_proj, coarse_active, ctx);
+        set_difference_device(coarse_geo, fine_proj,
+                              coarse_active, ctx);
         ```
       ]
+      #align(center)[#text(size: 7pt)[`coarse_active = coarse \ project(fine)`]]
 
-      #v(0.2em)
-      == 5. Field Geometry (fluid + obstacle boundary)
-      #box(fill: rgb("#e2d6f5"), inset: 0.4em, radius: 4pt, width: 100%)[
-        ```cpp
-        IntervalSet2DDevice expanded;
-        expand_device(with_guard, 2, 2, expanded, ctx);
-
-        auto obs_clip = allocate_interval_set_device(...);
-        set_intersection_device(expanded, obstacle, obs_clip, ctx);
-
-        auto field_geo = allocate_interval_set_device(...);
-        set_union_device(with_guard, obs_clip, field_geo, ctx);
-        ```
-      ]
-
-      #v(0.3em)
+      #v(0.5em)
       #align(center)[
-        #box(fill: rgb("#d4edda"), inset: 0.5em, radius: 4pt)[
-          #set text(size: 9pt)
+        #box(fill: rgb("#d4edda"), inset: 0.6em, radius: 4pt)[
+          #set text(size: 10pt)
           *Même `ctx`* pour toutes les opérations \
           → *zéro allocation GPU* après warmup
         ]
@@ -223,4 +197,64 @@
       #text(size: 11pt)[*4 AMR levels* (9–12) — Automatic refinement based on density gradient]
     ]
   ]
+]
+
+// ============================================
+// SLIDE: Status & Future Work
+// ============================================
+#slide(title: "Status & Future Work")[
+  #set text(size: 12pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 2em,
+    [
+      == Done
+      #v(0.3em)
+      #box(fill: rgb("#d4edda"), inset: 0.6em, radius: 4pt, width: 100%)[
+        #set text(size: 11pt)
+        *Complete set algebra*
+        - Union, intersection, difference
+        - Morphology (expand, shrink)
+        - Threshold, projection
+      ]
+
+      #v(0.4em)
+      #box(fill: rgb("#d4edda"), inset: 0.6em, radius: 4pt, width: 100%)[
+        #set text(size: 11pt)
+        *Complete AMR pipeline*
+        - Multi-level geometry management
+        - Refinement mask computation
+        - Restrict / prolong operations
+        - Dynamic regridding every step
+      ]
+    ],
+    [
+      == Future Work
+      #v(0.3em)
+      #box(fill: rgb("#fff3cd"), inset: 0.6em, radius: 4pt, width: 100%)[
+        #set text(size: 11pt)
+        *Refine algorithms*
+        - Optimize binary search on GPU
+        - Reduce kernel launch overhead
+        - Better load balancing
+      ]
+
+      #v(0.4em)
+      #box(fill: rgb("#fff3cd"), inset: 0.6em, radius: 4pt, width: 100%)[
+        #set text(size: 11pt)
+        *3D extension*
+        - IntervalSet3D with Z-slices
+        - Same CSR structure per slice
+      ]
+
+      #v(0.4em)
+      #box(fill: rgb("#fff3cd"), inset: 0.6em, radius: 4pt, width: 100%)[
+        #set text(size: 11pt)
+        *CUDA Streams*
+        - Overlap operations
+        - Maximize GPU occupancy
+        - Hide memory transfer latency
+      ]
+    ]
+  )
 ]
