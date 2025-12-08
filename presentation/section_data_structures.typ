@@ -316,7 +316,7 @@
 // ============================================
 #slide(title: "Field2DSubView — View on Field + Region")[
   #set text(size: 11pt)
-  Combines a Field with a target region for *localized operations* — lazy intersection, cached for reuse.
+  Combines a Field with a target region for *localized operations*.
 
   #v(0.3em)
   #grid(
@@ -329,7 +329,7 @@
       struct Field2DSubView<T> {
         Field2D<T> parent;        // ref to field
         IntervalSet2D region;     // where to operate
-        IntervalSubSet2D subset;  // lazy intersection
+        IntervalSubSet2D subset;  // intersection
       };
       ```
 
@@ -345,7 +345,7 @@
       fill_subview_device(sub, 0.0, &ctx);
       // sub.subset = field.geo ∩ region
 
-      // 3. Next ops reuse cached subset
+      // 3. Next ops reuse subset
       scale_subview_device(sub, 2.0);  // fast!
       fill_subview_device(sub, 1.0);   // fast!
       ```
@@ -366,23 +366,6 @@
       ]
       #align(center)[
         #text(size: 7pt)[░ = skipped #h(1em) █ = accessed by SubSet]
-      ]
-
-      #v(0.4em)
-      == Access Formula
-      #set text(size: 9pt)
-      #align(center)[
-        #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt)[
-          `values[ offset[idx] + (x - interval.begin) ]`
-        ]
-      ]
-
-      #v(0.3em)
-      #align(center)[
-        #box(fill: rgb("#d4edda"), inset: 0.3em, radius: 4pt)[
-          #set text(size: 9pt)
-          *O(1)* per cell — no coordinate lookup
-        ]
       ]
     ]
   )
@@ -405,10 +388,10 @@
 
       ```cpp
       struct UnifiedCsrWorkspace {
-        View<int*> int_bufs_[5];
-        View<size_t*> size_t_bufs_[2];
-        View<RowKey2D*> row_key_bufs_[2];
-        View<Interval*> interval_buf_0;
+        View<int*> int_bufs_[5];        // indices, maps, flags
+        View<size_t*> size_t_bufs_[2];  // row_ptr, counts
+        View<RowKey2D*> row_key_bufs_[2]; // Y coords
+        View<Interval*> interval_buf_0;   // X intervals
 
         auto get_int_buf(int id, size_t n) {
           if (n > int_bufs_[id].extent(0))

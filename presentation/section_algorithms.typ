@@ -15,6 +15,9 @@
 // ============================================
 #slide(title: "Binary Search — O(log n) Lookups Everywhere")[
   #set text(size: 10pt)
+  CSR structure requires binary search for row and interval lookups — efficient but suboptimal on GPU.
+
+  #v(0.2em)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.2em,
@@ -88,6 +91,9 @@
 // ============================================
 #slide(title: "Set Algebra — Binary Operations")[
   #set text(size: 11pt)
+  Binary set operations (∪, ∩, \\) combine geometries using a shared workspace to avoid repeated GPU allocations.
+
+  #v(0.2em)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
@@ -171,123 +177,13 @@
 ]
 
 // ============================================
-// SLIDE: Row Mapping (Prerequisite)
-// ============================================
-#slide(title: "Row Mapping — Why and How")[
-  #set text(size: 9pt)
-  #grid(
-    columns: (1fr, 1.2fr),
-    gutter: 1em,
-    [
-      == GPU Constraint
-      #align(center)[
-        #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt)[
-          *1 thread = 1 output row*
-        ]
-      ]
-      We need to know output rows *before* parallel processing.
-
-      #v(0.3em)
-      == Which Rows Participate?
-      #set text(size: 8pt)
-      #align(center)[
-        #diagram(
-          node-stroke: 1pt + dark,
-          spacing: (4mm, 6mm),
-
-          // Labels
-          node((-0.8, 0), text(size: 7pt, weight: "bold")[A:], stroke: none, fill: none),
-          node((-0.8, 1), text(size: 7pt, weight: "bold")[B:], stroke: none, fill: none),
-
-          // A rows
-          node((0, 0), text(size: 6pt)[2], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
-          node((1, 0), text(size: 6pt)[5], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
-          node((2, 0), text(size: 6pt)[8], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
-
-          // B rows
-          node((0, 1), text(size: 6pt)[3], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
-          node((1, 1), text(size: 6pt)[5], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
-          node((2, 1), text(size: 6pt)[8], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
-          node((3, 1), text(size: 6pt)[9], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
-        )
-      ]
-
-      #v(0.3em)
-      #table(
-        columns: (auto, auto, auto),
-        inset: 4pt,
-        align: center,
-        fill: (x, y) => if y == 0 { accent.lighten(70%) } else { white },
-        stroke: 0.5pt + gray,
-        [*Op*], [*Output rows*], [*Count*],
-        [A ∩ B], [{5, 8}], [2],
-        [A ∪ B], [{2,3,5,8,9}], [5],
-        [A \\ B], [{2}], [1],
-      )
-    ],
-    [
-      == Row Mapping per Operation
-      #set text(size: 8pt)
-
-      *Intersection* — search smaller in larger
-      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
-        ```cpp
-        parallel_for(n_small, [&](int i) {
-          idx_big[i] = find_row_by_y(big, small[i].y);
-          flags[i] = (idx_big[i] >= 0) ? 1 : 0;
-        });
-        n_out = exclusive_scan(flags, positions);
-        parallel_for(n_small, [&](int i) {
-          if (flags[i]) compact(positions[i], ...);
-        });
-        ```
-      ]
-
-      #v(0.2em)
-      *Union* — bidirectional search + merge
-      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e3f2fd").lighten(70%))[
-        ```cpp
-        parallel_for(n_a, [&](int i) {
-          map_a_to_b[i] = find_row_by_y(B, A[i].y);
-        });
-        parallel_for(n_b, [&](int j) {
-          map_b_to_a[j] = find_row_by_y(A, B[j].y);
-          b_only[j] = (map_b_to_a[j] < 0) ? 1 : 0;
-        });
-        // Scan + Compact + Interleave A ∪ B-only
-        ```
-      ]
-
-      #v(0.2em)
-      *Difference* — keep A structure, map to B
-      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#fff3cd").lighten(70%))[
-        ```cpp
-        copy(A.row_keys, out_rows);  // same rows as A
-        parallel_for(n_a, [&](int ia) {
-          idx_a[ia] = ia;  // identity mapping
-          idx_b[ia] = find_row_by_y(B, A[ia].y);
-          // idx_b < 0 → A-only, no subtraction
-          // idx_b >= 0 → must subtract B intervals
-        });
-        ```
-      ]
-
-      #v(0.3em)
-      #align(center)[
-        #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
-          *Result*: `row_keys` + `idx_a` + `idx_b` \
-          → enables `parallel_for(num_output_rows, ...)`
-        ]
-      ]
-    ]
-  )
-]
-
-// ============================================
 // SLIDE: Intersection Internals
 // ============================================
 #slide(title: "Intersection — How It Works")[
   #set text(size: 10pt)
+  Intersection uses the *Count-Scan-Fill* pattern: count output intervals, compute offsets via prefix sum, then fill in parallel.
+
+  #v(0.2em)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.2em,
@@ -427,10 +323,136 @@
 ]
 
 // ============================================
+// SLIDE: Row Mapping (Prerequisite)
+// ============================================
+#slide(title: "Row Mapping — Why and How")[
+  #set text(size: 9pt)
+  GPU parallelization requires knowing output rows before processing — row mapping creates a correspondence table between output and input rows.
+
+  #v(0.2em)
+  #grid(
+    columns: (1fr, 1.2fr),
+    gutter: 1em,
+    [
+      == GPU Constraint
+      #align(center)[
+        #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt)[
+          *1 thread = 1 output row*
+        ]
+      ]
+      We need to know output rows *before* parallel processing.
+
+      #v(0.3em)
+      == The Mapping Structure
+      #set text(size: 8pt)
+      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%, fill: light-gray.lighten(70%))[
+        ```cpp
+        struct RowMergeResult {
+          row_keys[];    // Y coords of output rows
+          row_index_a[]; // index in A (-1 if absent)
+          row_index_b[]; // index in B (-1 if absent)
+        };
+        ```
+      ]
+
+      #v(0.3em)
+      == Usage in Parallel
+      #set text(size: 8pt)
+      #box(stroke: 1pt + accent, inset: 0.3em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
+        ```cpp
+        parallel_for(num_rows_out, [&](int i) {
+          int ia = row_index_a[i]; // -1 or valid
+          int ib = row_index_b[i]; // -1 or valid
+
+          intervals_a = (ia >= 0) ? A.row(ia) : ∅;
+          intervals_b = (ib >= 0) ? B.row(ib) : ∅;
+
+          merge(intervals_a, intervals_b, out[i]);
+        });
+        ```
+      ]
+      #align(center)[
+        #text(size: 7pt)[Each thread knows exactly what to read → *no conflicts*]
+      ]
+    ],
+    [
+      == Concrete Example: A ∪ B
+      #set text(size: 8pt)
+
+      #align(center)[
+        #diagram(
+          node-stroke: 1pt + dark,
+          spacing: (5mm, 6mm),
+
+          // Labels
+          node((-0.8, 0), text(size: 7pt, weight: "bold")[A:], stroke: none, fill: none),
+          node((-0.8, 1), text(size: 7pt, weight: "bold")[B:], stroke: none, fill: none),
+
+          // A rows (y = 2, 5, 8)
+          node((0, 0), text(size: 6pt)[y=2], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
+          node((1, 0), text(size: 6pt)[y=5], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
+          node((2, 0), text(size: 6pt)[y=8], corner-radius: 2pt, fill: hpc-light, inset: 3pt),
+
+          // B rows (y = 3, 5, 8, 9)
+          node((0, 1), text(size: 6pt)[y=3], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
+          node((1, 1), text(size: 6pt)[y=5], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
+          node((2, 1), text(size: 6pt)[y=8], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
+          node((3, 1), text(size: 6pt)[y=9], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt),
+        )
+      ]
+
+      #v(0.3em)
+      #align(center)[
+        #table(
+          columns: (auto, auto, auto, auto, auto),
+          inset: 3pt,
+          align: center,
+          fill: (x, y) => if y == 0 { accent.lighten(70%) } else if calc.rem(y, 2) == 0 { light-gray.lighten(70%) } else { white },
+          stroke: 0.5pt + gray,
+          [*i*], [*y*], [*idx\_a*], [*idx\_b*], [*Signification*],
+          [0], [2], [0], [-1], [A\[0\] seul],
+          [1], [3], [-1], [0], [B\[0\] seul],
+          [2], [5], [1], [1], [A\[1\] ∪ B\[1\]],
+          [3], [8], [2], [2], [A\[2\] ∪ B\[2\]],
+          [4], [9], [-1], [3], [B\[3\] seul],
+        )
+      ]
+
+      #v(0.3em)
+      #align(center)[
+        #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
+          #set text(size: 8pt)
+          *-1* = ligne absente dans ce set \
+          Le mapping est construit par recherche binaire
+        ]
+      ]
+
+      #v(0.2em)
+      #align(center)[
+        #table(
+          columns: (auto, auto),
+          inset: 3pt,
+          align: center,
+          fill: (x, y) => if y == 0 { accent.lighten(70%) } else { white },
+          stroke: 0.5pt + gray,
+          [*Op*], [*Mapping*],
+          [A ∩ B], [Garde les y communs],
+          [A ∪ B], [Fusionne tous les y],
+          [A \\ B], [Garde les y de A],
+        )
+      ]
+    ]
+  )
+]
+
+// ============================================
 // SLIDE: AMR Restrict & Prolong
 // ============================================
 #slide(title: "AMR — Restrict & Prolong")[
   #set text(size: 10pt)
+  Inter-level transfers use 2:1 coordinate mapping — restrict averages 4 fine cells, prolong interpolates with gradient correction.
+
+  #v(0.2em)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1em,
@@ -542,6 +564,9 @@
 // ============================================
 #slide(title: "Field Operations")[
   #set text(size: 11pt)
+  Field operations include algebra, stencil application, and geometry-aware transforms (threshold, remap) for AMR workflows.
+
+  #v(0.2em)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
