@@ -11,13 +11,13 @@
 #section-slide("V. Demo")
 
 // ============================================
-// SLIDE: Mach2 Cylinder Overview
+// SLIDE: Mach2 Problem & Setup
 // ============================================
-#slide(title: "Mach2 Cylinder — Multi-Level AMR Simulation")[
+#slide(title: "Mach2 Cylinder — Problem & Setup")[
   #set text(size: 11pt)
   #grid(
     columns: (1fr, 1fr),
-    gutter: 1em,
+    gutter: 1.5em,
     [
       == Description
       2D compressible flow simulation:
@@ -25,114 +25,107 @@
       - 1st order Godunov scheme + Rusanov flux
       - *Dynamic AMR*: 4 levels
 
-      #v(0.3em)
-      == Subsetix Usage
-      ```cpp
-      // Fluid geometry = domain - obstacle
-      auto fluid = set_difference_device(
-        make_box_device(domain),
-        make_disk_device(cylinder),
-        ctx);
-
-      // Conserved fields (ρ, ρu, ρv, E)
-      Field2DDevice<Real> rho(fluid);
-      Field2DDevice<Real> rhou(fluid);
-      // ...
-      ```
+      #v(0.5em)
+      #align(center)[
+        #box(fill: rgb("#d4edda"), inset: 0.5em, radius: 4pt)[
+          *Sparse*: computation only on fluid cells!
+        ]
+      ]
     ],
     [
-      == AMR Architecture
-      #set text(size: 10pt)
-      #align(center)[
-        ```
-        ┌─────────────────────────────────────┐
-        │  Level 0 (coarse)                   │
-        │  ┌─────────────────────────────┐    │
-        │  │ Flux + Update (dt_coarse)  │    │
-        │  └─────────────────────────────┘    │
-        │         ▲ restrict    │ prolong     │
-        │  ┌──────┴─────────────▼────────┐    │
-        │  │  Level 1 (finer)            │    │
-        │  │  ┌─────────────────────┐    │    │
-        │  │  │ Flux + Update (dt)  │    │    │
-        │  │  └─────────────────────┘    │    │
-        │  │       ▲         │               │
-        │  │  Level 2 (finest around shock)  │
-        │  └─────────────────────────────┘    │
-        └─────────────────────────────────────┘
+      == Subsetix Setup
+      #set text(size: 8pt)
+
+      #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *Geometry Construction*
+        ```cpp
+        auto fluid = set_difference_device(
+          make_box_device(domain),
+          make_disk_device(cylinder), ctx);
         ```
       ]
 
-      == Dynamic Refinement
-      - Indicator: density gradient
-      - `expand_device()` for guard zones
-      - Remeshing every N time steps
+      #v(0.3em)
+      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *Conserved Fields* (ρ, ρu, ρv, E)
+        ```cpp
+        ConservedFields U_coarse(coarse_geo);
+        ConservedFields U_fine(fine_geo);
+        ```
+      ]
+
+      #v(0.3em)
+      #box(fill: rgb("#e8f4f8"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *Flux on Coarse Level* (excluding fine)
+        ```cpp
+        auto coarse_active = set_difference_device(
+          coarse_geo, fine_projection, ctx);
+        apply_stencil_on_set_device(
+          flux, U_coarse, coarse_active, Flux{});
+        ```
+      ]
     ]
   )
 ]
 
 // ============================================
-// SLIDE: Mach2 Results
+// SLIDE: Mach2 AMR Operations
 // ============================================
-#slide(title: "Mach2 Cylinder — Results & Visualization")[
-  #set text(size: 11pt)
+#slide(title: "Mach2 Cylinder — AMR Operations")[
+  #set text(size: 8pt)
   #grid(
     columns: (1fr, 1fr),
-    gutter: 1em,
+    gutter: 1.5em,
     [
-      == Generated Outputs
-      #set text(size: 9pt)
-      ```
-      mach2_cylinder/
-      ├── fluid_geometry.vtk
-      ├── obstacle_geometry.vtk
-      ├── refine_mask_lvl{1,2,3}.vtk
-      ├── fine_geometry_lvl{1,2,3}.vtk
-      ├── step_00001_density.vtk
-      ├── step_00001_l0_density.vtk
-      ├── step_00001_l1_density.vtk
-      ├── step_00001_mach.vtk
-      ├── step_00001_pressure.vtk
-      └── ...
-      ```
-
-      == Execution Command
-      #set text(size: 9pt)
-      ```bash
-      ./mach2_cylinder \
-        --nx 400 --ny 160 \
-        --radius 20 \
-        --mach-inlet 2.0 \
-        --max-steps 5000 \
-        --output-stride 50 \
-        --amr --amr-levels 4
-      ```
-    ],
-    [
-      == Observed Phenomena
-      #align(center)[
-        #box(fill: light-gray, inset: 0.5em, radius: 4pt)[
-          - *Bow shock* in front of the cylinder
-          - Density/pressure gradient captured
-          - AMR refinement follows the shock
-        ]
+      #box(fill: rgb("#fff3cd"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *1. Gradient Indicator* (detect shock)
+        ```cpp
+        apply_csr_stencil_on_set_device(
+          indicator, U_fine.rho, interior, GradStencil{});
+        ```
       ]
 
       #v(0.3em)
-      == Key Technical Points
-      #set text(size: 10pt)
-      - 1st order Godunov + Rusanov flux
-      - Struct-of-Arrays: `ConservedFields` (ρ, ρu, ρv, E)
-      - `threshold_field()` → detect shock gradient
-      - `expand_device()` → guard cells around refined zone
-      - `restrict_fine_to_coarse()` / `prolong_guard_from_coarse()`
-      - `write_multilevel_field_vtk()` for ParaView
+      #box(fill: rgb("#e8f4f8"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *2. Threshold → Refinement Mask*
+        ```cpp
+        auto mask = threshold_field(indicator, thresh);
+        ```
+      ]
 
       #v(0.3em)
-      #align(center)[
-        #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt)[
-          *Sparse*: computation only on fluid cells!
-        ]
+      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *3. Expand → Guard Zones*
+        ```cpp
+        expand_device(mask, guard_size, guard_size, fine_geo, ctx);
+        ```
+      ]
+    ],
+    [
+      #box(fill: rgb("#f8d7da"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *4. Inter-level Transfers*
+        ```cpp
+        restrict_fine_to_coarse(U_coarse, U_fine, overlap);
+        prolong_guard_from_coarse(U_fine, guard_region, U_coarse);
+        ```
+      ]
+
+      #v(0.3em)
+      #box(fill: rgb("#e2d6f5"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *5. Intersect → Overlap Region*
+        ```cpp
+        auto overlap = intersect_device(
+          coarse_geo, fine_geo, ctx);
+        ```
+      ]
+
+      #v(0.3em)
+      #box(fill: rgb("#fce4ec"), inset: 0.4em, radius: 4pt, width: 100%)[
+        *6. Union → Merge Geometries*
+        ```cpp
+        auto all_refined = union_device(
+          mask_level1, mask_level2, ctx);
+        ```
       ]
     ]
   )

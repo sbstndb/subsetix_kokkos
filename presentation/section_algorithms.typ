@@ -52,19 +52,14 @@
       == Combined: Cell Lookup
       #set text(size: 9pt)
       ```cpp
-      bool try_get(Coord x, Coord y, T& out) {
+      T& get(Coord x, Coord y) {
         // Step 1: find row
         int row = find_row_by_y(row_keys, y);
-        if (row < 0) return false;
-
         // Step 2: find interval in row
         int iv = find_interval_by_x(
           intervals, row_ptr[row], row_ptr[row+1], x);
-        if (iv < 0) return false;
-
         // Step 3: compute offset
-        out = values[offsets[iv] + (x - intervals[iv].begin)];
-        return true;
+        return values[offsets[iv] + (x - intervals[iv].begin)];
       }
       ```
 
@@ -77,10 +72,10 @@
 
       #v(0.3em)
       #align(center)[
-        #box(fill: rgb("#f8d7da"), inset: 0.3em, radius: 4pt)[
+        #box(fill: rgb("#ffe4b5"), inset: 0.3em, radius: 4pt)[
           #set text(size: 9pt)
-          *Invariant*: Data must stay sorted! \
-          (enforced by construction)
+          *GPU*: Binary search = suboptimal \
+          (future work)
         ]
       ]
     ]
@@ -234,39 +229,53 @@
       == Row Mapping per Operation
       #set text(size: 8pt)
 
-      *Intersection* — rows in both A and B
+      *Intersection* — search smaller in larger
       #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
         ```cpp
-        // Binary search A rows in B
-        map[i] = binary_search(B.row_keys, A.row_keys[i]);
-        // Keep only matched rows (map[i] >= 0)
+        parallel_for(n_small, [&](int i) {
+          idx_big[i] = find_row_by_y(big, small[i].y);
+          flags[i] = (idx_big[i] >= 0) ? 1 : 0;
+        });
+        n_out = exclusive_scan(flags, positions);
+        parallel_for(n_small, [&](int i) {
+          if (flags[i]) compact(positions[i], ...);
+        });
         ```
       ]
 
       #v(0.2em)
-      *Union* — rows in A or B (merge sorted)
+      *Union* — bidirectional search + merge
       #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e3f2fd").lighten(70%))[
         ```cpp
-        // 1. Search A→B and B→A
-        // 2. Flag-Scan-Compact: extract B-only rows
-        // 3. Interleave A + B-only maintaining order
+        parallel_for(n_a, [&](int i) {
+          map_a_to_b[i] = find_row_by_y(B, A[i].y);
+        });
+        parallel_for(n_b, [&](int j) {
+          map_b_to_a[j] = find_row_by_y(A, B[j].y);
+          b_only[j] = (map_b_to_a[j] < 0) ? 1 : 0;
+        });
+        // Scan + Compact + Interleave A ∪ B-only
         ```
       ]
 
       #v(0.2em)
-      *Difference* — rows in A (check B for each)
+      *Difference* — keep A structure, map to B
       #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#fff3cd").lighten(70%))[
         ```cpp
-        // Output = A.row_keys (same structure)
-        // map[i] = search A.row_keys[i] in B
-        // If found: must subtract intervals
+        copy(A.row_keys, out_rows);  // same rows as A
+        parallel_for(n_a, [&](int ia) {
+          idx_a[ia] = ia;  // identity mapping
+          idx_b[ia] = find_row_by_y(B, A[ia].y);
+          // idx_b < 0 → A-only, no subtraction
+          // idx_b >= 0 → must subtract B intervals
+        });
         ```
       ]
 
       #v(0.3em)
       #align(center)[
         #box(fill: rgb("#e8f4f8"), inset: 0.3em, radius: 4pt)[
-          *Result*: output row list + per-row mapping \
+          *Result*: `row_keys` + `idx_a` + `idx_b` \
           → enables `parallel_for(num_output_rows, ...)`
         ]
       ]
@@ -411,254 +420,6 @@
       #align(center)[
         #box(fill: rgb("#e8f4f8"), inset: 0.25em, radius: 3pt)[
           Same pattern for *∪*, *\\*, *⊕*
-        ]
-      ]
-    ]
-  )
-]
-
-// ============================================
-// SLIDE: Stencil Access on Sparse Geometry
-// ============================================
-#slide(title: "Stencil Access — Sparse Geometry")[
-  #set text(size: 10pt)
-  #grid(
-    columns: (1fr, 1fr),
-    gutter: 1em,
-    [
-      == The Problem
-      On dense grid: `north = values[i + nx]`
-
-      On sparse CSR: row y+1 may not exist, or have different intervals!
-
-      #v(0.3em)
-      == Horizontal: Easy
-      Same interval → contiguous in memory
-      #align(center)[
-        #diagram(
-          node-stroke: 1pt + dark,
-          spacing: (4mm, 6mm),
-
-          node((-0.5, 0), text(size: 8pt)[values:], stroke: none, fill: none),
-          node((0, 0), text(size: 8pt)[...], stroke: none, fill: none),
-          node((1, 0), text(size: 8pt, weight: "bold")[W], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 4pt, name: <w>),
-          node((2, 0), text(size: 8pt, weight: "bold")[C], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 4pt, name: <c>),
-          node((3, 0), text(size: 8pt, weight: "bold")[E], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 4pt, name: <e>),
-          node((4, 0), text(size: 8pt)[...], stroke: none, fill: none),
-
-          node((1, 0.8), text(size: 7pt)[idx-1], stroke: none, fill: none),
-          node((2, 0.8), text(size: 7pt)[idx], stroke: none, fill: none),
-          node((3, 0.8), text(size: 7pt)[idx+1], stroke: none, fill: none),
-        )
-      ]
-      #align(center)[
-        #box(fill: rgb("#d4edda"), inset: 0.2em, radius: 3pt)[
-          `west = values[idx-1]` #h(0.5em) *O(1)*
-        ]
-      ]
-
-      #v(0.3em)
-      == Vertical: Pre-computed Mapping
-      #set text(size: 9pt)
-      ```cpp
-      struct VerticalIntervalMapping {
-        View<int*> up_interval;
-        View<int*> down_interval;
-      };
-      ```
-      #text(size: 8pt)[Built once, maps each interval to its neighbor in y±1]
-    ],
-    [
-      == Vertical Mapping Diagram
-      #align(center)[
-        #diagram(
-          node-stroke: 1pt + dark,
-          edge-stroke: 1.5pt + rgb("#28a745"),
-          spacing: (5mm, 10mm),
-
-          // Row labels
-          node((-1.5, 0), text(size: 8pt, weight: "bold")[y+1:], stroke: none, fill: none),
-          node((-1.5, 1), text(size: 8pt, weight: "bold")[y:], stroke: none, fill: none),
-
-          // Row y+1 intervals
-          node((0, 0), text(size: 7pt)[iv 0], corner-radius: 3pt, fill: hpc-light.lighten(30%), inset: 4pt, name: <up0>),
-          node((2, 0), text(size: 7pt)[iv 1], corner-radius: 3pt, fill: hpc-light.lighten(30%), inset: 4pt, name: <up1>),
-
-          // Row y intervals (center row)
-          node((0, 1), text(size: 7pt)[iv 0], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 4pt, name: <c0>),
-          node((2, 1), text(size: 7pt)[iv 1], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 4pt, name: <c1>),
-
-          // Mapping arrows
-          edge(<c0>, <up0>, "->", label: text(size: 6pt)[up[0]], label-pos: 0.3),
-          edge(<c1>, <up1>, "->", label: text(size: 6pt)[up[1]], label-pos: 0.3),
-        )
-      ]
-      #set text(size: 8pt)
-      #align(center)[
-        #text(fill: gray)[Condition: same interval count per row]
-      ]
-
-      #v(0.3em)
-      == Access North
-      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%, fill: light-gray.lighten(70%))[
-        ```cpp
-        int up_idx = up_interval[center_idx];
-        Interval iv = intervals[up_idx];
-        size_t off = offsets[up_idx] + (x - iv.begin);
-        return values[off];  // O(1)
-        ```
-      ]
-
-      #v(0.3em)
-      == User Interface
-      #box(stroke: 1pt + gray, inset: 0.3em, radius: 3pt, width: 100%, fill: rgb("#e8f4f8"))[
-        ```cpp
-        // Stencil functor receives:
-        CsrStencilPoint<T> p;
-        p.center(); p.west(); p.east();
-        p.north();  p.south();  // All O(1)
-        ```
-      ]
-    ]
-  )
-]
-
-// ============================================
-// SLIDE: Morphological Expand (Dilation)
-// ============================================
-#slide(title: "Expand (Dilation) — How It Works")[
-  #set text(size: 10pt)
-  #grid(
-    columns: (1fr, 1fr),
-    gutter: 1em,
-    [
-      == Phase 1: Row Mapping
-      Input row y → output rows \[y-ry, y+ry\]
-      #align(center)[
-        #diagram(
-          node-stroke: 1pt + dark,
-          edge-stroke: 1.5pt + rgb("#28a745"),
-          spacing: (7mm, 10mm),
-
-          // Labels
-          node((-1.2, 0), text(size: 8pt, weight: "bold")[In:], stroke: none, fill: none),
-          node((-1.2, 1), text(size: 8pt, weight: "bold")[Out:], stroke: none, fill: none),
-
-          // Input rows (sparse)
-          node((0, 0), text(size: 7pt)[y=2], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 4pt, name: <i0>),
-          node((2, 0), text(size: 7pt)[y=5], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 4pt, name: <i1>),
-
-          // Output rows (dense after expand with ry=1)
-          node((0, 1), text(size: 6pt)[1], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o1>),
-          node((0.6, 1), text(size: 6pt)[2], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o2>),
-          node((1.2, 1), text(size: 6pt)[3], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o3>),
-          node((1.8, 1), text(size: 6pt)[4], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o4>),
-          node((2.4, 1), text(size: 6pt)[5], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o5>),
-          node((3, 1), text(size: 6pt)[6], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <o6>),
-
-          // Contribution arrows
-          edge(<i0>, <o1>, "->", bend: 20deg),
-          edge(<i0>, <o2>, "->"),
-          edge(<i0>, <o3>, "->", bend: -20deg),
-          edge(<i1>, <o4>, "->", bend: 20deg),
-          edge(<i1>, <o5>, "->"),
-          edge(<i1>, <o6>, "->", bend: -20deg),
-        )
-      ]
-      #align(center)[
-        #text(size: 7pt, fill: gray)[ry=1: row 2 → {1,2,3}, row 5 → {4,5,6}]
-      ]
-
-      #v(0.3em)
-      == Phase 2: N-way Union (per row)
-      #set text(size: 8pt)
-      #align(center)[
-        #box(stroke: 1pt + gray, inset: 0.4em, radius: 4pt, fill: light-gray.lighten(70%))[
-          #text(weight: "bold")[Output row y=3] — inputs: rows 2,3,4
-        ]
-      ]
-      #v(0.2em)
-      #align(center)[
-        #diagram(
-          node-stroke: 1pt + dark,
-          edge-stroke: 1.5pt + rgb("#28a745"),
-          spacing: (5mm, 8mm),
-
-          // Row labels
-          node((-1.3, 0), text(size: 7pt)[row 2:], stroke: none, fill: none),
-          node((-1.3, 1), text(size: 7pt)[row 4:], stroke: none, fill: none),
-          node((-1.3, 2), text(size: 7pt)[∪:], stroke: none, fill: none),
-
-          // Row 2 expanded interval
-          node((0.5, 0), text(size: 6pt)[[1,7]], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, name: <r2>),
-
-          // Row 4 expanded interval
-          node((1.5, 1), text(size: 6pt)[[8,14]], corner-radius: 2pt, fill: rgb("#fff3cd"), inset: 3pt, name: <r4>),
-
-          // Result (union)
-          node((0.5, 2), text(size: 6pt, weight: "bold")[[1,7]], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <u1>),
-          node((1.5, 2), text(size: 6pt, weight: "bold")[[8,14]], corner-radius: 2pt, fill: rgb("#d4edda"), inset: 3pt, name: <u2>),
-
-          edge(<r2>, <u1>, "->"),
-          edge(<r4>, <u2>, "->"),
-        )
-      ]
-      #align(center)[
-        #text(size: 7pt)[Expand: \[b,e) → \[b-rx, e+rx)]
-      ]
-    ],
-    [
-      == Interval Expansion
-      #align(center)[
-        #diagram(
-          node-stroke: 1pt + dark,
-          spacing: (3mm, 8mm),
-
-          node((-0.5, 0), text(size: 8pt)[Original:], stroke: none, fill: none),
-          node((2, 0), text(size: 8pt)[[4,8]], corner-radius: 3pt, fill: rgb("#fff3cd"), inset: 5pt),
-
-          node((-0.5, 1), text(size: 8pt)[rx=2:], stroke: none, fill: none),
-          node((2, 1), text(size: 8pt, weight: "bold")[[2,10]], corner-radius: 3pt, fill: rgb("#d4edda"), inset: 5pt),
-        )
-      ]
-      #align(center)[
-        #box(fill: rgb("#e8f4f8"), inset: 0.2em, radius: 3pt)[
-          `[begin-rx, end+rx)`
-        ]
-      ]
-
-      #v(0.4em)
-      == GPU Pattern: Count → Scan → Fill
-      #set text(size: 8pt)
-
-      *1. COUNT* — N-way union count
-      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#e3f2fd").lighten(70%))[
-        ```cpp
-        row_counts[i] = n_way_union_count(
-            rows[map_start[i]..map_end[i]], rx);
-        ```
-      ]
-
-      *2. SCAN*
-      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#fff3cd").lighten(70%))[
-        ```cpp
-        row_ptr = exclusive_scan(row_counts);
-        ```
-      ]
-
-      *3. FILL* — N-way union write
-      #box(stroke: 1pt + gray, inset: 0.2em, radius: 3pt, width: 100%, fill: rgb("#d4edda").lighten(70%))[
-        ```cpp
-        n_way_union_fill(
-            rows[map_start[i]..map_end[i]], rx,
-            out, row_ptr[i]);
-        ```
-      ]
-
-      #v(0.2em)
-      #align(center)[
-        #box(fill: rgb("#f8d7da"), inset: 0.2em, radius: 3pt)[
-          *Shrink*: N-way ∩, \[b+rx, e-rx\)
         ]
       ]
     ]
@@ -847,67 +608,3 @@
   )
 ]
 
-// ============================================
-// SLIDE: Morphology & AMR
-// ============================================
-#slide(title: "Mathematical Morphology & AMR")[
-  #set text(size: 11pt)
-  #grid(
-    columns: (1fr, 1fr),
-    gutter: 1em,
-    [
-      == Dilation / Erosion
-      ```cpp
-      // N-way union with ±radius offset
-      row_n_way_union_impl(rows[], radius, out)
-
-      // N-way intersection with shrink
-      row_n_way_intersection_impl(rows[], r, out)
-      ```
-
-      #set text(size: 9pt)
-      #align(center)[
-        ```
-        Original:  ░░░░████████░░░░░░░░
-        Dilate(1): ░░░█████████░░░░░░░░  (+1 sides)
-        Erode(1):  ░░░░░██████░░░░░░░░░  (-1 sides)
-        ```
-      ]
-
-      == 2D Extension
-      - Consider rows y-r to y+r
-      - Merge with N-way operation
-      - Implicit structuring element (square)
-    ],
-    [
-      == AMR Operations
-      ```cpp
-      // Coarsening: fine → coarse
-      build_row_coarsen_mapping(fine, ws)
-      // y_coarse = y_fine / 2, merge X
-
-      // Refinement: coarse → fine
-      refine_level_up_device(coarse, ws)
-      // [a,b) → [2a, 2b), double Y
-      ```
-
-      #set text(size: 9pt)
-      #align(center)[
-        ```
-        Fine (level 1):        Coarse (level 0):
-        Y=3: ████████          Y=1: ████████
-        Y=2: ████████    →          (merge Y=2,3)
-        Y=1: ░░░░████          Y=0: ░░░░████
-        Y=0: ░░░░████               (merge Y=0,1)
-        ```
-      ]
-
-      == Field Transfer
-      ```cpp
-      // Projection fine → coarse (average)
-      // Prolongation coarse → fine (interp)
-      build_amr_interval_mapping(coarse, fine)
-      ```
-    ]
-  )
-]

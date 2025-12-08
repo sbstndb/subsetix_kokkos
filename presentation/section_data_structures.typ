@@ -28,65 +28,67 @@
           edge-stroke: 1.5pt + accent,
           spacing: (10mm, 10mm),
 
-          node((0, 0), align(left)[
-            #text(size: 10pt, weight: "bold")[IntervalSet2D] \
-            #text(size: 8pt)[row_keys[], row_ptr[] \
-            intervals[], cell_offsets[]]
-          ], corner-radius: 4pt, width: 42mm, inset: 6pt, name: <set>),
+          // Top row: Field and Region
+          node((0, 0), align(center)[
+            #text(size: 10pt, weight: "bold")[Field2DDevice\<T\>] \
+            #text(size: 8pt)[values[] + geometry]
+          ], corner-radius: 4pt, width: 45mm, inset: 6pt, fill: rgb("#d4edda"), name: <field>),
 
-          edge(<set>, <field>, "->"),
+          node((1, 0), align(center)[
+            #text(size: 10pt, weight: "bold")[IntervalSet2DDevice] \
+            #text(size: 8pt)[Region / mask]
+          ], corner-radius: 4pt, width: 40mm, inset: 6pt, fill: rgb("#fff3cd"), name: <region>),
 
-          node((0, 1), align(left)[
-            #text(size: 10pt, weight: "bold")[Field2D\<T\>] \
-            #text(size: 8pt)[geometry: IntervalSet2D \
-            values: View\<T\*\>]
-          ], corner-radius: 4pt, width: 42mm, inset: 6pt, fill: rgb("#d4edda"), name: <field>),
+          // Middle: geometric subset = intersection(Field.geometry, Region)
+          node((0.5, 1), align(center)[
+            #text(size: 10pt, weight: "bold")[IntervalSubSet2DDevice] \
+            #text(size: 8pt)[Geo subset \
+            intersection(Field.geometry, Region)]
+          ], corner-radius: 4pt, width: 60mm, inset: 6pt, name: <subset>),
 
-          // Region input
-          node((1, 1), align(center)[
-            #text(size: 10pt, weight: "bold")[Region] \
-            #text(size: 8pt)[(IntervalSet2D)]
-          ], corner-radius: 4pt, width: 26mm, inset: 6pt, fill: rgb("#fff3cd"), name: <region>),
+          // Bottom: SubField = view using subset to access values
+          node((0.5, 2), align(center)[
+            #text(size: 10pt, weight: "bold")[Field2DSubViewDevice\<T\>] \
+            #text(size: 8pt)[“SubField” = Field + Geo subset \
+            no extra values]
+          ], corner-radius: 4pt, width: 60mm, inset: 6pt, fill: rgb("#e8f4f8"), name: <subview>),
 
+          // Data flow
+          edge(<field>, <subset>, "->"),
+          edge(<region>, <subset>, "->"),
           edge(<field>, <subview>, "->"),
-          edge(<region>, <subview>, "->"),
-
-          node((0.5, 2), align(left)[
-            #text(size: 10pt, weight: "bold")[Field2DSubView\<T\>] \
-            #text(size: 8pt)[parent: Field2D& \
-            region: IntervalSet2D \
-            subset: IntervalSubSet2D]
-          ], corner-radius: 4pt, width: 50mm, inset: 6pt, fill: rgb("#e8f4f8"), name: <subview>),
+          edge(<subset>, <subview>, "->"),
         )
       ]
 
       #v(0.3em)
-      == IntervalSubSet2D
+      == Device-Side Grammar
       #set text(size: 9pt)
-      ```cpp
-      struct IntervalSubSet2D {
-        IntervalSet2D parent;      // ref
-        interval_indices[];        // which intervals
-        x_begin[], x_end[];        // restricted range
-        row_indices[];             // Y coords
-      };
-      ```
+      - `Field2DDevice<T>` = field values + `IntervalSet2DDevice geometry`
+      - `IntervalSet2DDevice` (region) = mask / target cells
+      - `IntervalSubSet2DDevice` = geo subset = `geometry ∩ region`
+      - `Field2DSubViewDevice<T>` = “SubField” = `Field + IntervalSubSet2DDevice`
+
+      #v(0.2em)
+      #set text(size: 8pt)
+      `Field2DSubViewDevice<T>` internally uses `IntervalSubSet2DDevice` \
+      to iterate only on active cells.
     ],
     [
-      == SubView: Lazy Intersection
+      == SubField: Usage Example
       #set text(size: 8pt)
       ```cpp
-      // Region = any IntervalSet2D
+      Field2DDevice<Real> rho(fluid_geo);      // Field
+
+      // Region = any IntervalSet2DDevice (BC, AMR, overlap)
       IntervalSet2DDevice left_bc = make_box_device({0,2,0,ny});
-      Field2DSubViewDevice<T> sub = make_subview(field, left_bc);
 
-      // First op: computes field.geo ∩ region
-      fill_subview_device(sub, T_inlet, &ctx);
+      // SubField = rho restricted to left_bc
+      Field2DSubViewDevice<Real> sub = make_subview(rho, left_bc);
 
-      // Time loop: reuses cached intersection
-      for (int step = 0; step < nsteps; ++step) {
-        fill_subview_device(sub, T_inlet);  // fast
-      }
+      // Apply operations only on this region
+      fill_subview_device(sub, rho_inlet);
+      apply_stencil_on_subview_device(sub, bc_stencil);
       ```
 
       #v(0.3em)
@@ -97,11 +99,9 @@
       - `apply_stencil_on_subview_device(...)`
 
       #v(0.3em)
-      #box(fill: rgb("#d4edda"), inset: 0.4em, radius: 4pt, width: 100%)[
-        #set text(size: 10pt)
-        *Lazy*: intersection computed on first use \
-        *Cached*: reused for subsequent operations
-      ]
+      #set text(size: 8pt)
+      In `mach2_cylinder`, overlap/guard regions and AMR masks \
+      use exactly this SubField (SubView) + region mask design.
     ]
   )
 ]
@@ -110,6 +110,10 @@
 // SLIDE: IntervalSet2D Structure
 // ============================================
 #slide(title: "IntervalSet2D — Complete CSR Structure")[
+  #set text(size: 11pt)
+  Sparse 2D geometry stored as *rows of X-intervals*, indexed by Y coordinate — similar to CSR matrix format.
+
+  #v(0.3em)
   #set text(size: 12pt)
   #grid(
     columns: (1.1fr, 1fr),
@@ -138,18 +142,28 @@
       ```
     ],
     [
+      == Basic Types
+      #set text(size: 10pt)
+      ```cpp
+      using Coord = std::int32_t;
+
+      struct Interval {
+        Coord begin = 0;  // Inclusive
+        Coord end = 0;    // Exclusive
+      };
+
+      struct RowKey2D {
+        Coord y = 0;
+      };
+      ```
+
+      #v(0.3em)
       == Invariants
+      #set text(size: 10pt)
       - `row_keys` sorted by increasing Y
       - Intervals sorted by X within each row
       - No overlap between intervals
       - `row_ptr[r+1] - row_ptr[r]` = nb intervals row r
-
-      #v(0.5em)
-      #align(center)[
-        #box(fill: rgb("#e8f4f8"), inset: 0.4em, radius: 4pt)[
-          *Template MemorySpace*: Device or Host
-        ]
-      ]
     ]
   )
 ]
@@ -159,12 +173,14 @@
 // ============================================
 #slide(title: "Field2D — Field on Sparse Geometry")[
   #set text(size: 11pt)
+  Associates a *contiguous array of values* with each cell of an IntervalSet2D geometry.
+
+  #v(0.3em)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
     [
       == Definition
-      Associates a *value* with each sparse cell
 
       ```cpp
       template<class T, class MemorySpace>
@@ -191,12 +207,8 @@
       == Cell Access
       #set text(size: 10pt)
       ```cpp
-      // O(1) - when interval index known
+      // O(1) - interval index + x coordinate
       T val = field.at(interval_idx, x);
-
-      // O(log R + log I) - by coordinates
-      // (binary search on Y, then X)
-      bool ok = accessor.try_get(x, y, val);
       ```
 
       #v(0.5em)
@@ -212,95 +224,13 @@
 ]
 
 // ============================================
-// SLIDE: SubSet — Targeted Region Operations
-// ============================================
-#slide(title: "SubSet — Targeted Region Operations")[
-  #set text(size: 11pt)
-  #grid(
-    columns: (1fr, 1fr),
-    gutter: 1.5em,
-    [
-      == Structure
-      #set text(size: 10pt)
-      ```cpp
-      struct IntervalSubSet2D {
-        IntervalSet2D parent;  // ref to Field geo
-        interval_indices[];    // which intervals
-        x_begin[], x_end[];    // restricted range
-        row_indices[];         // Y row in parent
-        num_entries;
-      };
-      ```
-
-      #v(0.3em)
-      == Usage
-      #set text(size: 10pt)
-      ```cpp
-      // Build subset (intersection)
-      build_interval_subset(
-        field.geometry, mask, subset, &ctx);
-
-      // Operations on subset only
-      fill_on_subset(field, subset, 0.0);
-
-      // Iteration: O(1) access per entry
-      for (e = 0; e < num_entries; ++e) {
-        int iv = interval_indices[e];
-        for (x = x_begin[e]; x < x_end[e]; ++x)
-          field.at(iv, x) = ...;  // O(1)
-      }
-      ```
-    ],
-    [
-      == 1D Example: Intersection
-      #set text(size: 8pt)
-      #align(center)[
-        #box(stroke: 1pt + dark, inset: 0.5em, radius: 4pt, fill: light-gray.lighten(50%))[
-          ```
-          Parent:  [==A==]   [==B==]   [==C==]
-            idx:      0         1         2
-                   0     8  12    18  22    30
-
-          Mask:        [=======M=======]
-                       5              25
-
-          SubSet:      [=]   [==B==]   [=]
-                       5 8  12    18  22 25
-                        ↑       ↑       ↑
-          entry:        0       1       2
-          ```
-        ]
-      ]
-
-      #v(0.2em)
-      == SubSet = references to Parent
-      #set text(size: 8pt)
-      #align(center)[
-        #box(stroke: 1pt + accent, inset: 0.4em, radius: 4pt)[
-          ```
-          entry | interval_idx | x_begin | x_end
-          ------+--------------+---------+------
-            0   |      0 (A)   |    5    |   8
-            1   |      1 (B)   |   12    |  18
-            2   |      2 (C)   |   22    |  25
-          ```
-        ]
-      ]
-
-      #align(center)[
-        #box(fill: rgb("#d4edda"), inset: 0.3em, radius: 4pt)[
-          *No data copy* — just indices + bounds
-        ]
-      ]
-    ]
-  )
-]
-
-// ============================================
 // SLIDE: Field2DSubView
 // ============================================
 #slide(title: "Field2DSubView — View on Field + Region")[
   #set text(size: 11pt)
+  Combines a Field with a target region for *localized operations* — lazy intersection, cached for reuse.
+
+  #v(0.3em)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
@@ -320,7 +250,7 @@
       #set text(size: 9pt)
       ```cpp
       // 1. Create (no computation)
-      auto sub = make_subview(field, region);
+      Field2DSubViewDevice<T> sub = make_subview(field, region);
       // sub.subset is empty
 
       // 2. First op with ctx → triggers build
@@ -375,6 +305,9 @@
 // ============================================
 #slide(title: "Workspace & AMR Support")[
   #set text(size: 11pt)
+  Reusable buffer pool to avoid repeated GPU allocations, and multi-resolution grid structure for AMR.
+
+  #v(0.3em)
   #grid(
     columns: (1fr, 1fr),
     gutter: 1.5em,
