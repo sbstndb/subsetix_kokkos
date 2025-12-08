@@ -49,7 +49,7 @@
           // Bottom: SubField = view using subset to access values
           node((0.5, 2), align(center)[
             #text(size: 10pt, weight: "bold")[Field2DSubViewDevice\<T\>] \
-            #text(size: 8pt)[“SubField” = Field + Geo subset \
+            #text(size: 8pt)["SubField" = Field + Geo subset \
             no extra values]
           ], corner-radius: 4pt, width: 60mm, inset: 6pt, fill: rgb("#e8f4f8"), name: <subview>),
 
@@ -67,7 +67,7 @@
       - `Field2DDevice<T>` = field values + `IntervalSet2DDevice geometry`
       - `IntervalSet2DDevice` (region) = mask / target cells
       - `IntervalSubSet2DDevice` = geo subset = `geometry ∩ region`
-      - `Field2DSubViewDevice<T>` = “SubField” = `Field + IntervalSubSet2DDevice`
+      - `Field2DSubViewDevice<T>` = "SubField" = `Field + IntervalSubSet2DDevice`
 
       #v(0.2em)
       #set text(size: 8pt)
@@ -219,6 +219,94 @@
       fill_field_device(rho, 1.0);
       auto rho_host = to_host(rho);  // I/O
       ```
+    ]
+  )
+]
+
+// ============================================
+// SLIDE: SubSet — Targeted Region Operations
+// ============================================
+#slide(title: "SubSet — Targeted Region Operations")[
+  #set text(size: 11pt)
+  Represents a *subset of the parent geometry* (intersection with a mask) — used by SubFields to restrict operations to specific cells.
+
+  #v(0.3em)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 1.5em,
+    [
+      == Structure
+      #set text(size: 10pt)
+      ```cpp
+      struct IntervalSubSet2D {
+        IntervalSet2D parent;  // ref to Field geo
+        interval_indices[];    // which intervals
+        x_begin[], x_end[];    // restricted range
+        row_indices[];         // Y row in parent
+        num_entries;
+      };
+      ```
+
+      #v(0.3em)
+      == Usage
+      #set text(size: 10pt)
+      ```cpp
+      // Build subset (intersection)
+      build_interval_subset(
+        field.geometry, mask, subset, &ctx);
+
+      // Operations on subset only
+      fill_on_subset(field, subset, 0.0);
+      ```
+    ],
+    [
+      == 1D Example: Intersection
+      #set text(size: 8pt)
+      #align(center)[
+        #box(stroke: 1pt + dark, inset: 0.5em, radius: 4pt, fill: light-gray.lighten(50%))[
+          ```
+          Parent:  [==A==]   [==B==]   [==C==]
+            idx:      0         1         2
+                   0     8  12    18  22    30
+
+          Mask:        [=======M=======]
+                       5              25
+
+          SubSet:      [=]   [==B==]   [=]
+                       5 8  12    18  22 25
+                        ↑       ↑       ↑
+          entry:        0       1       2
+          ```
+        ]
+      ]
+
+      #v(0.2em)
+      == SubSet = references to Parent
+      #set text(size: 8pt)
+      #align(center)[
+        #box(stroke: 1pt + accent, inset: 0.4em, radius: 4pt)[
+          ```
+          entry | interval_idx | x_begin | x_end
+          ------+--------------+---------+------
+            0   |      0 (A)   |    5    |   8
+            1   |      1 (B)   |   12    |  18
+            2   |      2 (C)   |   22    |  25
+          ```
+        ]
+      ]
+
+      #align(center)[
+        #box(fill: rgb("#d4edda"), inset: 0.3em, radius: 4pt)[
+          *No data copy* — just indices + bounds
+        ]
+      ]
+
+      #v(0.3em)
+      #align(center)[
+        #box(fill: rgb("#fff3cd"), inset: 0.3em, radius: 4pt)[
+          #text(size: 8pt)[⚠️ Structure too complex — needs simplification]
+        ]
+      ]
     ]
   )
 ]
