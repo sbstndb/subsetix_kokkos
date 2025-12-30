@@ -132,3 +132,17 @@ target_link_libraries(smoke_plume
     PRIVATE
         subsetix::core
 )
+
+# ============================================================================
+# FVD High-Level API Examples
+# ============================================================================
+
+add_executable(fvd_mach2_cylinder_example
+    fvd_mach2_cylinder_example.cpp
+)
+
+target_link_libraries(fvd_mach2_cylinder_example
+    PRIVATE
+        subsetix::core
+)
+target_include_directories(fvd_mach2_cylinder_example PRIVATE ${CMAKE_SOURCE_DIR}/include)

@@ -58,3 +58,23 @@ add_executable(subsetix_test_amr
 )
 target_link_libraries(subsetix_test_amr PRIVATE subsetix::core GTest::gtest)
 add_test(NAME AmrTests COMMAND subsetix_test_amr)
+
+# 5. FVD High-Level API Tests: Compilation tests for FVD layer
+# These tests verify that the FVD high-level API compiles correctly
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_api
+    fvd_high_level_api_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_api PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_api PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdApiTests COMMAND subsetix_test_fvd_api)
+
+# 6. FVD Execution Tests: Numerical validation and GPU tests
+# These tests actually execute code to verify correctness
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_execution
+    fvd_execution_tests.cpp
+)
+target_link_libraries(subsetix_test_fvd_execution PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_execution PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdExecutionTests COMMAND subsetix_test_fvd_execution)
