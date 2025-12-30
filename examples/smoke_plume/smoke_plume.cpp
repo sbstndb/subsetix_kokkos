@@ -9,7 +9,7 @@
 #include <subsetix/geometry/csr_interval_subset.hpp>
 #include <subsetix/geometry/csr_mapping.hpp>
 #include <subsetix/geometry/csr_set_ops.hpp>
-#include <subsetix/csr_ops/core.hpp>
+#include <subsetix/csr_ops/set_algebra.hpp>
 #include <subsetix/csr_ops/morphology.hpp>
 #include <subsetix/csr_ops/threshold.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>

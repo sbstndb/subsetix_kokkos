@@ -8,7 +8,7 @@
 #include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/geometry/csr_mapping.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
-#include <subsetix/csr_ops/core.hpp>
+#include <subsetix/csr_ops/set_algebra.hpp>
 
 namespace subsetix {
 namespace csr {

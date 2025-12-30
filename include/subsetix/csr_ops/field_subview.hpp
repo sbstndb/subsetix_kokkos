@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 #include <subsetix/field/csr_field.hpp>
-#include <subsetix/csr_ops/field_core.hpp>
+#include <subsetix/csr_ops/field_mapping.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>
 #include <subsetix/csr_ops/field_subset.hpp>

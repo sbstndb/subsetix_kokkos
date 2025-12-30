@@ -4,7 +4,7 @@
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
-#include <subsetix/csr_ops/field_algebra.hpp>
+#include <subsetix/csr_ops/field_arith.hpp>
 
 using namespace subsetix::csr;
 

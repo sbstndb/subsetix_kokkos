@@ -9,8 +9,8 @@
 #include <subsetix/geometry/csr_interval_subset.hpp>
 #include <subsetix/geometry/csr_mapping.hpp>
 #include <subsetix/geometry/csr_set_ops.hpp>
-#include <subsetix/csr_ops/core.hpp>
-#include <subsetix/csr_ops/field_core.hpp>
+#include <subsetix/csr_ops/set_algebra.hpp>
+#include <subsetix/csr_ops/field_mapping.hpp>
 #include <subsetix/csr_ops/field_amr.hpp>
 #include <subsetix/csr_ops/field_stencil.hpp>
 #include <subsetix/csr_ops/field_subview.hpp>

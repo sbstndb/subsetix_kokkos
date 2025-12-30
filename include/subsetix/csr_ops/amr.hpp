@@ -3,7 +3,7 @@
 #include <Kokkos_Core.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/csr_ops/workspace.hpp>
-#include <subsetix/csr_ops/core.hpp> // for row_union_count/fill
+#include <subsetix/csr_ops/set_algebra.hpp> // for row_union_count/fill
 #include <subsetix/detail/csr_utils.hpp>
 
 namespace subsetix {
