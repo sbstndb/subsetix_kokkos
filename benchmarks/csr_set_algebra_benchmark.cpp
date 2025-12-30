@@ -1,4 +1,4 @@
-﻿#include <benchmark/benchmark.h>
+#include <benchmark/benchmark.h>
 #include <Kokkos_Core.hpp>
 #include <chrono>
 
@@ -6,9 +6,11 @@
 #include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/geometry/csr_interval_subset.hpp>
 #include <subsetix/geometry/csr_mapping.hpp>
+#include <subsetix/benchmark_sizes.hpp>
 #include <subsetix/geometry/csr_set_ops.hpp>
 
 using namespace subsetix::csr;
+using namespace subsetix::benchmark;
 
 namespace {
 
@@ -53,11 +55,11 @@ std::size_t overlap_rows(const RectConfig& a_cfg,
              : 0;
 }
 
-constexpr Coord kSizeTiny = 128;
-constexpr Coord kSizeMedium = 1280;
-constexpr Coord kSizeLarge = 12800;
-constexpr Coord kSizeXLarge = 128000;
-constexpr Coord kSizeXXLarge = 1280000;
+constexpr Coord kSizeTiny    = kIntervalsTiny;
+constexpr Coord kSizeMedium  = kIntervalsMedium;
+constexpr Coord kSizeLarge   = kIntervalsLarge;
+constexpr Coord kSizeXLarge  = kIntervalsXLarge;
+constexpr Coord kSizeXXLarge = kIntervalsXXLarge;
 
 void bench_box_construction(benchmark::State& state,
                             const RectConfig& cfg) {

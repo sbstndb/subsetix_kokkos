@@ -1,3 +1,4 @@
+#include <subsetix/benchmark_sizes.hpp>
 #include <benchmark/benchmark.h>
 #include <Kokkos_Core.hpp>
 #include <chrono>
@@ -14,8 +15,15 @@
 #include <subsetix/csr_ops/workspace.hpp>
 
 using namespace subsetix::csr;
+using namespace subsetix::benchmark;
 
 namespace {
+
+// Standardized field benchmark sizes from benchmark_sizes.hpp
+constexpr Coord kSizeTiny   = kFieldTiny;
+constexpr Coord kSizeSmall  = kFieldSmall;
+constexpr Coord kSizeMedium = kFieldMedium;
+constexpr Coord kSizeLarge  = kFieldLarge;
 
 struct RectConfig {
   Coord x_min;
@@ -767,28 +775,28 @@ void bench_subview_prolongation_prediction(
 // --- Fill benchmarks ---
 
 void BM_FieldFill_Tiny(benchmark::State& state) {
-  const RectConfig cfg = make_rect(64);
+  const RectConfig cfg = make_rect(kSizeTiny);
   bench_field_op(state, cfg, cfg, [](auto& field, const auto& mask) {
     fill_on_set_device(field, mask, 1.0);
   });
 }
 
 void BM_FieldFill_Small(benchmark::State& state) {
-  const RectConfig cfg = make_rect(256);
+  const RectConfig cfg = make_rect(kSizeSmall);
   bench_field_op(state, cfg, cfg, [](auto& field, const auto& mask) {
     fill_on_set_device(field, mask, 1.0);
   });
 }
 
 void BM_FieldFill_Medium(benchmark::State& state) {
-  const RectConfig cfg = make_rect(1024);
+  const RectConfig cfg = make_rect(kSizeMedium);
   bench_field_op(state, cfg, cfg, [](auto& field, const auto& mask) {
     fill_on_set_device(field, mask, 1.0);
   });
 }
 
 void BM_FieldFill_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_field_op(state, cfg, cfg, [](auto& field, const auto& mask) {
     fill_on_set_device(field, mask, 1.0);
   });
@@ -797,38 +805,38 @@ void BM_FieldFill_Large(benchmark::State& state) {
 // --- Stencil benchmarks ---
 
 void BM_FieldStencil_Tiny(benchmark::State& state) {
-  const RectConfig cfg = make_rect(64);
+  const RectConfig cfg = make_rect(kSizeTiny);
   bench_stencil(state, cfg, interior_rect(cfg));
 }
 
 void BM_FieldStencil_Small(benchmark::State& state) {
-  const RectConfig cfg = make_rect(256);
+  const RectConfig cfg = make_rect(kSizeSmall);
   bench_stencil(state, cfg, interior_rect(cfg));
 }
 
 void BM_FieldStencil_Medium(benchmark::State& state) {
-  const RectConfig cfg = make_rect(1024);
+  const RectConfig cfg = make_rect(kSizeMedium);
   bench_stencil(state, cfg, interior_rect(cfg));
 }
 
 void BM_FieldStencil_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_stencil(state, cfg, interior_rect(cfg));
 }
 
 void BM_FieldStencil10_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_stencil_repeated(state, cfg, interior_rect(cfg), 10);
 }
 
 // --- Restriction benchmarks ---
 
 void BM_FieldRestrict_Tiny(benchmark::State& state) {
-  bench_restriction(state, make_rect(64));
+  bench_restriction(state, make_rect(kSizeTiny));
 }
 
 void BM_FieldRestrict_Small(benchmark::State& state) {
-  bench_restriction(state, make_rect(256));
+  bench_restriction(state, make_rect(kSizeSmall));
 }
 
 void BM_FieldRestrict_Medium(benchmark::State& state) {
@@ -836,17 +844,17 @@ void BM_FieldRestrict_Medium(benchmark::State& state) {
 }
 
 void BM_FieldRestrict_Large(benchmark::State& state) {
-  bench_restriction(state, make_rect(1024));
+  bench_restriction(state, make_rect(kSizeMedium));
 }
 
 // --- Prolongation benchmarks ---
 
 void BM_FieldProlong_Tiny(benchmark::State& state) {
-  bench_prolongation(state, make_rect(64));
+  bench_prolongation(state, make_rect(kSizeTiny));
 }
 
 void BM_FieldProlong_Small(benchmark::State& state) {
-  bench_prolongation(state, make_rect(256));
+  bench_prolongation(state, make_rect(kSizeSmall));
 }
 
 void BM_FieldProlong_Medium(benchmark::State& state) {
@@ -854,17 +862,17 @@ void BM_FieldProlong_Medium(benchmark::State& state) {
 }
 
 void BM_FieldProlong_Large(benchmark::State& state) {
-  bench_prolongation(state, make_rect(1024));
+  bench_prolongation(state, make_rect(kSizeMedium));
 }
 
 // --- Prolongation Prediction benchmarks ---
 
 void BM_FieldProlongPrediction_Tiny(benchmark::State& state) {
-  bench_prolongation_prediction(state, make_rect(64));
+  bench_prolongation_prediction(state, make_rect(kSizeTiny));
 }
 
 void BM_FieldProlongPrediction_Small(benchmark::State& state) {
-  bench_prolongation_prediction(state, make_rect(256));
+  bench_prolongation_prediction(state, make_rect(kSizeSmall));
 }
 
 void BM_FieldProlongPrediction_Medium(benchmark::State& state) {
@@ -872,62 +880,62 @@ void BM_FieldProlongPrediction_Medium(benchmark::State& state) {
 }
 
 void BM_FieldProlongPrediction_Large(benchmark::State& state) {
-  bench_prolongation_prediction(state, make_rect(1024));
+  bench_prolongation_prediction(state, make_rect(kSizeMedium));
 }
 
 // --- Subview Fill benchmarks ---
 
 void BM_FieldSubViewFill_Tiny(benchmark::State& state) {
-  const RectConfig cfg = make_rect(64);
+  const RectConfig cfg = make_rect(kSizeTiny);
   bench_subview_op(state, cfg, cfg, [](auto& sub) {
     fill_subview_device(sub, 1.0);
   });
 }
 
 void BM_FieldSubViewFill_Small(benchmark::State& state) {
-  const RectConfig cfg = make_rect(256);
+  const RectConfig cfg = make_rect(kSizeSmall);
   bench_subview_op(state, cfg, cfg, [](auto& sub) {
     fill_subview_device(sub, 1.0);
   });
 }
 
 void BM_FieldSubViewFill_Medium(benchmark::State& state) {
-  const RectConfig cfg = make_rect(1024);
+  const RectConfig cfg = make_rect(kSizeMedium);
   bench_subview_op(state, cfg, cfg, [](auto& sub) {
     fill_subview_device(sub, 1.0);
   });
 }
 
 void BM_FieldSubViewFill_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_subview_op(state, cfg, cfg, [](auto& sub) {
     fill_subview_device(sub, 1.0);
   });
 }
 
 void BM_FieldSubViewFillSubset_Tiny(benchmark::State& state) {
-  const RectConfig cfg = make_rect(64);
+  const RectConfig cfg = make_rect(kSizeTiny);
   bench_subview_op(state, cfg, cfg, [](auto& sub) {
     fill_subview_device(sub, 1.0);
   }, true);
 }
 
 void BM_FieldSubViewFillSubset_Small(benchmark::State& state) {
-  const RectConfig cfg = make_rect(256);
+  const RectConfig cfg = make_rect(kSizeSmall);
   bench_subview_op(state, cfg, cfg, [](auto& sub) {
     fill_subview_device(sub, 1.0);
   }, true);
 }
 
 void BM_FieldSubViewFillSubset_Medium(benchmark::State& state) {
-  const RectConfig cfg = make_rect(1024);
+  const RectConfig cfg = make_rect(kSizeMedium);
   bench_subview_op(state, cfg, cfg, [](auto& sub) {
     fill_subview_device(sub, 1.0);
   }, true);
 }
 
 void BM_FieldSubViewFillSubset_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_subview_op(state, cfg, cfg, [](auto& sub) {
     fill_subview_device(sub, 1.0);
   }, true);
@@ -936,65 +944,65 @@ void BM_FieldSubViewFillSubset_Large(benchmark::State& state) {
 // --- Subview Stencil benchmarks ---
 
 void BM_FieldSubViewStencil_Tiny(benchmark::State& state) {
-  const RectConfig cfg = make_rect(64);
+  const RectConfig cfg = make_rect(kSizeTiny);
   bench_subview_stencil(state, cfg, interior_rect(cfg));
 }
 
 void BM_FieldSubViewStencil_Small(benchmark::State& state) {
-  const RectConfig cfg = make_rect(256);
+  const RectConfig cfg = make_rect(kSizeSmall);
   bench_subview_stencil(state, cfg, interior_rect(cfg));
 }
 
 void BM_FieldSubViewStencil_Medium(benchmark::State& state) {
-  const RectConfig cfg = make_rect(1024);
+  const RectConfig cfg = make_rect(kSizeMedium);
   bench_subview_stencil(state, cfg, interior_rect(cfg));
 }
 
 void BM_FieldSubViewStencil_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_subview_stencil(state, cfg, interior_rect(cfg));
 }
 
 void BM_FieldSubViewStencil10_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_subview_stencil_repeated(state, cfg, interior_rect(cfg),
                                  false, 10);
 }
 
 void BM_FieldSubViewStencilSubset10_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_subview_stencil_repeated(state, cfg, interior_rect(cfg),
                                  true, 10);
 }
 
 void BM_FieldSubViewStencilSubset_Tiny(benchmark::State& state) {
-  const RectConfig cfg = make_rect(64);
+  const RectConfig cfg = make_rect(kSizeTiny);
   bench_subview_stencil(state, cfg, interior_rect(cfg), true);
 }
 
 void BM_FieldSubViewStencilSubset_Small(benchmark::State& state) {
-  const RectConfig cfg = make_rect(256);
+  const RectConfig cfg = make_rect(kSizeSmall);
   bench_subview_stencil(state, cfg, interior_rect(cfg), true);
 }
 
 void BM_FieldSubViewStencilSubset_Medium(benchmark::State& state) {
-  const RectConfig cfg = make_rect(1024);
+  const RectConfig cfg = make_rect(kSizeMedium);
   bench_subview_stencil(state, cfg, interior_rect(cfg), true);
 }
 
 void BM_FieldSubViewStencilSubset_Large(benchmark::State& state) {
-  const RectConfig cfg = make_rect(2048);
+  const RectConfig cfg = make_rect(kSizeLarge);
   bench_subview_stencil(state, cfg, interior_rect(cfg), true);
 }
 
 // --- Subview Restriction benchmarks ---
 
 void BM_FieldSubViewRestrict_Tiny(benchmark::State& state) {
-  bench_subview_restriction(state, make_rect(64));
+  bench_subview_restriction(state, make_rect(kSizeTiny));
 }
 
 void BM_FieldSubViewRestrict_Small(benchmark::State& state) {
-  bench_subview_restriction(state, make_rect(256));
+  bench_subview_restriction(state, make_rect(kSizeSmall));
 }
 
 void BM_FieldSubViewRestrict_Medium(benchmark::State& state) {
@@ -1002,15 +1010,15 @@ void BM_FieldSubViewRestrict_Medium(benchmark::State& state) {
 }
 
 void BM_FieldSubViewRestrict_Large(benchmark::State& state) {
-  bench_subview_restriction(state, make_rect(1024));
+  bench_subview_restriction(state, make_rect(kSizeMedium));
 }
 
 void BM_FieldSubViewRestrictSubset_Tiny(benchmark::State& state) {
-  bench_subview_restriction(state, make_rect(64), true);
+  bench_subview_restriction(state, make_rect(kSizeTiny), true);
 }
 
 void BM_FieldSubViewRestrictSubset_Small(benchmark::State& state) {
-  bench_subview_restriction(state, make_rect(256), true);
+  bench_subview_restriction(state, make_rect(kSizeSmall), true);
 }
 
 void BM_FieldSubViewRestrictSubset_Medium(benchmark::State& state) {
@@ -1018,17 +1026,17 @@ void BM_FieldSubViewRestrictSubset_Medium(benchmark::State& state) {
 }
 
 void BM_FieldSubViewRestrictSubset_Large(benchmark::State& state) {
-  bench_subview_restriction(state, make_rect(1024), true);
+  bench_subview_restriction(state, make_rect(kSizeMedium), true);
 }
 
 // --- Subview Prolongation benchmarks ---
 
 void BM_FieldSubViewProlong_Tiny(benchmark::State& state) {
-  bench_subview_prolongation(state, make_rect(64));
+  bench_subview_prolongation(state, make_rect(kSizeTiny));
 }
 
 void BM_FieldSubViewProlong_Small(benchmark::State& state) {
-  bench_subview_prolongation(state, make_rect(256));
+  bench_subview_prolongation(state, make_rect(kSizeSmall));
 }
 
 void BM_FieldSubViewProlong_Medium(benchmark::State& state) {
@@ -1036,15 +1044,15 @@ void BM_FieldSubViewProlong_Medium(benchmark::State& state) {
 }
 
 void BM_FieldSubViewProlong_Large(benchmark::State& state) {
-  bench_subview_prolongation(state, make_rect(1024));
+  bench_subview_prolongation(state, make_rect(kSizeMedium));
 }
 
 void BM_FieldSubViewProlongSubset_Tiny(benchmark::State& state) {
-  bench_subview_prolongation(state, make_rect(64), true);
+  bench_subview_prolongation(state, make_rect(kSizeTiny), true);
 }
 
 void BM_FieldSubViewProlongSubset_Small(benchmark::State& state) {
-  bench_subview_prolongation(state, make_rect(256), true);
+  bench_subview_prolongation(state, make_rect(kSizeSmall), true);
 }
 
 void BM_FieldSubViewProlongSubset_Medium(benchmark::State& state) {
@@ -1052,17 +1060,17 @@ void BM_FieldSubViewProlongSubset_Medium(benchmark::State& state) {
 }
 
 void BM_FieldSubViewProlongSubset_Large(benchmark::State& state) {
-  bench_subview_prolongation(state, make_rect(1024), true);
+  bench_subview_prolongation(state, make_rect(kSizeMedium), true);
 }
 
 // --- Subview Prolongation Prediction benchmarks ---
 
 void BM_FieldSubViewProlongPrediction_Tiny(benchmark::State& state) {
-  bench_subview_prolongation_prediction(state, make_rect(64));
+  bench_subview_prolongation_prediction(state, make_rect(kSizeTiny));
 }
 
 void BM_FieldSubViewProlongPrediction_Small(benchmark::State& state) {
-  bench_subview_prolongation_prediction(state, make_rect(256));
+  bench_subview_prolongation_prediction(state, make_rect(kSizeSmall));
 }
 
 void BM_FieldSubViewProlongPrediction_Medium(benchmark::State& state) {
@@ -1070,15 +1078,15 @@ void BM_FieldSubViewProlongPrediction_Medium(benchmark::State& state) {
 }
 
 void BM_FieldSubViewProlongPrediction_Large(benchmark::State& state) {
-  bench_subview_prolongation_prediction(state, make_rect(1024));
+  bench_subview_prolongation_prediction(state, make_rect(kSizeMedium));
 }
 
 void BM_FieldSubViewProlongPredictionSubset_Tiny(benchmark::State& state) {
-  bench_subview_prolongation_prediction(state, make_rect(64), true);
+  bench_subview_prolongation_prediction(state, make_rect(kSizeTiny), true);
 }
 
 void BM_FieldSubViewProlongPredictionSubset_Small(benchmark::State& state) {
-  bench_subview_prolongation_prediction(state, make_rect(256), true);
+  bench_subview_prolongation_prediction(state, make_rect(kSizeSmall), true);
 }
 
 void BM_FieldSubViewProlongPredictionSubset_Medium(benchmark::State& state) {
@@ -1086,7 +1094,7 @@ void BM_FieldSubViewProlongPredictionSubset_Medium(benchmark::State& state) {
 }
 
 void BM_FieldSubViewProlongPredictionSubset_Large(benchmark::State& state) {
-  bench_subview_prolongation_prediction(state, make_rect(1024), true);
+  bench_subview_prolongation_prediction(state, make_rect(kSizeMedium), true);
 }
 
 } // namespace

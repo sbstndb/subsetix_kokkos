@@ -1,3 +1,4 @@
+#include <subsetix/benchmark_sizes.hpp>
 #include <benchmark/benchmark.h>
 #include <Kokkos_Core.hpp>
 #include <chrono>
@@ -14,8 +15,17 @@
 #include <subsetix/csr_ops/threshold.hpp>
 
 using namespace subsetix::csr;
+using namespace subsetix::benchmark;
 
 namespace {
+
+// Standardized field benchmark sizes from benchmark_sizes.hpp
+constexpr Coord kSizeTiny   = kFieldTiny;
+constexpr Coord kSizeSmall  = kFieldSmall;
+constexpr Coord kSizeMedium = kFieldMedium;
+constexpr Coord kSizeLarge  = kFieldLarge;
+constexpr Coord kSizeXLarge = kFieldXLarge;
+constexpr Coord kSizeHuge   = kFieldXXLarge;
 
 struct RectConfig {
   Coord x_min;
@@ -99,27 +109,27 @@ void bench_threshold(benchmark::State& state, const RectConfig& cfg) {
 }
 
 void BM_Threshold_Tiny(benchmark::State& state) {
-  bench_threshold(state, make_rect(64));
+  bench_threshold(state, make_rect(kSizeTiny));
 }
 
 void BM_Threshold_Small(benchmark::State& state) {
-  bench_threshold(state, make_rect(256));
+  bench_threshold(state, make_rect(kSizeSmall));
 }
 
 void BM_Threshold_Medium(benchmark::State& state) {
-  bench_threshold(state, make_rect(1024));
+  bench_threshold(state, make_rect(kSizeMedium));
 }
 
 void BM_Threshold_Large(benchmark::State& state) {
-  bench_threshold(state, make_rect(2048));
+  bench_threshold(state, make_rect(kSizeLarge));
 }
 
 void BM_Threshold_XLarge(benchmark::State& state) {
-  bench_threshold(state, make_rect(4096));
+  bench_threshold(state, make_rect(kSizeXLarge));
 }
 
 void BM_Threshold_Huge(benchmark::State& state) {
-  bench_threshold(state, make_rect(8192));
+  bench_threshold(state, make_rect(kSizeHuge));
 }
 
 } // namespace

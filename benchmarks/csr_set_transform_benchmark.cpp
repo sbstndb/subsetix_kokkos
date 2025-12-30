@@ -1,4 +1,5 @@
-﻿#include <benchmark/benchmark.h>
+#include <subsetix/benchmark_sizes.hpp>
+#include <benchmark/benchmark.h>
 #include <Kokkos_Core.hpp>
 #include <chrono>
 
@@ -9,8 +10,15 @@
 #include <subsetix/geometry/csr_set_ops.hpp>
 
 using namespace subsetix::csr;
+using namespace subsetix::benchmark;
 
 namespace {
+
+// Standardized interval benchmark sizes from benchmark_sizes.hpp
+constexpr Coord kSizeTiny   = kIntervalsTiny;
+constexpr Coord kSizeMedium = kIntervalsMedium;
+constexpr Coord kSizeLarge  = kIntervalsLarge;
+constexpr Coord kSizeXLarge = kIntervalsXLarge;
 
 struct RectConfig {
   Coord x_min;
@@ -147,28 +155,28 @@ void bench_allocation(benchmark::State& state,
 // --- Translation X ---
 
 void BM_CSRTranslateX_Tiny(benchmark::State& state) {
-  RectConfig cfg{0, 128, 0, 128};
+  RectConfig cfg{0, kSizeTiny, 0, kSizeTiny};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     translate_x_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateX_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1280, 0, 1280};
+  RectConfig cfg{0, kSizeMedium, 0, kSizeMedium};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     translate_x_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateX_Large(benchmark::State& state) {
-  RectConfig cfg{0, 12800, 0, 12800};
+  RectConfig cfg{0, kSizeLarge, 0, kSizeLarge};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     translate_x_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateX_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 128000, 0, 128000};
+  RectConfig cfg{0, kSizeXLarge, 0, kSizeXLarge};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     translate_x_device(A, 5, out, ctx);
   });
@@ -177,28 +185,28 @@ void BM_CSRTranslateX_XLarge(benchmark::State& state) {
 // --- Translation Y ---
 
 void BM_CSRTranslateY_Tiny(benchmark::State& state) {
-  RectConfig cfg{0, 128, 0, 128};
+  RectConfig cfg{0, kSizeTiny, 0, kSizeTiny};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     translate_y_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateY_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1280, 0, 1280};
+  RectConfig cfg{0, kSizeMedium, 0, kSizeMedium};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     translate_y_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateY_Large(benchmark::State& state) {
-  RectConfig cfg{0, 12800, 0, 12800};
+  RectConfig cfg{0, kSizeLarge, 0, kSizeLarge};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     translate_y_device(A, 5, out, ctx);
   });
 }
 
 void BM_CSRTranslateY_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 128000, 0, 128000};
+  RectConfig cfg{0, kSizeXLarge, 0, kSizeXLarge};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     translate_y_device(A, 5, out, ctx);
   });
@@ -207,28 +215,28 @@ void BM_CSRTranslateY_XLarge(benchmark::State& state) {
 // --- Refinement (prediction) ---
 
 void BM_CSRRefine_Tiny(benchmark::State& state) {
-  RectConfig cfg{0, 128, 0, 128};
+  RectConfig cfg{0, kSizeTiny, 0, kSizeTiny};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     refine_level_up_device(A, out, ctx);
   });
 }
 
 void BM_CSRRefine_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1280, 0, 1280};
+  RectConfig cfg{0, kSizeMedium, 0, kSizeMedium};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     refine_level_up_device(A, out, ctx);
   });
 }
 
 void BM_CSRRefine_Large(benchmark::State& state) {
-  RectConfig cfg{0, 12800, 0, 12800};
+  RectConfig cfg{0, kSizeLarge, 0, kSizeLarge};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     refine_level_up_device(A, out, ctx);
   });
 }
 
 void BM_CSRRefine_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 128000, 0, 128000};
+  RectConfig cfg{0, kSizeXLarge, 0, kSizeXLarge};
   bench_unary_op(state, cfg, [](const IntervalSet2DDevice& A, IntervalSet2DDevice& out, CsrSetAlgebraContext& ctx) {
     refine_level_up_device(A, out, ctx);
   });
@@ -237,44 +245,44 @@ void BM_CSRRefine_XLarge(benchmark::State& state) {
 // --- Projection ---
 
 void BM_CSRProject_Tiny(benchmark::State& state) {
-  RectConfig cfg{0, 128, 0, 128};
+  RectConfig cfg{0, kSizeTiny, 0, kSizeTiny};
   bench_projection(state, cfg);
 }
 
 void BM_CSRProject_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1280, 0, 1280};
+  RectConfig cfg{0, kSizeMedium, 0, kSizeMedium};
   bench_projection(state, cfg);
 }
 
 void BM_CSRProject_Large(benchmark::State& state) {
-  RectConfig cfg{0, 12800, 0, 12800};
+  RectConfig cfg{0, kSizeLarge, 0, kSizeLarge};
   bench_projection(state, cfg);
 }
 
 void BM_CSRProject_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 128000, 0, 128000};
+  RectConfig cfg{0, kSizeXLarge, 0, kSizeXLarge};
   bench_projection(state, cfg);
 }
 
 // --- Allocations ---
 
 void BM_CSRAllocate_Tiny(benchmark::State& state) {
-  RectConfig cfg{0, 128, 0, 128};
+  RectConfig cfg{0, kSizeTiny, 0, kSizeTiny};
   bench_allocation(state, cfg);
 }
 
 void BM_CSRAllocate_Medium(benchmark::State& state) {
-  RectConfig cfg{0, 1280, 0, 1280};
+  RectConfig cfg{0, kSizeMedium, 0, kSizeMedium};
   bench_allocation(state, cfg);
 }
 
 void BM_CSRAllocate_Large(benchmark::State& state) {
-  RectConfig cfg{0, 12800, 0, 12800};
+  RectConfig cfg{0, kSizeLarge, 0, kSizeLarge};
   bench_allocation(state, cfg);
 }
 
 void BM_CSRAllocate_XLarge(benchmark::State& state) {
-  RectConfig cfg{0, 128000, 0, 128000};
+  RectConfig cfg{0, kSizeXLarge, 0, kSizeXLarge};
   bench_allocation(state, cfg);
 }
 

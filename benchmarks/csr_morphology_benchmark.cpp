@@ -2,6 +2,7 @@
 #include <Kokkos_Core.hpp>
 #include <chrono>
 
+#include <subsetix/benchmark_sizes.hpp>
 #include <subsetix/geometry/csr_backend.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>
 #include <subsetix/geometry/csr_interval_subset.hpp>
@@ -9,14 +10,15 @@
 #include <subsetix/geometry/csr_set_ops.hpp>
 
 using namespace subsetix::csr;
+using namespace subsetix::benchmark;
 
 namespace {
 
-// Common sizes for benchmarks
-constexpr Coord kSizeTiny = 128;
-constexpr Coord kSizeMedium = 1280;
-constexpr Coord kSizeLarge = 12800;
-constexpr Coord kSizeXLarge = 128000;
+// Use standardized benchmark sizes from benchmark_sizes.hpp
+constexpr Coord kSizeTiny   = kIntervalsTiny;
+constexpr Coord kSizeMedium = kIntervalsMedium;
+constexpr Coord kSizeLarge  = kIntervalsLarge;
+constexpr Coord kSizeXLarge = kIntervalsXLarge;
 
 IntervalSet2DDevice make_bench_box(Coord size) {
   Box2D box;
