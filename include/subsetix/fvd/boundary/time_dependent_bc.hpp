@@ -100,7 +100,7 @@ struct TimeDependentBC {
  */
 template<typename Real>
 struct ZonePredicate {
-    using Predicate = enum : uint8_t {
+    enum Predicate : uint8_t {
         EntireSide = 0,      // Entire boundary side
         IntervalX = 1,       // x in [x_min, x_max]
         IntervalY = 2,       // y in [y_min, y_max]

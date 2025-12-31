@@ -106,22 +106,18 @@ void test_mass_conservation() {
         });
 
         // Compute total mass
-        Kokkos::View<Real> total_mass("total_mass");
+        Real total_mass = 0;
         Kokkos::parallel_reduce("sum_mass", n,
             KOKKOS_LAMBDA(int i, Real& local_sum) {
                 local_sum += U(i).rho;
             },
-            Kokkos::Sum<Real>(total_mass));
-
-        Kokkos::fence();
-        Real mass = 0;
-        Kokkos::deep_copy(mass, total_mass);
+            total_mass);
 
         Real expected = Real(n) * Real(1.0);  // n cells * rho=1.0
-        bool mass_ok = approx_equal(mass, expected, Real(1e-4));
+        bool mass_ok = approx_equal(total_mass, expected, Real(1e-4));
 
         printf("  Total mass: %.4f (expected %.4f) [%s]\n",
-               mass, expected, mass_ok ? "OK" : "FAIL");
+               total_mass, expected, mass_ok ? "OK" : "FAIL");
         printf("  Result: %s\n", mass_ok ? "PASS" : "FAIL");
     }
 }

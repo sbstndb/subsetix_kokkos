@@ -471,14 +471,15 @@ void copy_solution(
  */
 template<
     FiniteVolumeSystem System,
-    TimeIntegrator Integrator
+    TimeIntegrator Integrator,
+    typename RHSFunc
 >
 KOKKOS_FUNCTION
 void rk_step(
     const Kokkos::View<typename System::Conserved**>& U,
     typename System::RealType dt,
     typename System::RealType t,
-    auto&& rhs,
+    RHSFunc&& rhs,
     const Kokkos::View<typename System::Conserved***>& stage_storage,
     const Kokkos::View<typename System::Conserved**>& stage_solution)
 {
@@ -512,13 +513,13 @@ void rk_step(
  *
  * Simpler and faster than the general RK implementation.
  */
-template<FiniteVolumeSystem System>
+template<FiniteVolumeSystem System, typename RHSFunc>
 KOKKOS_FUNCTION
 void euler_step(
     const Kokkos::View<typename System::Conserved**>& U,
     typename System::RealType dt,
     typename System::RealType t,
-    auto&& rhs,
+    RHSFunc&& rhs,
     const Kokkos::View<typename System::Conserved**>& rhs_work)
 {
     // Compute RHS
