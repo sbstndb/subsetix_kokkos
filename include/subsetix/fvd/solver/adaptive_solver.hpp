@@ -813,23 +813,25 @@ private:
         int64_t num_rows = fluid_geometry_.num_rows;
         out.write(reinterpret_cast<const char*>(&num_rows), sizeof(num_rows));
 
-        // Copy row_offsets to host
-        auto row_offsets_host = Kokkos::create_mirror_view(fluid_geometry_.row_offsets);
-        Kokkos::deep_copy(row_offsets_host, fluid_geometry_.row_offsets);
+        // Copy row_ptr to host (CSR row pointers)
+        auto row_ptr_host = Kokkos::create_mirror_view(fluid_geometry_.row_ptr);
+        Kokkos::deep_copy(row_ptr_host, fluid_geometry_.row_ptr);
         for (int i = 0; i <= num_rows; ++i) {
-            int32_t val = row_offsets_host(i);
+            int64_t val = static_cast<int64_t>(row_ptr_host(i));
             out.write(reinterpret_cast<const char*>(&val), sizeof(val));
         }
 
-        // Intervals
+        // Intervals (each Interval has begin, end members)
         int64_t num_intervals = fluid_geometry_.num_intervals;
         out.write(reinterpret_cast<const char*>(&num_intervals), sizeof(num_intervals));
 
         auto intervals_host = Kokkos::create_mirror_view(fluid_geometry_.intervals);
         Kokkos::deep_copy(intervals_host, fluid_geometry_.intervals);
-        for (int64_t i = 0; i < 2 * num_intervals; ++i) {
-            int32_t val = intervals_host(i);
-            out.write(reinterpret_cast<const char*>(&val), sizeof(val));
+        for (int64_t i = 0; i < num_intervals; ++i) {
+            int32_t begin = intervals_host(i).begin;
+            int32_t end = intervals_host(i).end;
+            out.write(reinterpret_cast<const char*>(&begin), sizeof(begin));
+            out.write(reinterpret_cast<const char*>(&end), sizeof(end));
         }
 
         // NOTE: Actual field data serialization would be done here
@@ -875,14 +877,14 @@ private:
             return false;
         }
 
-        // Read and verify row_offsets
-        auto row_offsets_host = Kokkos::create_mirror_view(fluid_geometry_.row_offsets);
-        Kokkos::deep_copy(row_offsets_host, fluid_geometry_.row_offsets);
+        // Read and verify row_ptr
+        auto row_ptr_host = Kokkos::create_mirror_view(fluid_geometry_.row_ptr);
+        Kokkos::deep_copy(row_ptr_host, fluid_geometry_.row_ptr);
         for (int i = 0; i <= num_rows; ++i) {
-            int32_t val;
+            int64_t val;
             in.read(reinterpret_cast<char*>(&val), sizeof(val));
-            if (val != row_offsets_host(i)) {
-                fprintf(stderr, "[Checkpoint] Row offset mismatch at %d\n", i);
+            if (val != static_cast<int64_t>(row_ptr_host(i))) {
+                fprintf(stderr, "[Checkpoint] Row ptr mismatch at %d\n", i);
                 return false;
             }
         }
@@ -890,10 +892,11 @@ private:
         // Read and verify intervals
         auto intervals_host = Kokkos::create_mirror_view(fluid_geometry_.intervals);
         Kokkos::deep_copy(intervals_host, fluid_geometry_.intervals);
-        for (int64_t i = 0; i < 2 * num_intervals; ++i) {
-            int32_t val;
-            in.read(reinterpret_cast<char*>(&val), sizeof(val));
-            if (val != intervals_host(i)) {
+        for (int64_t i = 0; i < num_intervals; ++i) {
+            int32_t begin, end;
+            in.read(reinterpret_cast<char*>(&begin), sizeof(begin));
+            in.read(reinterpret_cast<char*>(&end), sizeof(end));
+            if (begin != intervals_host(i).begin || end != intervals_host(i).end) {
                 fprintf(stderr, "[Checkpoint] Interval mismatch at %ld\n", i);
                 return false;
             }
@@ -923,21 +926,21 @@ private:
         out << "num_rows: " << fluid_geometry_.num_rows << "\n";
         out << "num_intervals: " << fluid_geometry_.num_intervals << "\n";
 
-        // Row offsets
-        out << "row_offsets:";
-        auto row_offsets_host = Kokkos::create_mirror_view(fluid_geometry_.row_offsets);
-        Kokkos::deep_copy(row_offsets_host, fluid_geometry_.row_offsets);
+        // Row ptr
+        out << "row_ptr:";
+        auto row_ptr_host = Kokkos::create_mirror_view(fluid_geometry_.row_ptr);
+        Kokkos::deep_copy(row_ptr_host, fluid_geometry_.row_ptr);
         for (int i = 0; i <= fluid_geometry_.num_rows; ++i) {
-            out << " " << row_offsets_host(i);
+            out << " " << row_ptr_host(i);
         }
         out << "\n";
 
-        // Intervals
+        // Intervals (each has begin and end)
         out << "intervals:";
         auto intervals_host = Kokkos::create_mirror_view(fluid_geometry_.intervals);
         Kokkos::deep_copy(intervals_host, fluid_geometry_.intervals);
-        for (int i = 0; i < 2 * fluid_geometry_.num_intervals; ++i) {
-            out << " " << intervals_host(i);
+        for (int i = 0; i < fluid_geometry_.num_intervals; ++i) {
+            out << " " << intervals_host(i).begin << "-" << intervals_host(i).end;
         }
         out << "\n";
 

@@ -16,9 +16,7 @@
 
 using namespace subsetix;
 using namespace subsetix::fvd;
-
-// NOTE: Using placeholder types from subsetix::fvd::csr namespace
-// In production, these would be the real CSR types from subsetix::csr
+using namespace subsetix::csr;  // Use real subsetix::csr types
 
 // ============================================================================
 // MAIN EXAMPLE
@@ -39,7 +37,7 @@ int main(int argc, char** argv) {
     // 2. DEFINE GEOMETRY
     // ========================================================================
     const int nx = 400, ny = 160;
-    csr::Box2D domain{0, nx, 0, ny};
+    Box2D domain{0, nx, 0, ny};
 
     printf("Geometry:\n");
     printf("  Domain: %d x %d\n", nx, ny);
@@ -47,7 +45,7 @@ int main(int argc, char** argv) {
 
     // In production, would create actual geometry using subsetix::csr
     // For now, use stub types from subsetix::fvd::csr namespace
-    csr::IntervalSet2DDevice fluid;
+    IntervalSet2DDevice fluid;
 
     // ========================================================================
     // 3. CHOOSE SOLVER (GAME CHANGER: Simple alias!)

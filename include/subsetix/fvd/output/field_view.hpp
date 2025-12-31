@@ -441,8 +441,8 @@ private:
         }
 
         // Deep copy Kokkos views to host
-        auto row_offsets_host = Kokkos::create_mirror_view_and_copy(
-            Kokkos::HostSpace{}, device_geom.row_offsets);
+        auto row_ptr_host = Kokkos::create_mirror_view_and_copy(
+            Kokkos::HostSpace{}, device_geom.row_ptr);
         auto intervals_host = Kokkos::create_mirror_view_and_copy(
             Kokkos::HostSpace{}, device_geom.intervals);
 
@@ -455,17 +455,17 @@ private:
         // Copy row_ptr
         host_geom.row_ptr.resize(device_geom.num_rows + 1);
         for (std::size_t i = 0; i <= device_geom.num_rows; ++i) {
-            host_geom.row_ptr[i] = static_cast<std::size_t>(row_offsets_host(i));
+            host_geom.row_ptr[i] = static_cast<std::size_t>(row_ptr_host(i));
         }
 
-        // Copy intervals
-        std::size_t num_intervals = row_offsets_host(device_geom.num_rows);
+        // Copy intervals (each Interval has begin, end members)
+        std::size_t num_intervals = device_geom.num_intervals;
         host_geom.interval_begin.resize(num_intervals);
         host_geom.interval_end.resize(num_intervals);
 
         for (std::size_t k = 0; k < num_intervals; ++k) {
-            host_geom.interval_begin[k] = intervals_host(2 * k);
-            host_geom.interval_end[k] = intervals_host(2 * k + 1);
+            host_geom.interval_begin[k] = intervals_host(k).begin;
+            host_geom.interval_end[k] = intervals_host(k).end;
         }
 
         return host_geom;

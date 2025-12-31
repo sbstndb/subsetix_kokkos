@@ -1,53 +1,62 @@
 #pragma once
 
-#include <Kokkos_Core.hpp>
-#include <cstddef>
+// ============================================================================
+// FVD GEOMETRY CSR TYPES
+// ============================================================================
+//
+// This file provides using declarations that redirect to the real
+// subsetix::csr types. The stub implementations have been removed
+// in favor of using the complete, GPU-native CSR implementation.
+//
+// ============================================================================
+
+#include <subsetix/geometry/csr_interval_set.hpp>
+#include <subsetix/csr_ops/set_algebra.hpp>
+#include <subsetix/csr_ops/workspace.hpp>
 
 namespace subsetix::fvd::csr {
 
 // ============================================================================
-// CSR GEOMETRY TYPES - STUB IMPLEMENTATIONS
+// CORE TYPES - Using subsetix::csr types
 // ============================================================================
 
-/**
- * @brief 2D bounding box
- *
- * Defines a rectangular region in 2D space.
- */
-struct Box2D {
-    int x_min, x_max, y_min, y_max;
+using IntervalSet2DDevice = subsetix::csr::IntervalSet2D<subsetix::csr::DeviceMemorySpace>;
+using IntervalSet2DHost = subsetix::csr::IntervalSet2D<subsetix::csr::HostMemorySpace>;
 
-    Box2D() = default;
-    Box2D(int xmin, int xmax, int ymin, int ymax)
-        : x_min(xmin), x_max(xmax), y_min(ymin), y_max(ymax) {}
-};
+using Box2D = subsetix::csr::Box2D;
+using Disk2D = subsetix::csr::Disk2D;
+using Domain2D = subsetix::csr::Domain2D;
 
-/**
- * @brief 2D interval set on device (CSR compressed storage)
- *
- * This is a stub placeholder. In production, this would be the real
- * subsetix::csr::IntervalSet2DDevice type with full CSR functionality.
- *
- * CSR format: Each row (y-coordinate) has a set of [x_min, x_max] intervals
- * representing the fluid cells in that row.
- */
-struct IntervalSet2DDevice {
-    std::size_t num_rows = 0;
-    std::size_t num_intervals = 0;
+// Type aliases for convenience
+template <class MemorySpace>
+using IntervalSet2D = subsetix::csr::IntervalSet2D<MemorySpace>;
 
-    // Kokkos views for CSR storage
-    Kokkos::View<int*> row_offsets;  // Offset into intervals for each row
-    Kokkos::View<int*> intervals;    // [x_min, x_max] pairs (2 per interval)
+// ============================================================================
+// CONTEXT TYPES
+// ============================================================================
 
-    IntervalSet2DDevice() = default;
+using CsrSetAlgebraContext = subsetix::csr::CsrSetAlgebraContext;
 
-    // Device-friendly constructor with allocation
-    IntervalSet2DDevice(std::size_t rows, std::size_t num_intervals)
-        : num_rows(rows)
-        , num_intervals(num_intervals)
-        , row_offsets("row_offsets", rows + 1)
-        , intervals("intervals", 2 * num_intervals)
-    {}
-};
+// ============================================================================
+// HELPER FUNCTIONS - Re-export subsetix::csr functions
+// ============================================================================
+
+using subsetix::csr::make_box_device;
+using subsetix::csr::make_disk_device;
+using subsetix::csr::make_random_device;
+using subsetix::csr::make_bitmap_device;
+using subsetix::csr::make_checkerboard_device;
+
+using subsetix::csr::allocate_interval_set_device;
+using subsetix::csr::compute_cell_offsets_device;
+using subsetix::csr::compute_cell_offsets_host;
+
+using subsetix::csr::to;
+
+// CSG operations
+using subsetix::csr::set_union_device;
+using subsetix::csr::set_difference_device;
+using subsetix::csr::set_intersection_device;
+using subsetix::csr::set_symmetric_difference_device;
 
 } // namespace subsetix::fvd::csr
