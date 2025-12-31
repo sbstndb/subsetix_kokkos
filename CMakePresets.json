@@ -12,7 +12,8 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-serial",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_USE_MPI": "OFF"
       }
     },
     {
@@ -22,7 +23,8 @@
       "binaryDir": "${sourceDir}/build-openmp",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_KOKKOS_OPENMP": "ON"
+        "SUBSETIX_KOKKOS_OPENMP": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
       }
     },
     {
@@ -33,7 +35,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12"
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_USE_MPI": "OFF"
       }
     },
     {
@@ -44,7 +47,41 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_CXX_FLAGS": "-g -O1 -fsanitize=address,undefined",
-        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "mpi-serial",
+      "displayName": "MPI + Kokkos SERIAL",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-mpi-serial",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_USE_MPI": "ON"
+      }
+    },
+    {
+      "name": "mpi-openmp",
+      "displayName": "MPI + Kokkos OPENMP",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-mpi-openmp",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_KOKKOS_OPENMP": "ON",
+        "SUBSETIX_USE_MPI": "ON"
+      }
+    },
+    {
+      "name": "mpi-cuda-gcc12",
+      "displayName": "MPI + Kokkos CUDA (GCC 12)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-mpi-cuda-gcc12",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_USE_MPI": "ON"
       }
     }
   ],
@@ -64,6 +101,18 @@
     {
       "name": "serial-asan",
       "configurePreset": "serial-asan"
+    },
+    {
+      "name": "mpi-serial",
+      "configurePreset": "mpi-serial"
+    },
+    {
+      "name": "mpi-openmp",
+      "configurePreset": "mpi-openmp"
+    },
+    {
+      "name": "mpi-cuda-gcc12",
+      "configurePreset": "mpi-cuda-gcc12"
     }
   ],
   "testPresets": [
@@ -82,6 +131,18 @@
     {
       "name": "serial-asan",
       "configurePreset": "serial-asan"
+    },
+    {
+      "name": "mpi-serial",
+      "configurePreset": "mpi-serial"
+    },
+    {
+      "name": "mpi-openmp",
+      "configurePreset": "mpi-openmp"
+    },
+    {
+      "name": "mpi-cuda-gcc12",
+      "configurePreset": "mpi-cuda-gcc12"
     }
   ]
 }

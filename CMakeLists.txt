@@ -11,6 +11,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(SUBSETIX_KOKKOS_OPENMP "Enable Kokkos OpenMP backend" OFF)
 option(SUBSETIX_KOKKOS_CUDA "Enable Kokkos CUDA backend" OFF)
 
+option(SUBSETIX_USE_MPI "Enable MPI support for FVD" OFF)
+
 option(SUBSETIX_EXECSPACE_FORCE_CUDA "Force ExecSpace = Kokkos::Cuda" OFF)
 option(SUBSETIX_EXECSPACE_FORCE_OPENMP "Force ExecSpace = Kokkos::OpenMP" OFF)
 option(SUBSETIX_EXECSPACE_FORCE_SERIAL "Force ExecSpace = Kokkos::Serial" OFF)
@@ -95,6 +97,28 @@ if(SUBSETIX_MEMORYSPACE_FORCE_UVM)
     add_compile_definitions(SUBSETIX_MEMORYSPACE_FORCE_UVM)
 elseif(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED)
     add_compile_definitions(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED)
+endif()
+
+# ========================================================================
+# MPI Configuration
+# ========================================================================
+
+if(SUBSETIX_USE_MPI)
+    # Find MPI
+    find_package(MPI REQUIRED)
+
+    # Add compile definition
+    add_compile_definitions(SUBSETIX_USE_MPI)
+
+    # Link MPI libraries to targets that need them
+    # (This will be done in the subdirectories)
+
+    message(STATUS "MPI enabled:")
+    message(STATUS "  MPI_CXX_COMPILER: ${MPI_CXX_COMPILER}")
+    message(STATUS "  MPI_CXX_LIBRARIES: ${MPI_CXX_LIBRARIES}")
+    message(STATUS "  MPI_CXX_INCLUDE_PATH: ${MPI_CXX_INCLUDE_PATH}")
+else()
+    message(STATUS "MPI disabled - FVD will use single-rank mode")
 endif()
 
 # GoogleTest for unit tests
