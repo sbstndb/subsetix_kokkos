@@ -3,7 +3,6 @@
 #include <Kokkos_Core.hpp>
 #include <array>
 #include <optional>
-#include <vector>
 #include "../system/concepts_v2.hpp"
 #include "mpi_config.hpp"
 #include "mpi_stub.hpp"
@@ -29,6 +28,7 @@ struct Cartesian1D {
         int padding = 1;             // Padding pour ghosts cells
 
         // Validation
+        KOKKOS_FUNCTION
         bool validate() const {
             return nx_global > 0 && ny_global > 0 && padding >= 0;
         }
@@ -94,6 +94,7 @@ struct Cartesian2D {
         int py = -1;                 // Nombre de ranks en Y (-1 = auto)
         int padding = 1;
 
+        KOKKOS_FUNCTION
         bool validate() const {
             return nx_global > 0 && ny_global > 0 && padding >= 0;
         }
@@ -145,11 +146,13 @@ struct SpaceFillingCurve {
 
         int order = 0;               // Ordre de la courbe (-1 = auto)
 
+        KOKKOS_FUNCTION
         bool validate() const {
             return nx_global > 0 && ny_global > 0;
         }
     };
 
+    // Kokkos::View pour le mapping cellule -> rank (device-accessible)
     struct DecompositionInfo {
         int rank = 0;
         int nranks = 1;
@@ -158,8 +161,10 @@ struct SpaceFillingCurve {
         int x_offset = 0;
         int y_offset = 0;
 
-        // Liste des voisins (nombre arbitraire)
-        std::vector<int> neighbors;
+        // Nombre max de voisins (fixé à compile-time)
+        static constexpr int max_neighbors = 8;
+        int num_neighbors = 0;
+        std::array<int, max_neighbors> neighbors{};  // Fixed-size array
 
         /**
          * @brief Mapping cellule -> rank
@@ -188,11 +193,13 @@ struct SpaceFillingCurve {
  */
 struct MetisDecomposition {
     struct Config {
-        // Graphe explicite (optionnel)
+        // Graphe explicite (optionnel) - utilise Kokkos::View
         struct GraphInput {
-            std::vector<int> adjacency;  // Liste d'adjacence
-            std::vector<int> offsets;     // Offsets dans adjacency
-            std::vector<float> weights;  // Poids des arêtes (optionnel)
+            Kokkos::View<int*> adjacency;  // Liste d'adjacence
+            Kokkos::View<int*> offsets;     // Offsets dans adjacency
+            Kokkos::View<float*> weights;   // Poids des arêtes (optionnel)
+            int num_vertices = 0;
+            int num_edges = 0;
         };
         std::optional<GraphInput> graph;
 
@@ -222,11 +229,15 @@ struct MetisDecomposition {
         int x_offset = 0;
         int y_offset = 0;
 
-        // Nombre arbitraire de voisins
-        std::vector<int> neighbors;
+        // Nombre max de voisins (fixé à compile-time pour GPU)
+        static constexpr int max_neighbors = 16;
+        int num_neighbors = 0;
+        std::array<int, max_neighbors> neighbors{};  // Fixed-size array
 
         // Pour chaque voisin: liste des cellules frontière
-        std::vector<std::vector<int>> boundary_cells;
+        // Utilise Kokkos::View pour allocation device
+        Kokkos::View<int*[max_neighbors]> boundary_cells;  // boundary_cells[neighbor_rank][cell_idx]
+        Kokkos::View<int[max_neighbors]> boundary_counts;  // Nombre de cellules par voisin
     };
 
     static DecompositionInfo init(const Config& cfg, MPI_Comm comm);
@@ -244,11 +255,13 @@ struct MetisDecomposition {
  */
 struct StaticDecomposition {
     struct Config {
-        // Tableau rank -> [x_min, x_max, y_min, y_max]
-        std::vector<std::array<int, 4>> rank_domains;
+        // Kokkos::View pour stocker les domaines (device-accessible)
+        Kokkos::View<int*[4]> rank_domains;  // rank_domains[rank] = {x_min, x_max, y_min, y_max}
+        int num_ranks = 0;
 
+        KOKKOS_FUNCTION
         bool validate() const {
-            return !rank_domains.empty();
+            return num_ranks > 0;
         }
     };
 
@@ -271,6 +284,8 @@ struct StaticDecomposition {
 
 /**
  * @brief Structure générique pour stocker n'importe quelle info de décomposition
+ *
+ * Utilise Kokkos::View pour les données device-accessibles.
  */
 struct GenericDecompositionInfo {
     int rank = 0;
@@ -279,7 +294,11 @@ struct GenericDecompositionInfo {
     int ny_local = 0;
     int x_offset = 0;
     int y_offset = 0;
-    std::vector<int> neighbors;  // Liste des voisins
+
+    // Voisins - utilise Kokkos::View avec taille fixée
+    static constexpr int max_neighbors = 16;
+    Kokkos::View<int*> neighbors;      // [num_neighbors]
+    int num_neighbors = 0;
 
     // Type de décomposition
     enum class Type {

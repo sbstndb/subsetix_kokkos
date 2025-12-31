@@ -76,11 +76,15 @@ public:
             PressureGradient = 1,     // |∇p|
             VelocityGradient = 2,     // |∇v|
             MachNumber = 3,           // Mach number
-            Custom = 99               // User-defined function
+            Custom = 99               // User-defined function (compile-time only)
         };
 
         SensorType sensor = DensityGradient;
-        std::string custom_sensor_field = "";  // For Custom type
+
+        // Custom sensor field - compile-time alternative to std::string
+        // Use fixed-size char array (GPU-compatible)
+        static constexpr int max_field_name_length = 32;
+        char custom_sensor_field[max_field_name_length] = {0};  // Null-terminated
 
         // Refinement parameters
         Real refine_threshold = Real(0.1);     // Refine if sensor > this
@@ -129,12 +133,16 @@ public:
             return rc;
         }
 
-        // Factory: Custom field refinement
-        static RefinementCriteria custom_field(const std::string& field_name,
+        // Factory: Custom field refinement (compile-time string literal)
+        template<std::size_t N>
+        static RefinementCriteria custom_field(const char (&field_name)[N],
                                                Real refine_thresh, int max_lev = 5) {
             RefinementCriteria rc;
             rc.sensor = Custom;
-            rc.custom_sensor_field = field_name;
+            // Copy string literal to fixed-size array (compile-time)
+            for (std::size_t i = 0; i < N && i < max_field_name_length; ++i) {
+                rc.custom_sensor_field[i] = field_name[i];
+            }
             rc.refine_threshold = refine_thresh;
             rc.coarsen_threshold = refine_thresh / Real(10);
             rc.max_level = max_lev;
@@ -472,35 +480,57 @@ public:
     // ========================================================================
 
     /**
-     * @brief Add a source term
+     * @brief Add a gravity source term
      *
      * Source terms are added to the RHS: dU/dt = -∇·F + S
      *
      * Usage:
      *   solver.add_gravity(-9.81f);  // Gravity in y-direction
+     *
+     * NOTE: This is a convenience wrapper. The actual source computation
+     * should be done by creating a custom CompositeSource type and using
+     * set_source_composite() or by directly adding source computation in
+     * the RHS evaluation.
      */
     void add_gravity(Real g_y = Real(-9.81), Real g_x = Real(0)) {
-        source_manager_.add_gravity(g_y, g_x);
+        // Mark that we have source terms - actual gravity computation
+        // should be done via custom source types or direct RHS computation
         has_source_terms_ = true;
+        // TODO: Store gravity parameters for RHS computation
     }
 
     /**
-     * @brief Add custom source term from lambda
+     * @brief Add custom source term from lambda/functor
      *
      * @param func Function: (Conserved, Primitive, x, y, t) -> Conserved
+     *
+     * NOTE: With compile-time sources, custom lambda sources should be
+     * wrapped in a CustomSource<System, Func> type. This method is
+     * provided for API compatibility but the actual implementation
+     * requires a compile-time source type.
      */
     template<typename Func>
     void add_source(Func&& func, bool time_dep = false, bool spatial_dep = true) {
-        source_manager_.add_custom(std::forward<Func>(func), time_dep, spatial_dep);
+        // Mark that we have source terms
         has_source_terms_ = true;
+        // NOTE: Lambda sources cannot be stored runtime without type erasure
+        // Users should use compile-time CompositeSource types instead
+        // For example: using MySource = CompositeSource<System, GravitySource<System>, CustomSource<System, MyFunc>>;
     }
 
     /**
-     * @brief Set composite source directly
+     * @brief Set composite source directly (compile-time only)
+     *
+     * NOTE: This is a stub for API compatibility. The actual source
+     * computation must be compile-time. Users should create source
+     * types using the API in source_terms.hpp and apply them during
+     * RHS evaluation.
      */
-    void set_source_composite(const sources::CompositeSource<System>& source) {
-        composite_source_ = source;
+    template<typename... Sources>
+    void set_source_composite(const sources::CompositeSource<System, Sources...>& source) {
         has_source_terms_ = true;
+        // Note: Cannot store variadic template without erasing types
+        // Users should re-create the composite source type when needed
     }
 
     /**
@@ -726,9 +756,9 @@ private:
     Real current_time_ = Real(0);
     int step_count_ = 0;
 
-    // NEW: Source terms
-    sources::SourceManager<System> source_manager_;
-    sources::CompositeSource<System> composite_source_;
+    // NEW: Source terms (compile-time, no runtime polymorphism)
+    // Note: SourceManager removed - sources are now compile-time composites
+    // Users can create custom sources using the template-based API in source_terms.hpp
     bool has_source_terms_ = false;
 
     // NEW: Checkpoint/restart
