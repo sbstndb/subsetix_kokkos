@@ -341,8 +341,9 @@ void compute_stage_solution(
 
     auto policy = Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {ny, nx});
 
+    // Use static kernel label (stage is runtime value, cannot use for compile-time naming)
     Kokkos::parallel_for(
-        "rk_compute_stage_" + std::to_string(stage),
+        "rk_compute_stage",
         policy,
         KOKKOS_LAMBDA(int j, int i) {
             Conserved sum{0, 0, 0, 0};

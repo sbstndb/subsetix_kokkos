@@ -8,6 +8,7 @@
  */
 
 #include <subsetix/fvd/fvd_integrators.hpp>
+#include <subsetix/fvd/output/field_view.hpp>
 #include <cstdio>
 #include <cmath>
 #include <iostream>
@@ -505,11 +506,11 @@ void example_8_custom_solver() {
 }
 
 // ============================================================================
-// EXAMPLE 9: SIMULATION AVEC SORTIE VTK
+// EXAMPLE 9: SIMULATION AVEC SORTIE VTK (Multi-Field Support)
 // ============================================================================
 
 void example_9_with_vtk_output() {
-    printf("\n=== EXEMPLE 9: Simulation avec sortie VTK ===\n\n");
+    printf("\n=== EXEMPLE 9: Simulation avec sortie VTK (Multi-Field) ===\n\n");
 
     using Real = float;
     using System = Euler2D<Real>;
@@ -528,15 +529,34 @@ void example_9_with_vtk_output() {
         })
         .build();
 
-    // Observer pour sortie VTK périodique
+    // Observer pour sortie VTK périodique avec NOUVELLE API write_all_fields()
+    // C'est la méthode recommandée car elle exporte TOUTES les variables conservatives
+    // (rho, rhou, rhov, E) dans un seul fichier VTK
     int vtk_frame = 0;
     solver.observers().add_callback(SolverEvent::StepEnd,
         [&vtk_frame, &solver](SolverEvent, const SolverState<Real>& state) {
             if (state.step % 50 == 0) {
+                // NOUVEAU: write_all_fields() exporte toutes les variables
+                auto output = solver.get_output();
+
                 char filename[256];
                 snprintf(filename, sizeof(filename), "output/frame_%04d.vtk", vtk_frame++);
-                solver.write_vtk(filename);
-                printf("VTK écrit: %s\n", filename);
+
+                // Méthode recommandée: toutes les variables dans un fichier
+                VTKExporter::write_all_fields(output, filename, true);
+                printf("VTK multi-champ écrit: %s (rho, rhou, rhov, E)\n", filename);
+            }
+        }
+    );
+
+    // Observer alternatif: utiliser write_legacy() pour un seul champ
+    solver.observers().add_callback(SolverEvent::StepEnd,
+        [&solver](SolverEvent, const SolverState<Real>& state) {
+            if (state.step == 100) {
+                // Exemple: exporter seulement la densité
+                auto output = solver.get_output();
+                VTKExporter::write_legacy(output, "output/rho_only.vtk", "rho", true);
+                printf("VTK single-champ écrit: rho_only.vtk\n");
             }
         }
     );
@@ -547,6 +567,8 @@ void example_9_with_vtk_output() {
     }
 
     printf("Nombre de frames VTK: %d\n", vtk_frame);
+    printf("\nNOTE: write_all_fields() est recommandé pour la visualisation CFD complète\n");
+    printf("      write_legacy() est utile pour exporter une seule variable\n");
 }
 
 // ============================================================================
@@ -776,6 +798,306 @@ void example_12_error_handling() {
 }
 
 // ============================================================================
+// EXAMPLE 13: COMPARAISON DES SCHÉMAS DE FLUX (Rusanov vs HLLC vs Roe)
+// ============================================================================
+
+void example_13_flux_scheme_comparison() {
+    printf("\n=== EXEMPLE 13: Comparaison des schémas de flux ===\n\n");
+
+    using Real = float;
+    using System = Euler2D<Real>;
+
+    // Problème de test: tube à choc (Sod problem)
+    auto sod_initial = [](Real x, Real y) {
+        Real rho = (x < 0.5) ? 1.0f : 0.125f;
+        Real p = (x < 0.5) ? 1.0f : 0.1f;
+        return System::from_primitive({rho, 0.0f, 0.0f, p}, 1.4f);
+    };
+
+    // --- Solveur 1: Rusanov (diffusif, robuste) ---
+    using SolverRusanov = AdaptiveSolver<System,
+        reconstruction::NoReconstruction,
+        flux::RusanovFlux,
+        time::ForwardEuler<Real>>;
+
+    auto solver_rusanov = SolverRusanov::builder(200, 50)
+        .with_domain(0.0, 1.0, 0.0, 0.25)
+        .with_initial_condition(sod_initial)
+        .build();
+
+    // --- Solveur 2: HLLC (moins diffusif, résout l'onde de contact) ---
+    using SolverHLLC = AdaptiveSolver<System,
+        reconstruction::NoReconstruction,
+        flux::HLLCFlux,
+        time::ForwardEuler<Real>>;
+
+    auto solver_hllc = SolverHLLC::builder(200, 50)
+        .with_domain(0.0, 1.0, 0.0, 0.25)
+        .with_initial_condition(sod_initial)
+        .build();
+
+    // --- Solveur 3: Roe (le plus précis, avec fix d'entropie) ---
+    using SolverRoe = AdaptiveSolver<System,
+        reconstruction::NoReconstruction,
+        flux::RoeFlux,
+        time::ForwardEuler<Real>>;
+
+    auto solver_roe = SolverRoe::builder(200, 50)
+        .with_domain(0.0, 1.0, 0.0, 0.25)
+        .with_initial_condition(sod_initial)
+        .build();
+
+    printf("Comparaison des schémas de flux:\n");
+    printf("  - Rusanov: très diffusif, robuste\n");
+    printf("  - HLLC: moins diffusif, résout l'onde de contact\n");
+    printf("  - Roe: le plus précis, fix d'entropie pour les ondes de choc\n\n");
+
+    // Simulation et export des résultats
+    const Real t_final = 0.2f;
+
+    while (solver_rusanov.time() < t_final) solver_rusanov.step();
+    while (solver_hllc.time() < t_final) solver_hllc.step();
+    while (solver_roe.time() < t_final) solver_roe.step();
+
+    // Export pour comparaison
+    auto out_rusanov = solver_rusanov.get_output();
+    auto out_hllc = solver_hllc.get_output();
+    auto out_roe = solver_roe.get_output();
+
+    VTKExporter::write_all_fields(out_rusanov, "output/sod_rusanov.vtk", true);
+    VTKExporter::write_all_fields(out_hllc, "output/sod_hllc.vtk", true);
+    VTKExporter::write_all_fields(out_roe, "output/sod_roe.vtk", true);
+
+    printf("Résultats exportés:\n");
+    printf("  - output/sod_rusanov.vtk\n");
+    printf("  - output/sod_hllc.vtk\n");
+    printf("  - output/sod_roe.vtk\n");
+    printf("\nRecommandation: Pour les simulations CFD, utiliser HLLC ou Roe\n");
+    printf("                 pour une meilleure résolution des discontinuités.\n");
+}
+
+// ============================================================================
+// EXAMPLE 14: COMPARAISON DES LIMITEURS MUSCL
+// ============================================================================
+
+void example_14_muscl_limiter_comparison() {
+    printf("\n=== EXEMPLE 14: Comparaison des limiteurs MUSCL ===\n\n");
+
+    using Real = float;
+    using System = Euler2D<Real>;
+
+    // Problème de Shu-Osher: interaction onde de choc / ondes d'entropie
+    auto shu_osher = [](Real x, Real y) {
+        Real rho = (x < 0.1) ? 3.857143f : 1.0f + 0.2f * std::sin(20.0f * 3.14159f * x);
+        Real p = (x < 0.1) ? 10.33333f : 1.0f;
+        return System::from_primitive({rho, 2.629369f, 0.0f, p}, 1.4f);
+    };
+
+    printf("Comparaison des limiteurs MUSCL (du plus au moins diffusif):\n");
+    printf("  - Minmod: très robuste, mais trop diffusif\n");
+    printf("  - MC (Monotonized Central): bon compromis\n");
+    printf("  - Van Leer: symétrique, moins diffusif\n");
+    printf("  - Superbee: le moins diffusif (peut générer des oscillations)\n\n");
+
+    // --- Minmod ---
+    using SolverMinmod = AdaptiveSolver<System,
+        reconstruction::MUSCL_Reconstruction<reconstruction::MinmodLimiter>,
+        flux::HLLCFlux,
+        time::Kutta3<Real>>;
+
+    auto solver_minmod = SolverMinmod::builder(200, 50)
+        .with_domain(0.0, 1.0, 0.0, 0.125)
+        .with_initial_condition(shu_osher)
+        .build();
+
+    // --- MC ---
+    using SolverMC = AdaptiveSolver<System,
+        reconstruction::MUSCL_Reconstruction<reconstruction::MCLimiter>,
+        flux::HLLCFlux,
+        time::Kutta3<Real>>;
+
+    auto solver_mc = SolverMC::builder(200, 50)
+        .with_domain(0.0, 1.0, 0.0, 0.125)
+        .with_initial_condition(shu_osher)
+        .build();
+
+    // --- Van Leer ---
+    using SolverVanLeer = AdaptiveSolver<System,
+        reconstruction::MUSCL_Reconstruction<reconstruction::VanLeerLimiter>,
+        flux::HLLCFlux,
+        time::Kutta3<Real>>;
+
+    auto solver_vl = SolverVanLeer::builder(200, 50)
+        .with_domain(0.0, 1.0, 0.0, 0.125)
+        .with_initial_condition(shu_osher)
+        .build();
+
+    // --- Superbee ---
+    using SolverSuperbee = AdaptiveSolver<System,
+        reconstruction::MUSCL_Reconstruction<reconstruction::SuperbeeLimiter>,
+        flux::HLLCFlux,
+        time::Kutta3<Real>>;
+
+    auto solver_sb = SolverSuperbee::builder(200, 50)
+        .with_domain(0.0, 1.0, 0.0, 0.125)
+        .with_initial_condition(shu_osher)
+        .build();
+
+    // Simulation
+    const Real t_final = 0.18f;
+
+    while (solver_minmod.time() < t_final) solver_minmod.step();
+    while (solver_mc.time() < t_final) solver_mc.step();
+    while (solver_vl.time() < t_final) solver_vl.step();
+    while (solver_sb.time() < t_final) solver_sb.step();
+
+    // Export
+    VTKExporter::write_all_fields(solver_minmod.get_output(), "output/shuosher_minmod.vtk");
+    VTKExporter::write_all_fields(solver_mc.get_output(), "output/shuosher_mc.vtk");
+    VTKExporter::write_all_fields(solver_vl.get_output(), "output/shuosher_vanleer.vtk");
+    VTKExporter::write_all_fields(solver_sb.get_output(), "output/shuosher_superbee.vtk");
+
+    printf("Résultats exportés pour comparaison des limiteurs MUSCL\n");
+    printf("\nRecommandation: MC ou Van Leer pour la plupart des cas CFD\n");
+    printf("                 Minmod pour les cas très robustes\n");
+    printf("                 Superbee pour résoudre les structures fines (attention aux oscillations)\n");
+}
+
+// ============================================================================
+// EXAMPLE 15: COMPARAISON DES INTÉGRATEURS DE TEMPS
+// ============================================================================
+
+void example_15_time_integrator_comparison() {
+    printf("\n=== EXEMPLE 15: Comparaison des intégrateurs de temps ===\n\n");
+
+    using Real = float;
+    using System = Euler2D<Real>;
+
+    // Test sur un problème advection d'un pulse gaussien
+    auto gaussian_pulse = [](Real x, Real y) {
+        Real dx = x - 0.5;
+        Real dy = y - 0.25;
+        Real r2 = dx*dx + dy*dy;
+        Real rho = std::exp(-20.0 * r2);
+        return System::from_primitive({rho, 1.0f, 0.0f, 1.0f/1.4f}, 1.4f);
+    };
+
+    printf("Comparaison des intégrateurs de temps:\n");
+    printf("  - Forward Euler (1er ordre, 1 stage)\n");
+    printf("  - Heun2 / RK2 (2ème ordre, 2 stages)\n");
+    printf("  - Kutta3 / SSPRK3 (3ème ordre, 3 stages)\n");
+    printf("  - ClassicRK4 (4ème ordre, 4 stages)\n\n");
+
+    using Flux = flux::RusanovFlux;
+    using Recon = reconstruction::NoReconstruction;
+
+    // Create solvers with different time integrators
+    using SolverEuler = AdaptiveSolver<System, Recon, Flux, time::ForwardEuler<Real>>;
+    using SolverRK2 = AdaptiveSolver<System, Recon, Flux, time::Heun2<Real>>;
+    using SolverRK3 = AdaptiveSolver<System, Recon, Flux, time::Kutta3<Real>>;
+    using SolverSSPRK3 = AdaptiveSolver<System, Recon, Flux, time::SSPRK3<Real>>;
+    using SolverRK4 = AdaptiveSolver<System, Recon, Flux, time::ClassicRK4<Real>>;
+
+    auto solver_euler = SolverEuler::builder(100, 50)
+        .with_domain(0.0, 2.0, 0.0, 0.5).with_initial_condition(gaussian_pulse).build();
+    auto solver_rk2 = SolverRK2::builder(100, 50)
+        .with_domain(0.0, 2.0, 0.0, 0.5).with_initial_condition(gaussian_pulse).build();
+    auto solver_rk3 = SolverRK3::builder(100, 50)
+        .with_domain(0.0, 2.0, 0.0, 0.5).with_initial_condition(gaussian_pulse).build();
+    auto solver_ssprk3 = SolverSSPRK3::builder(100, 50)
+        .with_domain(0.0, 2.0, 0.0, 0.5).with_initial_condition(gaussian_pulse).build();
+    auto solver_rk4 = SolverRK4::builder(100, 50)
+        .with_domain(0.0, 2.0, 0.0, 0.5).with_initial_condition(gaussian_pulse).build();
+
+    const Real t_final = 0.5f;
+
+    while (solver_euler.time() < t_final) solver_euler.step();
+    while (solver_rk2.time() < t_final) solver_rk2.step();
+    while (solver_rk3.time() < t_final) solver_rk3.step();
+    while (solver_ssprk3.time() < t_final) solver_ssprk3.step();
+    while (solver_rk4.time() < t_final) solver_rk4.step();
+
+    // Export results
+    VTKExporter::write_all_fields(solver_euler.get_output(), "output/integrator_euler.vtk");
+    VTKExporter::write_all_fields(solver_rk2.get_output(), "output/integrator_rk2.vtk");
+    VTKExporter::write_all_fields(solver_rk3.get_output(), "output/integrator_rk3.vtk");
+    VTKExporter::write_all_fields(solver_ssprk3.get_output(), "output/integrator_ssprk3.vtk");
+    VTKExporter::write_all_fields(solver_rk4.get_output(), "output/integrator_rk4.vtk");
+
+    printf("Résultats exportés:\n");
+    printf("  - output/integrator_euler.vtk (1st order)\n");
+    printf("  - output/integrator_rk2.vtk (2nd order)\n");
+    printf("  - output/integrator_rk3.vtk (3rd order)\n");
+    printf("  - output/integrator_ssprk3.vtk (3rd order, SSP)\n");
+    printf("  - output/integrator_rk4.vtk (4th order)\n");
+    printf("\nRecommandation: SSPRK3 pour la stabilité forte, RK4 pour la précision\n");
+}
+
+// ============================================================================
+// EXAMPLE 16: VTK MULTI-LEVEL AMR EXPORT
+// ============================================================================
+
+void example_16_multilevel_amr_vtk() {
+    printf("\n=== EXEMPLE 16: Export VTK multi-niveau AMR ===\n\n");
+
+    using Real = float;
+    using System = Euler2D<Real>;
+    using Solver = EulerSolverRK3;
+
+    auto solver = Solver::builder(100, 50)
+        .with_domain(0.0, 2.0, 0.0, 0.8)
+        .with_initial_condition([](Real x, Real y) {
+            // Deux explosions pour tester le multi-niveau
+            Real dx1 = x - 0.5, dy1 = y - 0.4;
+            Real r1 = std::sqrt(dx1*dx1 + dy1*dy1);
+            Real dx2 = x - 1.5, dy2 = y - 0.4;
+            Real r2 = std::sqrt(dx2*dx2 + dy2*dy2);
+            Real rho = 1.0f + std::exp(-20.0 * r1*r1) + 0.5f * std::exp(-20.0 * r2*r2);
+            Real p = 1.0f + 5.0f * std::exp(-20.0 * r1*r1);
+            return System::from_primitive({rho, 0.0f, 0.0f, p}, 1.4f);
+        })
+        .build();
+
+    // Configuration AMR pour générer plusieurs niveaux
+    auto amr_config = standard_amr<System>();
+    amr_config.config.max_level = 4;
+    solver.set_refinement_config(amr_config);
+
+    // Simulation courte pour générer de l'AMR
+    for (int i = 0; i < 20; ++i) {
+        solver.step();
+    }
+
+    // Récupérer tous les niveaux AMR
+    auto all_levels = solver.get_all_levels();
+    printf("Nombre de niveaux AMR: %zu\n", all_levels.size());
+
+    // Récupérer la géométrie multi-niveau
+    // Note: Ceci nécessite que AdaptiveSolver expose multilevel_geometry
+    // Pour cet exemple, nous montrons l'API conceptuelle
+
+    printf("\nExport multi-niveau AMR:\n");
+    printf("  - write_multilevel() exporte tous les niveaux dans un seul VTK\n");
+    printf("  - Les cellules ont des tailles physiques différentes (dx, dy)\n");
+    printf("  - Un champ scalaire 'Level' indique le niveau de raffinement\n");
+
+    // Pour l'export effectif, utiliser:
+    // VTKExporter::write_multilevel(all_levels, multilevel_geo, "output/multilevel.vtk", true);
+
+    // Export chaque niveau séparément pour comparaison
+    for (std::size_t level = 0; level < all_levels.size(); ++level) {
+        char filename[256];
+        snprintf(filename, sizeof(filename), "output/level_%zu.vtk", level);
+        VTKExporter::write_all_fields(all_levels[level], filename, true);
+        printf("  Niveau %zu: %s\n", level, filename);
+    }
+
+    printf("\nNOTE: Pour visualiser correctement l'AMR dans ParaView:\n");
+    printf("      - Utilisez le champ 'Level' pour colorer les cellules par niveau\n");
+    printf("      - Ou utilisez 'Threshold' pour isoler un niveau spécifique\n");
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
@@ -800,6 +1122,12 @@ int main(int argc, char** argv) {
     // example_10_complex_multiphysics();
     // example_11_builder_namespace();
     // example_12_error_handling();
+
+    // NOUVEAUX EXEMPLES (VTK multi-champ, comparaisons de schémas)
+    // example_13_flux_scheme_comparison();   // Rusanov vs HLLC vs Roe
+    // example_14_muscl_limiter_comparison(); // Minmod vs MC vs Van Leer vs Superbee
+    // example_15_time_integrator_comparison(); // Euler vs RK2 vs RK3 vs SSPRK3 vs RK4
+    // example_16_multilevel_amr_vtk();       // Export VTK multi-niveau AMR
 
     printf("\n");
     printf("╔════════════════════════════════════════════════════════════════╗\n");
