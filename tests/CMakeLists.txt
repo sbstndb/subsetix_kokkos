@@ -78,3 +78,13 @@ add_executable(subsetix_test_fvd_execution
 target_link_libraries(subsetix_test_fvd_execution PRIVATE subsetix::core GTest::gtest)
 target_include_directories(subsetix_test_fvd_execution PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME FvdExecutionTests COMMAND subsetix_test_fvd_execution)
+
+# 7. FVD Integrators Tests: Time integrators, AMR with coarsening, time-dependent BCs
+# Tests for the new high-level features
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_integrators
+    fvd_integrators_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_integrators PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_integrators PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdIntegratorsTests COMMAND subsetix_test_fvd_integrators)

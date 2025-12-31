@@ -25,6 +25,11 @@ struct SolverState {
     Real dt = Real(0);
     int step = 0;
 
+    // Sub-step information (for RK methods)
+    int stage = -1;              // Current RK stage (-1 if not in sub-step)
+    int num_stages = 1;          // Total number of stages
+    Real stage_time = Real(0);   // Time within current stage
+
     // AMR information
     int max_level = 0;
     std::size_t total_cells = 0;
@@ -57,6 +62,8 @@ enum class SolverEvent : int {
     SimulationEnd,
     StepBegin,
     StepEnd,
+    SubStepBegin,      // NEW: For RK sub-stages
+    SubStepEnd,        // NEW: For RK sub-stages
     RemeshBegin,
     RemeshEnd,
     OutputWritten,
@@ -73,6 +80,8 @@ inline const char* to_string(SolverEvent event) {
         case SolverEvent::SimulationEnd: return "SimulationEnd";
         case SolverEvent::StepBegin: return "StepBegin";
         case SolverEvent::StepEnd: return "StepEnd";
+        case SolverEvent::SubStepBegin: return "SubStepBegin";
+        case SolverEvent::SubStepEnd: return "SubStepEnd";
         case SolverEvent::RemeshBegin: return "RemeshBegin";
         case SolverEvent::RemeshEnd: return "RemeshEnd";
         case SolverEvent::OutputWritten: return "OutputWritten";
