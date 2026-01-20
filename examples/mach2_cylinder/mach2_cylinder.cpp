@@ -836,6 +836,171 @@ Real compute_dt(const ConservedFields& U,
   return cfl / max_rate;
 }
 
+// PHASE 4: Alternative dt computation using FVD TimeStepController
+// This function provides the same functionality as compute_dt() but uses
+// the FVD layer's TimeStepController for consistency with the FVD architecture.
+//
+// NOTE: Currently kept as an alternative for future use. The main compute_dt()
+// function is retained for bit-identical results.
+//
+// To use this function instead of compute_dt(), replace:
+//   Real dt = compute_dt(U[0], cfg.gamma, cfg.cfl, dx, dy);
+// with:
+//   Real dt = compute_dt_fvd(U[0], cfg.gamma, cfg.cfl, dx, dy);
+//
+// Real compute_dt_fvd(const ConservedFields& U,
+//                     Real gamma,
+//                     Real cfl,
+//                     Real dx,
+//                     Real dy) {
+//   using namespace subsetix::fvd::time;
+//   using namespace bridge;
+//
+//   // Convert CSR fields to dense for TimeStepController
+//   CSRFieldAdapter<System> adapter;
+//   auto dense = adapter.to_dense(U, "dt_computation");
+//
+//   // Use FVD TimeStepController for adaptive dt calculation
+//   TimeStepController<Real, System> timestep_controller(cfl, dx, dy);
+//   Real dt = timestep_controller.compute_dt(dense.U, dense.n, gamma);
+//
+//   return dt;
+// }
+
+// ============================================================================
+// PHASE 4: TIME INTEGRATION WITH FVD EULER STEP
+// ============================================================================
+//
+// Example of using FVD layer's euler_step with CSR fields via adapter.
+// This demonstrates the integration pattern for using higher-order
+// time integrators (RK3, RK4) with CSR sparse storage.
+//
+// The key steps are:
+// 1. Convert CSR fields to dense Kokkos views (CSRFieldAdapter::to_dense)
+// 2. Define a RHS function that computes dU/dt
+// 3. Call FVD time integrator (euler_step, rk_step, etc.)
+// 4. Convert dense result back to CSR fields (CSRFieldAdapter::from_dense)
+//
+// NOTE: This is an EXAMPLE showing the integration pattern.
+// The main time loop continues to use Forward Euler directly for
+// bit-identical results and efficiency with CSR.
+//
+// Usage example:
+//   // Instead of manual Euler update:
+//   //   apply_stencil_on_set_device(...);  // Current approach
+//
+//   // Could use FVD euler_step:
+//   //   Real t = 0.0;
+//   //   euler_step_fvd(U_fine[lvl], t, dt, gamma, obstacle, inflow, domain);
+//
+// void euler_step_fvd(ConservedFields& U,
+//                     Real t,
+//                     Real dt,
+//                     Real gamma,
+//                     const IntervalSet2DDevice& obstacle,
+//                     const Conserved& inflow,
+//                     const Box2D& domain) {
+//   using namespace subsetix::fvd::time;
+//   using namespace bridge;
+//
+//   // Step 1: Convert CSR to dense
+//   CSRFieldAdapter<System> adapter;
+//   auto dense = adapter.to_dense(U, "rk3_stage");
+//
+//   // Step 2: Define RHS function using existing stencil
+//   auto rhs = KOKKOS_LAMBDA(const auto& U_in, auto& rhs_out, int stage, Real t_stage) {
+//     // Compute RHS: dU/dt = -div(F)
+//     // This would wrap the existing EulerStencilSoA logic
+//     // For now, this is a placeholder showing the structure
+//   };
+//
+//   // Step 3: Allocate work space
+//   Kokkos::View<Conserved*, DeviceMemorySpace> rhs_work("rhs_work", dense.n);
+//
+//   // Step 4: Call FVD euler_step
+//   euler_step<System>(dense.U, dt, t, rhs, rhs_work);
+//
+//   // Step 5: Convert dense back to CSR
+//   adapter.from_dense(dense, U, U.geometry);
+// }
+
+// ============================================================================
+// PHASE 7: ADAPTIVE SOLVER INTEGRATION EXAMPLE
+// ============================================================================
+//
+// The FVD layer provides AdaptiveSolver which offers a high-level, declarative
+// API for running simulations with AMR. This section shows how mach2_cylinder
+// could be refactored to use AdaptiveSolver.
+//
+// CURRENT ARCHITECTURE (manual time loop):
+//   - Explicit time stepping loop
+//   - Manual AMR management (remesh, restrict, prolong)
+//   - Manual boundary condition handling
+//   - Manual output writing
+//
+// TARGET ARCHITECTURE (with AdaptiveSolver):
+//   AdaptiveSolver<System, NoReconstruction, RusanovFlux> solver(fluid, domain, cfg);
+//   solver.set_refinement_criteria(RefinementCriteria::density_gradient(0.1, 4));
+//   solver.set_boundary_conditions(boundary_config);
+//   solver.initialize(inflow_state);
+//   while (solver.get_time() < t_final) {
+//       solver.step();  // Handles: RHS, time integration, AMR, BCs, output
+//   }
+//   solver.write_vtk("output.vtk");
+//
+// BENEFITS:
+//   - Declarative API (specify WHAT, not HOW)
+//   - Reduced code complexity (~50 lines vs ~2500 lines)
+//   - Built-in observer pattern for progress monitoring
+//   - Consistent interface across different problems
+//
+// CHALLENGES:
+//   - AdaptiveSolver currently uses dense arrays, mach2 uses CSR
+//   - CSR adapter needed for full integration (documented in Phase 4)
+//   - Cylinder obstacle BCs are geometry-specific (not in FVD layer)
+//
+// IMPLEMENTATION STATUS:
+//   - AdaptiveSolver interface is fully defined
+//   - step() function is currently a STUB (returns fake dt)
+//   - To fully integrate, implement AdaptiveSolver::step() with:
+//     1. RHS computation using flux scheme
+//     2. Time integration (euler_step or rk_step)
+//     3. AMR operations (remesh, restrict, prolong)
+//     4. Boundary condition enforcement
+//     5. Observer callbacks
+//
+// EXAMPLE: Minimal AdaptiveSolver usage pattern
+//
+//   using namespace subsetix::fvd;
+//   using System = subsetix::fvd::Euler2D<Real>;
+//
+//   // Create solver
+//   AdaptiveSolver<System,
+//                  reconstruction::NoReconstruction,
+//                  flux::RusanovFlux> solver(fluid_geometry, domain, cfg);
+//
+//   // Configure refinement
+//   solver.set_refinement_criteria(
+//       AdaptiveSolver<System, ...>::RefinementCriteria::density_gradient(0.1, 4)
+//   );
+//
+//   // Set boundary conditions (external only - cylinder is separate)
+//   auto bc_config = boundary::BoundaryConfigBuilder<System>::inflow_outflow(
+//       inflow_state, cfg.gamma
+//   );
+//   solver.set_boundary_conditions(bc_config);
+//
+//   // Initialize and run
+//   solver.initialize(inflow_state);
+//   while (solver.get_time() < t_final) {
+//       Real dt = solver.step();
+//       std::cout << "t=" << solver.get_time() << " dt=" << dt << "\n";
+//   }
+//
+// NOTE: This is the TARGET architecture for future work.
+// Current implementation uses manual time loop for bit-identical results.
+//
+
 // ============================================================================
 // PHASE 4: TIME INTEGRATION WITH CSR ADAPTER
 // ============================================================================
