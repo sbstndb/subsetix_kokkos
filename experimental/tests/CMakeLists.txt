@@ -38,5 +38,23 @@ target_link_libraries(experimental_v2_test
 
 add_test(NAME ExperimentalV2Test COMMAND experimental_v2_test)
 
+# v3 tests - use custom test_main that initializes Kokkos
+add_executable(experimental_v3_test
+  test_main.cpp
+  set_algebra/v3_test.cpp
+)
+
+target_link_libraries(experimental_v3_test
+  PRIVATE
+    subsetix::core
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalV3Test COMMAND experimental_v3_test)
+
 message(STATUS "  - experimental_v1_test")
 message(STATUS "  - experimental_v2_test")
+message(STATUS "  - experimental_v3_test")

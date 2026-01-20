@@ -6,6 +6,7 @@
 #include <benchmark/benchmark.h>
 #include <experimental/subsetix/csr/set_algebra/v1.hpp>
 #include <experimental/subsetix/csr/set_algebra/v2.hpp>
+#include <experimental/subsetix/csr/set_algebra/v3.hpp>
 #include <Kokkos_Core.hpp>
 
 using namespace experimental::subsetix::csr;
@@ -138,6 +139,26 @@ BENCHMARK_REGISTER_F(UnifiedIntersectionBenchmark, V2)
     ->Unit(benchmark::kMillisecond);
 
 // ========================================================================
+// v3 Benchmark (with workqueue and branchless)
+// ========================================================================
+
+BENCHMARK_TEMPLATE_F(UnifiedIntersectionBenchmark, V3, OverlapPattern::FULL_OVERLAP)
+(benchmark::State& state) {
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    benchmark::DoNotOptimize(result.num_intervals);
+  }
+
+  state.SetItemsProcessed(state.iterations());
+  state.SetBytesProcessed(state.iterations() * (mesh_a_.num_intervals + mesh_b_.num_intervals) * sizeof(Interval));
+}
+
+BENCHMARK_REGISTER_F(UnifiedIntersectionBenchmark, V3)
+    ->Range(64, 8192)
+    ->Unit(benchmark::kMillisecond);
+
+// ========================================================================
 // Partial Overlap Benchmarks
 // ========================================================================
 
@@ -159,8 +180,17 @@ BENCHMARK_F(PartialOverlapBench, V2)(benchmark::State& state) {
   state.SetItemsProcessed(state.iterations());
 }
 
+BENCHMARK_F(PartialOverlapBench, V3)(benchmark::State& state) {
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+  }
+  state.SetItemsProcessed(state.iterations());
+}
+
 BENCHMARK_REGISTER_F(PartialOverlapBench, V1)->Range(64, 8192)->Unit(benchmark::kMillisecond);
 BENCHMARK_REGISTER_F(PartialOverlapBench, V2)->Range(64, 8192)->Unit(benchmark::kMillisecond);
+BENCHMARK_REGISTER_F(PartialOverlapBench, V3)->Range(64, 8192)->Unit(benchmark::kMillisecond);
 
 // ========================================================================
 // Minimal Overlap Benchmarks
@@ -184,8 +214,17 @@ BENCHMARK_F(MinimalOverlapBench, V2)(benchmark::State& state) {
   state.SetItemsProcessed(state.iterations());
 }
 
+BENCHMARK_F(MinimalOverlapBench, V3)(benchmark::State& state) {
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+  }
+  state.SetItemsProcessed(state.iterations());
+}
+
 BENCHMARK_REGISTER_F(MinimalOverlapBench, V1)->Range(64, 8192)->Unit(benchmark::kMillisecond);
 BENCHMARK_REGISTER_F(MinimalOverlapBench, V2)->Range(64, 8192)->Unit(benchmark::kMillisecond);
+BENCHMARK_REGISTER_F(MinimalOverlapBench, V3)->Range(64, 8192)->Unit(benchmark::kMillisecond);
 
 // ========================================================================
 // 3D Benchmarks
@@ -297,6 +336,59 @@ static void BM_Intersection3D_V2_FullOverlap(benchmark::State& state) {
 
 BENCHMARK(BM_Intersection3D_V1_V2_FullOverlap)->Range(64, 8192)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_Intersection3D_V2_FullOverlap)->Range(64, 8192)->Unit(benchmark::kMillisecond);
+
+static void BM_Intersection3D_V3_FullOverlap(benchmark::State& state) {
+  const int n = state.range(0);
+
+  Mesh3DDevice A, B;
+  A.num_rows = n;
+  A.num_intervals = n;
+  A.row_keys = Mesh3DDevice::RowKeyView("A_row_keys", n);
+  A.row_ptr = Mesh3DDevice::IndexView("A_row_ptr", n + 1);
+  A.intervals = Mesh3DDevice::IntervalView("A_intervals", n);
+
+  B.num_rows = n;
+  B.num_intervals = n;
+  B.row_keys = Mesh3DDevice::RowKeyView("B_row_keys", n);
+  B.row_ptr = Mesh3DDevice::IndexView("B_row_ptr", n + 1);
+  B.intervals = Mesh3DDevice::IntervalView("B_intervals", n);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  for (int i = 0; i < n; ++i) {
+    A_keys_h(i) = RowKey3D{i, i % 10};
+    A_ptr_h(i) = i;
+    A_int_h(i) = Interval{0, 100};
+
+    B_keys_h(i) = RowKey3D{i, i % 10};
+    B_ptr_h(i) = i;
+    B_int_h(i) = Interval{50, 150};
+  }
+  A_ptr_h(n) = n;
+  B_ptr_h(n) = n;
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_3d(A, B);
+    benchmark::DoNotOptimize(result.num_intervals);
+  }
+
+  state.SetItemsProcessed(state.iterations());
+  state.SetBytesProcessed(state.iterations() * (A.num_intervals + B.num_intervals) * sizeof(Interval));
+}
+
+BENCHMARK(BM_Intersection3D_V3_FullOverlap)->Range(64, 8192)->Unit(benchmark::kMillisecond);
 
 // ========================================================================
 // Large-scale 2D-only Benchmarks (2D can handle much larger meshes)
@@ -410,6 +502,59 @@ static void BM_Intersection2D_Large_V2(benchmark::State& state) {
 BENCHMARK(BM_Intersection2D_Large_V1)->RangeMultiplier(2)->Range(16384, 131072)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_Intersection2D_Large_V2)->RangeMultiplier(2)->Range(16384, 131072)->Unit(benchmark::kMillisecond);
 
+static void BM_Intersection2D_Large_V3(benchmark::State& state) {
+  const int n = state.range(0);
+
+  Mesh2DDevice A, B;
+  A.num_rows = n;
+  A.num_intervals = n;
+  A.row_keys = Mesh2DDevice::RowKeyView("A_row_keys", n);
+  A.row_ptr = Mesh2DDevice::IndexView("A_row_ptr", n + 1);
+  A.intervals = Mesh2DDevice::IntervalView("A_intervals", n);
+
+  B.num_rows = n;
+  B.num_intervals = n;
+  B.row_keys = Mesh2DDevice::RowKeyView("B_row_keys", n);
+  B.row_ptr = Mesh2DDevice::IndexView("B_row_ptr", n + 1);
+  B.intervals = Mesh2DDevice::IntervalView("B_intervals", n);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  for (int i = 0; i < n; ++i) {
+    A_keys_h(i) = RowKey2D{i};
+    A_ptr_h(i) = i;
+    A_int_h(i) = Interval{0, 100};
+
+    B_keys_h(i) = RowKey2D{i};
+    B_ptr_h(i) = i;
+    B_int_h(i) = Interval{50, 150};
+  }
+  A_ptr_h(n) = n;
+  B_ptr_h(n) = n;
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_2d(A, B);
+    benchmark::DoNotOptimize(result.num_intervals);
+  }
+
+  state.SetItemsProcessed(state.iterations());
+  state.SetBytesProcessed(state.iterations() * (A.num_intervals + B.num_intervals) * sizeof(Interval));
+}
+
+BENCHMARK(BM_Intersection2D_Large_V3)->RangeMultiplier(2)->Range(16384, 131072)->Unit(benchmark::kMillisecond);
+
 int main(int argc, char** argv) {
   Kokkos::initialize(argc, argv);
   benchmark::Initialize(&argc, argv);
@@ -419,9 +564,30 @@ int main(int argc, char** argv) {
   }
   benchmark::RunSpecifiedBenchmarks();
   benchmark::Shutdown();
-  // Note: Not calling Kokkos::finalize() here because Fixtures may still hold Views
-  // that will be destroyed after main() returns.
-  return 0;
+  // WORKAROUND: Call Kokkos::finalize() and use _exit() to skip static destructors.
+  //
+  // The benchmark fixtures contain Kokkos::View members (mesh_a_, mesh_b_, workspace_).
+  // These fixtures are stored in Google Benchmark's static BenchmarkFamilies singleton
+  // and would normally be destroyed during static destruction AFTER main() returns.
+  //
+  // Problem:
+  // - Without calling Kokkos::finalize(): View deallocation during static destruction
+  //   calls fence() which segfaults due to corrupted Kokkos runtime state
+  // - With calling finalize() + normal return: Kokkos aborts when Views are deallocated
+  //   after finalize (even though the deallocation itself would work fine)
+  //
+  // Solution:
+  // - Call Kokkos::finalize() to properly shut down the runtime
+  // - Use _exit() instead of return to skip static destructors entirely
+  // - This prevents View destructors from running after finalize
+  // - All benchmark results have already been printed successfully
+  //
+  // Note: This is safe because:
+  // 1. All benchmarks have completed successfully
+  // 2. Kokkos has been properly finalized
+  // 3. Skipping static destructors just means memory won't be freed (OS reclaims it anyway)
+  Kokkos::finalize();
+  std::_Exit(0);  // Use _exit() to skip static destructors and avoid the abort
 }
 
 #endif // SUBSETIX_ENABLE_EXPERIMENTAL
