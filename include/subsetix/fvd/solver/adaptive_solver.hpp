@@ -20,6 +20,7 @@
 #include "../amr/refinement_criteria.hpp"
 #include "../../csr_ops/amr.hpp"
 #include "../../csr_ops/field_amr.hpp"
+#include "../../field/csr_field.hpp"
 #include "../boundary/time_dependent_bc.hpp"
 
 namespace subsetix::fvd {
@@ -1044,6 +1045,147 @@ public:
      */
     Kokkos::View<Conserved*>& get_solution_mutable() {
         return U_;
+    }
+
+    // ========================================================================
+    // MULTI-LEVEL AMR ACCESS API (Phase 1)
+    // ========================================================================
+
+    /**
+     * @brief Get the number of active AMR levels
+     *
+     * @return Number of active levels (1 to max_amr_levels_)
+     *
+     * Level 0 is always active (coarsest/base mesh).
+     * Higher levels are activated during refinement.
+     *
+     * @note This reflects the current state after remeshing.
+     *       Levels may be activated/deactivated dynamically.
+     */
+    int get_num_levels() const {
+        return finest_level_ + 1;
+    }
+
+    /**
+     * @brief Get geometry for a specific AMR level
+     *
+     * @param level Level index (0 = coarsest, get_num_levels()-1 = finest)
+     * @return const reference to CSR geometry for this level
+     * @throws std::out_of_range if level is inactive
+     *
+     * @note The returned reference is invalidated after remeshing.
+     */
+    const csr::IntervalSet2DDevice& get_level_geometry(int level) const {
+        if (level < 0 || level >= max_amr_levels_ || !levels_[level].active) {
+            throw std::out_of_range("Invalid AMR level: " + std::to_string(level));
+        }
+        return levels_[level].geometry;
+    }
+
+    /**
+     * @brief Get solution field for a specific AMR level (read-only)
+     *
+     * @param level Level index (0 = coarsest, get_num_levels()-1 = finest)
+     * @return const view of conserved variables for this level
+     * @throws std::out_of_range if level is inactive
+     *
+     * @note The returned view is invalidated after remeshing or time stepping.
+     */
+    const Kokkos::View<Conserved*>& get_level_solution(int level) const {
+        if (level < 0 || level >= max_amr_levels_ || !levels_[level].active) {
+            throw std::out_of_range("Invalid AMR level: " + std::to_string(level));
+        }
+        return levels_[level].U;
+    }
+
+    /**
+     * @brief Get solution field for a specific AMR level (mutable)
+     *
+     * @param level Level index (0 = coarsest, get_num_levels()-1 = finest)
+     * @return mutable view of conserved variables for this level
+     * @throws std::out_of_range if level is inactive
+     * @warning Use with caution. Direct modification can break solver invariants.
+     */
+    Kokkos::View<Conserved*>& get_level_solution_mutable(int level) {
+        if (level < 0 || level >= max_amr_levels_ || !levels_[level].active) {
+            throw std::out_of_range("Invalid AMR level: " + std::to_string(level));
+        }
+        return levels_[level].U;
+    }
+
+    /**
+     * @brief Get cell count for a specific AMR level
+     *
+     * @param level Level index (0 = coarsest, get_num_levels()-1 = finest)
+     * @return Number of active cells at this level
+     */
+    std::size_t get_level_cell_count(int level) const {
+        if (level < 0 || level >= max_amr_levels_ || !levels_[level].active) {
+            return 0;
+        }
+        return levels_[level].n_cells;
+    }
+
+    /**
+     * @brief Get cell size (dx) for a specific AMR level
+     *
+     * @param level Level index (0 = coarsest, get_num_levels()-1 = finest)
+     * @return Cell size in x-direction at this level
+     *
+     * Each level has half the cell size of the previous level:
+     *   dx_level = dx_base / (2^level)
+     */
+    Real get_level_dx(int level) const {
+        return cfg_.dx / static_cast<Real>(1 << level);
+    }
+
+    /**
+     * @brief Get cell size (dy) for a specific AMR level
+     *
+     * @param level Level index (0 = coarsest, get_num_levels()-1 = finest)
+     * @return Cell size in y-direction at this level
+     */
+    Real get_level_dy(int level) const {
+        return cfg_.dy / static_cast<Real>(1 << level);
+    }
+
+    /**
+     * @brief Check if a level is active
+     *
+     * @param level Level index to check
+     * @return true if the level is active, false otherwise
+     */
+    bool is_level_active(int level) const {
+        return (level >= 0 && level < max_amr_levels_ && levels_[level].active);
+    }
+
+    /**
+     * @brief Get the finest active level index
+     *
+     * @return Index of the finest active level
+     */
+    int get_finest_level() const {
+        return finest_level_;
+    }
+
+    /**
+     * @brief Create a Field2DDevice wrapper for a specific level
+     *
+     * This provides a unified interface compatible with CSR operations.
+     *
+     * @param level Level index (0 = coarsest, get_num_levels()-1 = finest)
+     * @return Field2D<Conserved, DeviceMemorySpace> wrapping geometry and solution
+     * @throws std::out_of_range if level is inactive
+     */
+    subsetix::csr::Field2DDevice<Conserved> get_level_field(int level) const {
+        if (level < 0 || level >= max_amr_levels_ || !levels_[level].active) {
+            return subsetix::csr::Field2DDevice<Conserved>{};  // Empty field
+        }
+
+        subsetix::csr::Field2DDevice<Conserved> field;
+        field.geometry = levels_[level].geometry;
+        field.values = levels_[level].U;
+        return field;
     }
 
     // ========================================================================
