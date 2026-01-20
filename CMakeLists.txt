@@ -20,6 +20,8 @@ option(SUBSETIX_EXECSPACE_FORCE_SERIAL "Force ExecSpace = Kokkos::Serial" OFF)
 option(SUBSETIX_MEMORYSPACE_FORCE_UVM "Force DeviceMemorySpace = Kokkos::CudaUVMSpace" OFF)
 option(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED "Force DeviceMemorySpace = Kokkos::HostPinnedSpace" OFF)
 
+option(SUBSETIX_ENABLE_COVERAGE "Enable code coverage analysis (GCC only)" OFF)
+
 set(_SUBSETIX_EXECSPACE_FORCE_COUNT 0)
 if(SUBSETIX_EXECSPACE_FORCE_CUDA)
   math(EXPR _SUBSETIX_EXECSPACE_FORCE_COUNT "${_SUBSETIX_EXECSPACE_FORCE_COUNT} + 1")
@@ -46,6 +48,35 @@ endif()
 if(_SUBSETIX_MEMORYSPACE_FORCE_COUNT GREATER 1)
   message(FATAL_ERROR "Only one of SUBSETIX_MEMORYSPACE_FORCE_{UVM,HOSTPINNED} can be ON.")
 endif()
+
+# ========================================================================
+# Code Coverage Configuration
+# ========================================================================
+
+if(SUBSETIX_ENABLE_COVERAGE)
+  message(STATUS "=== Code Coverage Enabled ===")
+
+  # Check if using GCC (gcov only works with GCC)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    message(FATAL_ERROR "Coverage analysis requires GCC compiler")
+  endif()
+
+  # Add coverage flags
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:--coverage>)
+  add_link_options(--coverage)
+
+  # Ensure debug build for accurate coverage
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type for coverage" FORCE)
+  set(CMAKE_CXX_FLAGS_DEBUG "-g -O0" CACHE STRING "" FORCE)
+
+  message(STATUS "Coverage flags added for GCC")
+endif()
+
+# ========================================================================
+# Compile Commands for clang-tidy
+# ========================================================================
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(FetchContent)
 

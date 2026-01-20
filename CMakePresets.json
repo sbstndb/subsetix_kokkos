@@ -83,6 +83,18 @@
         "CMAKE_CXX_COMPILER": "g++-12",
         "SUBSETIX_USE_MPI": "ON"
       }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Code Coverage (Serial, Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SUBSETIX_ENABLE_COVERAGE": "ON",
+        "SUBSETIX_KOKKOS_OPENMP": "OFF",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -113,6 +125,10 @@
     {
       "name": "mpi-cuda-gcc12",
       "configurePreset": "mpi-cuda-gcc12"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
     }
   ],
   "testPresets": [
@@ -143,6 +159,10 @@
     {
       "name": "mpi-cuda-gcc12",
       "configurePreset": "mpi-cuda-gcc12"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
     }
   ]
 }
