@@ -180,7 +180,7 @@ public:
 
         DenseRepresentation dense;
         dense.n = n;
-        dense.geometry = csr.geometry;
+        dense.geometry = csr.rho.geometry;
 
         // Allocate dense views
         dense.U = Kokkos::View<Conserved*, DeviceMemorySpace>(label + "_U", n);
