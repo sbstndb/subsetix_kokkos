@@ -2,6 +2,9 @@
 
 #include "../example_output.hpp"
 
+// PHASE 1: Include FVD layer for type definitions
+#include <subsetix/fvd/system/euler2d.hpp>
+
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
 #include <subsetix/geometry/csr_backend.hpp>
@@ -41,6 +44,9 @@ namespace {
 
 using Real = float;
 
+// PHASE 1: Use FVD types (binary compatible with local types)
+using System = subsetix::fvd::Euler2D<Real>;
+
 using subsetix::csr::Box2D;
 using subsetix::csr::Coord;
 using subsetix::csr::ExecSpace;
@@ -69,13 +75,15 @@ using subsetix::MultilevelFieldDevice;
 using Clock = std::chrono::steady_clock;
 constexpr int MAX_AMR_LEVELS = 6; // level 0 + up to 5 refined levels
 
-struct Conserved {
-  Real rho;
-  Real rhou;
-  Real rhov;
-  Real E;
-};
+// ============================================================================
+// PHASE 1: Use FVD types instead of local definitions
+// ============================================================================
 
+// Type aliases to FVD types (binary compatible, verified in Phase 0.5)
+using Conserved = System::Conserved;   // Was: struct Conserved { Real rho, rhou, rhov, E; };
+using Primitive = System::Primitive;  // Was: struct Primitive { Real rho, u, v, p; };
+
+// CSR-specific wrappers (FVD doesn't provide these - still local)
 struct ConservedViews {
   Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> rho;
   Kokkos::View<Real*, subsetix::csr::DeviceMemorySpace> rhou;
@@ -271,35 +279,28 @@ ConservedFields make_conserved_fields(const IntervalSet2DDevice& geom,
   return out;
 }
 
+// ============================================================================
+// PHASE 1: Use FVD System methods instead of local functions
+// ============================================================================
+
+// These wrapper functions delegate to FVD System methods
+// They maintain the same API for gradual migration
 KOKKOS_INLINE_FUNCTION
 Primitive cons_to_prim(const Conserved& U, Real gamma) {
-  constexpr Real eps = static_cast<Real>(1e-12);
-  Primitive q;
-  q.rho = U.rho;
-  const Real inv_rho = static_cast<Real>(1.0) / (U.rho + eps);
-  q.u = U.rhou * inv_rho;
-  q.v = U.rhov * inv_rho;
-  const Real kinetic = static_cast<Real>(0.5) * (q.u * q.u + q.v * q.v);
-  const Real pressure = (gamma - static_cast<Real>(1.0)) * (U.E - U.rho * kinetic);
-  q.p = (pressure > eps) ? pressure : eps;
-  return q;
+  // PHASE 1: Delegate to FVD System
+  return System::to_primitive(U, gamma);
 }
 
 KOKKOS_INLINE_FUNCTION
 Conserved prim_to_cons(const Primitive& q, Real gamma) {
-  Conserved U;
-  const Real kinetic = static_cast<Real>(0.5) * q.rho * (q.u * q.u + q.v * q.v);
-  U.rho = q.rho;
-  U.rhou = q.rho * q.u;
-  U.rhov = q.rho * q.v;
-  U.E = q.p / (gamma - static_cast<Real>(1.0)) + kinetic;
-  return U;
+  // PHASE 1: Delegate to FVD System
+  return System::from_primitive(q, gamma);
 }
 
 KOKKOS_INLINE_FUNCTION
 Real sound_speed(const Primitive& q, Real gamma) {
-  constexpr Real eps = static_cast<Real>(1e-12);
-  return std::sqrt(gamma * q.p / (q.rho + eps));
+  // PHASE 1: Delegate to FVD System
+  return System::sound_speed(q, gamma);
 }
 
 KOKKOS_INLINE_FUNCTION
