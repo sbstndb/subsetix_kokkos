@@ -295,6 +295,176 @@ public:
     };
 
     // ========================================================================
+    // BUILDER PATTERN
+    // ========================================================================
+
+    /**
+     * @brief Fluent builder for AdaptiveSolver
+     *
+     * Provides a clean, chainable API for constructing AdaptiveSolver instances.
+     *
+     * Example:
+     *   auto solver = MySolver::builder(100, 50)
+     *       .with_domain(0.0, 1.0, 0.0, 0.5)
+     *       .with_initial_condition([](Real x, Real y) { ... })
+     *       .with_gamma(1.4f)
+     *       .build();
+     */
+    class Builder {
+    public:
+        /**
+         * @brief Construct a builder for nx × ny grid
+         */
+        Builder(int nx, int ny)
+            : nx_(nx), ny_(ny)
+            , x_min_(Real(0)), x_max_(Real(nx))
+            , y_min_(Real(0)), y_max_(Real(ny))
+            , gamma_(System::default_gamma)
+            , cfl_(Real(0.45))
+            , has_gamma_(false)
+            , has_cfl_(false)
+            , has_ic_(false)
+        {}
+
+        /**
+         * @brief Set domain bounds
+         */
+        Builder& with_domain(Real x_min, Real x_max, Real y_min, Real y_max) {
+            x_min_ = x_min;
+            x_max_ = x_max;
+            y_min_ = y_min;
+            y_max_ = y_max;
+            return *this;
+        }
+
+        /**
+         * @brief Set initial condition function
+         *
+         * @param ic Function taking (Real x, Real y) and returning Conserved
+         */
+        template<typename F>
+        Builder& with_initial_condition(F&& ic) {
+            ic_function_ = std::forward<F>(ic);
+            has_ic_ = true;
+            return *this;
+        }
+
+        /**
+         * @brief Set gamma value
+         */
+        Builder& with_gamma(Real gamma) {
+            gamma_ = gamma;
+            has_gamma_ = true;
+            return *this;
+        }
+
+        /**
+         * @brief Set CFL number
+         */
+        Builder& with_cfl(Real cfl) {
+            cfl_ = cfl;
+            has_cfl_ = true;
+            return *this;
+        }
+
+        /**
+         * @brief Build the solver
+         */
+        AdaptiveSolver build() {
+            // Create domain box
+            csr::Box2D domain{x_min_, x_max_, y_min_, y_max_};
+
+            // Create full rectangular domain CSR geometry
+            csr::IntervalSet2DDevice fluid = subsetix::csr::make_box_device(domain);
+            subsetix::csr::compute_cell_offsets_device(fluid);
+
+            // Calculate grid spacing
+            Real dx = (x_max_ - x_min_) / nx_;
+            Real dy = (y_max_ - y_min_) / ny_;
+
+            // Create config
+            Config cfg;
+            cfg.nx = static_cast<std::size_t>(nx_);
+            cfg.ny = static_cast<std::size_t>(ny_);
+            cfg.dx = dx;
+            cfg.dy = dy;
+            cfg.cfl = cfl_;
+            cfg.gamma = gamma_;
+
+            // Construct solver
+            AdaptiveSolver solver(fluid, domain, cfg);
+
+            // Apply initial condition if provided
+            if (has_ic_ && ic_function_) {
+                // Create a host copy of the initial condition to evaluate on host
+                // then copy to device
+                initialize_from_function(solver, ic_function_, x_min_, y_min_, dx, dy);
+            }
+
+            return solver;
+        }
+
+    private:
+        // Grid dimensions
+        int nx_, ny_;
+
+        // Domain bounds
+        Real x_min_, x_max_, y_min_, y_max_;
+
+        // Configuration
+        Real gamma_;
+        Real cfl_;
+
+        // Flags
+        bool has_gamma_;
+        bool has_cfl_;
+        bool has_ic_;
+
+        // Initial condition function (stored as any callable)
+        std::function<Conserved(Real, Real)> ic_function_;
+
+        /**
+         * @brief Initialize solver from initial condition function
+         */
+        static void initialize_from_function(AdaptiveSolver& solver,
+                                            const std::function<Conserved(Real, Real)>& ic,
+                                            Real x_min, Real y_min,
+                                            Real dx, Real dy) {
+            // Access solver's U_ field and evaluate IC on each cell
+            // Note: This is a simplified version - full implementation would
+            // use parallel_for to evaluate on device
+            auto U = solver.U_;
+            auto cfg = solver.cfg_;
+            std::size_t nx = cfg.nx;
+            std::size_t ny = cfg.ny;
+
+            Kokkos::parallel_for(
+                "initialize_ic",
+                Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, static_cast<int>(nx * ny)),
+                KOKKOS_LAMBDA(const int linear_idx) {
+                    std::size_t j = linear_idx / static_cast<int>(nx);
+                    std::size_t i = linear_idx % static_cast<int>(nx);
+                    Real x = x_min + (i + Real(0.5)) * dx;
+                    Real y = y_min + (j + Real(0.5)) * dy;
+                    U(linear_idx) = ic(x, y);
+                }
+            );
+            Kokkos::fence();
+        }
+    };
+
+    /**
+     * @brief Create a builder for this solver type
+     *
+     * @param nx Number of cells in x-direction
+     * @param ny Number of cells in y-direction
+     * @return Builder instance
+     */
+    static Builder builder(int nx, int ny) {
+        return Builder(nx, ny);
+    }
+
+    // ========================================================================
     // CONSTRUCTORS
     // ========================================================================
 
@@ -2924,6 +3094,9 @@ public:
     }
 
 private:
+    // Friend declarations
+    friend class Builder;
+
     // Configuration
     Config cfg_;
 
