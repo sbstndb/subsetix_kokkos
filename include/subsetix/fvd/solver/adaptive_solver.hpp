@@ -15,6 +15,7 @@
 #include "../output/field_view.hpp"
 #include "../geometry/csr_types.hpp"
 #include "../sources/source_terms.hpp"
+#include "../time/time_integrators.hpp"
 
 namespace subsetix::fvd {
 
@@ -39,13 +40,15 @@ namespace subsetix::fvd {
  * - System: The PDE system (must satisfy FiniteVolumeSystem concept)
  * - Reconstruction: NoReconstruction or MUSCL_Reconstruction<Limiter>
  * - FluxScheme: RusanovFlux, HLLCFlux, or RoeFlux
+ * - TimeIntegrator: ForwardEuler, Heun2, Kutta3, ClassicRK4, SSPRK3, etc.
  *
  * C++20: Constrained with concepts for better error messages
  */
 template<
     FiniteVolumeSystem System,
     typename Reconstruction = reconstruction::NoReconstruction,
-    template<typename> class FluxScheme = flux::RusanovFlux
+    template<typename> class FluxScheme = flux::RusanovFlux,
+    typename TimeIntegrator = time::ForwardEuler<typename System::RealType>
 >
 class AdaptiveSolver {
     // Note: FluxScheme constraint checked via instantiation below
@@ -381,13 +384,18 @@ public:
      * 1. Compute adaptive dt based on CFL condition
      * 2. Apply boundary conditions
      * 3. Compute RHS (flux divergence)
-     * 4. Apply time integrator (Forward Euler for MVP)
+     * 4. Apply time integrator (Forward Euler, RK2, RK3, RK4, etc.)
      * 5. Update simulation time
      *
      * @return Actual dt used for the step
      *
-     * @note This is a simplified implementation using Forward Euler.
-     *       Higher-order integrators (RK3, SSPRK3) will be added later.
+     * @note The time integrator is selected at compile time via the
+     *       TimeIntegrator template parameter. Options include:
+     *       - ForwardEuler: 1st order, 1 stage (default, fastest)
+     *       - Heun2: 2nd order, 2 stages
+     *       - Kutta3: 3rd order, 3 stages
+     *       - SSPRK3: 3rd order, 3 stages (good for shocks)
+     *       - ClassicRK4: 4th order, 4 stages (most accurate)
      *
      * @note For production use with CSR geometries, consider using the
      *       bridge pattern (CSR -> dense -> step -> dense -> CSR) as shown
@@ -398,8 +406,6 @@ public:
             fprintf(stderr, "[AdaptiveSolver] Error: Fields not initialized. Call initialize() first.\n");
             return Real(0);
         }
-
-        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
 
         // -------------------------------------------------------------------
         // Step 1: Compute adaptive time step based on CFL condition
@@ -421,49 +427,15 @@ public:
         dt = Kokkos::fmax(dt_min, Kokkos::fmin(dt, dt_max));
 
         // -------------------------------------------------------------------
-        // Step 2: Apply boundary conditions
+        // Step 2-4: Time integration (dispatch based on integrator type)
         // -------------------------------------------------------------------
-        // NOTE: For dense storage on regular grids, BC application is trivial.
-        // For CSR geometries, this requires identifying boundary cells and
-        // filling ghost cells appropriately.
-        //
-        // The current implementation assumes BCs are handled externally
-        // or by the RHS computation.
-        apply_boundary_conditions();
-
-        // -------------------------------------------------------------------
-        // Step 3: Compute RHS (flux divergence)
-        // -------------------------------------------------------------------
-        // NOTE: The RHS computation is the core of the FV method:
-        // dU/dt = -div(F) = -1/dx * (F_{i+1/2} - F_{i-1/2})
-        //
-        // This requires:
-        // 1. Computing primitive variables from conserved
-        // 2. Computing numerical fluxes at cell faces
-        // 3. Summing fluxes to get divergence
-        //
-        // For the MVP, we use a placeholder that users can override.
-        compute_rhs(rhs_work_, current_time_);
-
-        // -------------------------------------------------------------------
-        // Step 4: Apply time integrator (Forward Euler)
-        // -------------------------------------------------------------------
-        // U_{n+1} = U_n + dt * RHS
-        auto U = U_;
-        auto rhs = rhs_work_;
-        Real dt_local = dt;
-
-        Kokkos::parallel_for(
-            "euler_update",
-            Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(n_cells_)),
-            KOKKOS_LAMBDA(const int i) {
-                U(i).rho  += dt_local * rhs(i).rho;
-                U(i).rhou += dt_local * rhs(i).rhou;
-                U(i).rhov += dt_local * rhs(i).rhov;
-                U(i).E    += dt_local * rhs(i).E;
-            }
-        );
-        Kokkos::fence();
+        if constexpr (TimeIntegrator::stages == 1) {
+            // Forward Euler: single stage
+            step_euler(dt);
+        } else {
+            // Multi-stage Runge-Kutta: RK2, RK3, RK4, SSPRK3, etc.
+            step_rk(dt);
+        }
 
         // -------------------------------------------------------------------
         // Step 5: Update simulation time
@@ -482,6 +454,197 @@ public:
         return dt;
     }
 
+    /**
+     * @brief Get the name of the time integrator
+     */
+    const char* integrator_name() const {
+        return TimeIntegrator::name;
+    }
+
+    /**
+     * @brief Get the order of accuracy of the time integrator
+     */
+    int integrator_order() const {
+        return TimeIntegrator::order;
+    }
+
+    /**
+     * @brief Get the number of stages of the time integrator
+     */
+    int integrator_stages() const {
+        return TimeIntegrator::stages;
+    }
+
+    // ========================================================================
+    // CUDA COMPATIBILITY: Helper methods with device lambdas must be public
+    // ========================================================================
+    //
+    // NOTE: CUDA nvcc does not allow __host__ __device__ lambdas (KOKKOS_LAMBDA)
+    // inside private or protected member functions. The following helper methods
+    // are therefore public, but intended for internal use only.
+    //
+    // ========================================================================
+
+    /**
+     * @brief Forward Euler time step (1st order, 1 stage)
+     *
+     * U_{n+1} = U_n + dt * RHS
+     *
+     * NOTE: Public for CUDA compatibility (nvcc restriction on private methods
+     *       with device lambdas)
+     */
+    void step_euler(Real dt) {
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+
+        // Apply boundary conditions
+        apply_boundary_conditions();
+
+        // Compute RHS
+        compute_rhs(rhs_work_, current_time_);
+
+        // Update: U_{n+1} = U_n + dt * RHS
+        auto U = U_;
+        auto rhs = rhs_work_;
+        Real dt_local = dt;
+
+        Kokkos::parallel_for(
+            "euler_update",
+            Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(n_cells_)),
+            KOKKOS_LAMBDA(const int i) {
+                U(i).rho  += dt_local * rhs(i).rho;
+                U(i).rhou += dt_local * rhs(i).rhou;
+                U(i).rhov += dt_local * rhs(i).rhov;
+                U(i).E    += dt_local * rhs(i).E;
+            }
+        );
+        Kokkos::fence();
+    }
+
+    /**
+     * @brief Runge-Kutta time step (multi-stage)
+     *
+     * Generic RK implementation supporting RK2, RK3, RK4, SSPRK3, etc.
+     * Uses the Butcher tableau from the TimeIntegrator policy.
+     *
+     * Algorithm:
+     * 1. Save original solution: U_old = U
+     * 2. For each stage s = 0 to stages-1:
+     *    a. Compute intermediate solution (if s > 0)
+     *    b. Compute RHS: k_s = f(t + c[s]*dt, U_stage)
+     * 3. Combine stages: U_{n+1} = U_old + dt * sum(b[s] * k_s)
+     *
+     * NOTE: Public for CUDA compatibility (nvcc restriction on private methods
+     *       with device lambdas)
+     */
+    void step_rk(Real dt) {
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+
+        // Save original solution
+        Kokkos::deep_copy(U_old_, U_);
+
+        // Stage loop
+        for (int s = 0; s < TimeIntegrator::stages; ++s) {
+            Real stage_time = current_time_ + TimeIntegrator::c[s] * dt;
+
+            if (s == 0) {
+                // First stage: use original solution
+                apply_boundary_conditions();
+                compute_rhs(stage_rhs_[0], stage_time);
+            } else {
+                // Subsequent stages: compute intermediate solution
+                compute_stage_solution(s, dt);
+                apply_boundary_conditions();
+                compute_rhs(stage_rhs_[s], stage_time);
+            }
+        }
+
+        // Combine all stages for final solution
+        combine_stages(dt);
+    }
+
+    /**
+     * @brief Compute intermediate solution for RK stage s
+     *
+     * U_stage = U_old + dt * sum_{i=0}^{s-1} a[s][i] * k_i
+     *
+     * This computes the solution at which to evaluate the RHS for stage s.
+     *
+     * NOTE: Public for CUDA compatibility (nvcc restriction on private methods
+     *       with device lambdas)
+     */
+    void compute_stage_solution(int stage, Real dt) {
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+
+        auto U_stage = stage_solution_;
+        auto U_old = U_old_;
+        const int n = n_cells_;
+
+        Kokkos::parallel_for(
+            "rk_stage_solution",
+            Kokkos::RangePolicy<ExecSpace>(0, n),
+            KOKKOS_LAMBDA(const int i) {
+                Conserved sum{0, 0, 0, 0};
+
+                // Sum contributions from previous stages
+                for (int prev = 0; prev < stage; ++prev) {
+                    Real coeff = TimeIntegrator::a[stage][prev];
+                    const auto& k_prev = stage_rhs_[prev];
+                    sum.rho  += coeff * k_prev(i).rho;
+                    sum.rhou += coeff * k_prev(i).rhou;
+                    sum.rhov += coeff * k_prev(i).rhov;
+                    sum.E    += coeff * k_prev(i).E;
+                }
+
+                U_stage(i).rho  = U_old(i).rho  + dt * sum.rho;
+                U_stage(i).rhou = U_old(i).rhou + dt * sum.rhou;
+                U_stage(i).rhov = U_old(i).rhov + dt * sum.rhov;
+                U_stage(i).E    = U_old(i).E    + dt * sum.E;
+            }
+        );
+        Kokkos::fence();
+    }
+
+    /**
+     * @brief Combine stages for final RK solution
+     *
+     * U_{n+1} = U_old + dt * sum_{s=0}^{stages-1} b[s] * k_s
+     *
+     * NOTE: Public for CUDA compatibility (nvcc restriction on private methods
+     *       with device lambdas)
+     */
+    void combine_stages(Real dt) {
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+
+        auto U = U_;
+        auto U_old = U_old_;
+        const int n = n_cells_;
+
+        Kokkos::parallel_for(
+            "rk_combine",
+            Kokkos::RangePolicy<ExecSpace>(0, n),
+            KOKKOS_LAMBDA(const int i) {
+                Conserved sum{0, 0, 0, 0};
+
+                // Sum contributions from all stages
+                for (int s = 0; s < TimeIntegrator::stages; ++s) {
+                    Real coeff = TimeIntegrator::b[s];
+                    const auto& k_s = stage_rhs_[s];
+                    sum.rho  += coeff * k_s(i).rho;
+                    sum.rhou += coeff * k_s(i).rhou;
+                    sum.rhov += coeff * k_s(i).rhov;
+                    sum.E    += coeff * k_s(i).E;
+                }
+
+                U(i).rho  = U_old(i).rho  + dt * sum.rho;
+                U(i).rhou = U_old(i).rhou + dt * sum.rhou;
+                U(i).rhov = U_old(i).rhov + dt * sum.rhov;
+                U(i).E    = U_old(i).E    + dt * sum.E;
+            }
+        );
+        Kokkos::fence();
+    }
+
+public:
     // ========================================================================
     // OUTPUT (IMPROVEMENT B: FieldView with ownership)
     // ========================================================================
@@ -1186,6 +1349,18 @@ private:
     bool fields_allocated_ = false;       // Track if fields are initialized
 
     // ========================================================================
+    // MULTI-STAGE TIME INTEGRATION STORAGE
+    // ========================================================================
+
+    // For multi-stage Runge-Kutta methods (RK2, RK3, RK4, SSPRK3, etc.)
+    // Using fixed maximum size (4 stages for RK4)
+    static constexpr int max_rk_stages_ = 4;
+    Kokkos::View<Conserved*> stage_rhs_[max_rk_stages_];  // RHS at each stage
+    Kokkos::View<Conserved*> stage_solution_;     // Intermediate solution
+    Kokkos::View<Conserved*> U_old_;              // Original solution (for RK)
+    bool rk_storage_allocated_ = false;           // Track if RK storage is allocated
+
+    // ========================================================================
     // FIELD ALLOCATION (private helper)
     // ========================================================================
 
@@ -1200,6 +1375,16 @@ private:
         U_ = Kokkos::View<Conserved*>("U", n);
         rhs_work_ = Kokkos::View<Conserved*>("rhs_work", n);
         fields_allocated_ = true;
+
+        // Allocate RK storage if needed (for multi-stage methods)
+        if constexpr (TimeIntegrator::stages > 1) {
+            for (int s = 0; s < max_rk_stages_; ++s) {
+                stage_rhs_[s] = Kokkos::View<Conserved*>("stage_rhs_" + std::to_string(s), n);
+            }
+            stage_solution_ = Kokkos::View<Conserved*>("stage_solution", n);
+            U_old_ = Kokkos::View<Conserved*>("U_old", n);
+            rk_storage_allocated_ = true;
+        }
     }
 
     // NEW: Source terms (compile-time, no runtime polymorphism)
