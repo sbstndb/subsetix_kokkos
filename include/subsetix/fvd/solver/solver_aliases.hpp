@@ -149,19 +149,73 @@ using EulerSolver2ndVanLeer = AdaptiveSolver<Euler2D<Real>,
                                                flux::HLLCFlux>;
 
 // ============================================================================
+// 5TH ORDER SOLVERS (WENO Reconstruction)
+// ============================================================================
+
+/**
+ * @brief 5th order Euler solver with HLLC flux (WENO-JS)
+ *
+ * WENO5-JS reconstruction + HLLC flux.
+ * High accuracy for smooth flows with sharp shock resolution.
+ * ~3-5x more expensive than MUSCL but provides 5th order accuracy.
+ *
+ * Reference: Jiang & Shu (1996)
+ */
+template<typename Real = float>
+using EulerSolver5thHLLC_WENOJS = AdaptiveSolver<Euler2D<Real>,
+                                                  reconstruction::WENO5_JS_Reconstruction,
+                                                  flux::HLLCFlux>;
+
+/**
+ * @brief 5th order Euler solver with HLLC flux (WENO-Z)
+ *
+ * WENO5-Z reconstruction + HLLC flux.
+ * Improved accuracy at critical points compared to WENO-JS.
+ * Recommended for high-accuracy simulations of smooth flows.
+ *
+ * Reference: Borges et al. (2008)
+ */
+template<typename Real = float>
+using EulerSolver5thHLLC_WENOZ = AdaptiveSolver<Euler2D<Real>,
+                                                 reconstruction::WENO5_Z_Reconstruction,
+                                                 flux::HLLCFlux>;
+
+/**
+ * @brief 5th order Euler solver with Rusanov flux (WENO-JS)
+ *
+ * WENO5-JS with Rusanov flux for maximum robustness.
+ */
+template<typename Real = float>
+using EulerSolver5thRusanov_WENOJS = AdaptiveSolver<Euler2D<Real>,
+                                                    reconstruction::WENO5_JS_Reconstruction,
+                                                    flux::RusanovFlux>;
+
+/**
+ * @brief 5th order Euler solver with Rusanov flux (WENO-Z)
+ *
+ * WENO5-Z with Rusanov flux for robust high-order computation.
+ */
+template<typename Real = float>
+using EulerSolver5thRusanov_WENOZ = AdaptiveSolver<Euler2D<Real>,
+                                                   reconstruction::WENO5_Z_Reconstruction,
+                                                   flux::RusanovFlux>;
+
+// ============================================================================
 // ALIAS SUMMARY TABLE
 // ============================================================================
 //
 // | Alias             | Order | Flux    | Limiter    | Use Case                    |
 // |-------------------|-------|---------|------------|-----------------------------|
 // | EulerSolver1st    | 1st   | Rusanov | -          | Debug, robust               |
-// | EulerSolver1stHLLC| 1st   | HLLC    | -          | Shocks, 1st order           |
+// | EulerSolver1stHLLC| 1nd   | HLLC    | -          | Shocks, 1st order           |
 // | EulerSolver2nd    | 2nd   | Rusanov | Minmod     | Default 2nd order           |
 // | EulerSolver2ndHLLC| 2nd   | HLLC    | Minmod     | **PRODUCTION DEFAULT**      |
 // | EulerSolver2ndRoe | 2nd   | Roe     | Minmod     | High accuracy               |
 // | EulerSolver2ndMC  | 2nd   | HLLC    | MC         | Less dissipative 2nd order  |
 // | EulerSolver2ndSuperbee| 2nd| HLLC    | Superbee   | Least dissipative           |
 // | EulerSolver2ndVanLeer| 2nd| HLLC    | Van Leer   | Smooth, symmetric           |
+// | EulerSolver5thHLLC_WENOJS| 5th| HLLC  | WENO-JS    | High accuracy, robust       |
+// | EulerSolver5thHLLC_WENOZ| 5th| HLLC   | WENO-Z     | High accuracy at extrema    |
 //
 // ============================================================================
 //

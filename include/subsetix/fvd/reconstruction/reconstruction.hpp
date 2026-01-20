@@ -290,4 +290,11 @@ struct VanLeerLimiter {
     }
 };
 
+// ============================================================================
+// WENO RECONSTRUCTION (5th Order)
+// ============================================================================
+
+// Include WENO5-JS and WENO5-Z reconstruction schemes
+#include "weno_reconstruction.hpp"
+
 } // namespace subsetix::fvd::reconstruction
