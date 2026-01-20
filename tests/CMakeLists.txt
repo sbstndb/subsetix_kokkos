@@ -88,3 +88,6 @@ add_executable(subsetix_test_fvd_integrators
 target_link_libraries(subsetix_test_fvd_integrators PRIVATE subsetix::core GTest::gtest)
 target_include_directories(subsetix_test_fvd_integrators PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME FvdIntegratorsTests COMMAND subsetix_test_fvd_integrators)
+
+# Experimental algorithms tests (only if SUBSETIX_ENABLE_EXPERIMENTAL=ON)
+add_subdirectory(experimental)

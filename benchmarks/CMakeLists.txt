@@ -57,3 +57,6 @@ target_link_libraries(multilevel_overhead_benchmark
         subsetix::core
         benchmark::benchmark
 )
+
+# Experimental benchmarks (only if SUBSETIX_ENABLE_EXPERIMENTAL=ON)
+add_subdirectory(experimental)

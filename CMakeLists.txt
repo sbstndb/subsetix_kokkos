@@ -22,6 +22,20 @@ option(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED "Force DeviceMemorySpace = Kokkos::
 
 option(SUBSETIX_ENABLE_COVERAGE "Enable code coverage analysis (GCC only)" OFF)
 
+# ========================================================================
+# Experimental Algorithms Configuration
+# ========================================================================
+
+option(SUBSETIX_ENABLE_EXPERIMENTAL "Enable experimental set algebra algorithms" OFF)
+
+if(SUBSETIX_ENABLE_EXPERIMENTAL)
+  message(STATUS "=== Experimental Algorithms Enabled ===")
+  add_compile_definitions(SUBSETIX_ENABLE_EXPERIMENTAL)
+  message(STATUS "Experimental algorithms will be compiled and tested")
+else()
+  message(STATUS "Experimental algorithms disabled (default)")
+endif()
+
 set(_SUBSETIX_EXECSPACE_FORCE_COUNT 0)
 if(SUBSETIX_EXECSPACE_FORCE_CUDA)
   math(EXPR _SUBSETIX_EXECSPACE_FORCE_COUNT "${_SUBSETIX_EXECSPACE_FORCE_COUNT} + 1")
