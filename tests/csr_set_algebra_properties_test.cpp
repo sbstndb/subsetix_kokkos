@@ -2,7 +2,7 @@
 // Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
 
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
 #include <subsetix/geometry/csr_backend.hpp>
 #include <subsetix/geometry/csr_interval_set.hpp>

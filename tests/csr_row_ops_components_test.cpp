@@ -2,7 +2,7 @@
 // Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
 
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
 #include "csr_row_ops_test_utils.hpp"
 

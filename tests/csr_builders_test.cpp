@@ -2,7 +2,7 @@
 // Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
 
-﻿#include <Kokkos_Core.hpp>
+#include <Kokkos_Core.hpp>
 #include <cstdint>
 #include <gtest/gtest.h>
 
