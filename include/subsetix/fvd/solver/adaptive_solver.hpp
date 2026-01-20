@@ -368,6 +368,38 @@ public:
         }
 
         /**
+         * @brief Initialize solver from initial condition function
+         *
+         * This must be public because CUDA nvcc doesn't allow KOKKOS_LAMBDA
+         * in private member functions.
+         */
+        static void initialize_from_function(AdaptiveSolver& solver,
+                                            const std::function<Conserved(Real, Real)>& ic,
+                                            Real x_min, Real y_min,
+                                            Real dx, Real dy) {
+            // Access solver's U_ field and evaluate IC on each cell
+            // Note: This is a simplified version - full implementation would
+            // use parallel_for to evaluate on device
+            auto U = solver.U_;
+            auto cfg = solver.cfg_;
+            std::size_t nx = cfg.nx;
+            std::size_t ny = cfg.ny;
+
+            Kokkos::parallel_for(
+                "initialize_ic",
+                Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, static_cast<int>(nx * ny)),
+                KOKKOS_LAMBDA(const int linear_idx) {
+                    std::size_t j = linear_idx / static_cast<int>(nx);
+                    std::size_t i = linear_idx % static_cast<int>(nx);
+                    Real x = x_min + (i + Real(0.5)) * dx;
+                    Real y = y_min + (j + Real(0.5)) * dy;
+                    U(linear_idx) = ic(x, y);
+                }
+            );
+            Kokkos::fence();
+        }
+
+        /**
          * @brief Build the solver
          */
         AdaptiveSolver build() {
@@ -422,35 +454,6 @@ public:
 
         // Initial condition function (stored as any callable)
         std::function<Conserved(Real, Real)> ic_function_;
-
-        /**
-         * @brief Initialize solver from initial condition function
-         */
-        static void initialize_from_function(AdaptiveSolver& solver,
-                                            const std::function<Conserved(Real, Real)>& ic,
-                                            Real x_min, Real y_min,
-                                            Real dx, Real dy) {
-            // Access solver's U_ field and evaluate IC on each cell
-            // Note: This is a simplified version - full implementation would
-            // use parallel_for to evaluate on device
-            auto U = solver.U_;
-            auto cfg = solver.cfg_;
-            std::size_t nx = cfg.nx;
-            std::size_t ny = cfg.ny;
-
-            Kokkos::parallel_for(
-                "initialize_ic",
-                Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, static_cast<int>(nx * ny)),
-                KOKKOS_LAMBDA(const int linear_idx) {
-                    std::size_t j = linear_idx / static_cast<int>(nx);
-                    std::size_t i = linear_idx % static_cast<int>(nx);
-                    Real x = x_min + (i + Real(0.5)) * dx;
-                    Real y = y_min + (j + Real(0.5)) * dy;
-                    U(linear_idx) = ic(x, y);
-                }
-            );
-            Kokkos::fence();
-        }
     };
 
     /**
@@ -542,6 +545,33 @@ public:
     void set_bc_manager(const boundary::BcManager<System>& bc_manager) {
         bc_manager_ = bc_manager;
         use_bc_manager_ = true;
+        // Notify observers: BC configuration was changed
+        observer_manager_.notify(SolverEvent::BoundaryConditionsChanged);
+    }
+
+    /**
+     * @brief Convenience method to add a time-dependent boundary condition
+     *
+     * This is a convenience wrapper that creates/updates a BcManager
+     * with the specified time-dependent BC.
+     *
+     * @param side Boundary side ("left", "right", "bottom", "top")
+     * @param time_bc Time-dependent boundary condition policy
+     *
+     * Usage:
+     *   solver.set_time_dependent_bc("left", sinusoidal_inlet<System>(1.0, 100.0, 2.0));
+     */
+    template<typename TimeBCPolicy>
+    void set_time_dependent_bc(const std::string& side, const TimeBCPolicy& time_bc) {
+        // Initialize bc_manager_ if not already initialized
+        if (!use_bc_manager_) {
+            bc_manager_.initialize(cfg_.nx, cfg_.ny, cfg_.dx, cfg_.dy, cfg_.x_min, cfg_.y_min);
+            use_bc_manager_ = true;
+        }
+
+        // Add the time-dependent BC
+        bc_manager_.add_time_dependent_bc(side, time_bc);
+
         // Notify observers: BC configuration was changed
         observer_manager_.notify(SolverEvent::BoundaryConditionsChanged);
     }
@@ -795,9 +825,27 @@ public:
     }
 
     /**
+     * @brief Convenience alias for last_dt()
+     *
+     * This matches the API expected by examples.
+     */
+    Real dt() const {
+        return last_dt_;
+    }
+
+    /**
      * @brief Get current time
      */
     Real current_time() const {
+        return current_time_;
+    }
+
+    /**
+     * @brief Convenience alias for current_time()
+     *
+     * This matches the API expected by examples.
+     */
+    Real time() const {
         return current_time_;
     }
 
@@ -842,6 +890,27 @@ public:
         refinement_config_ = config;
         refinement_enabled_ = true;
         remesh_step_counter_ = 0;
+    }
+
+    /**
+     * @brief Convenience alias for set_refinement()
+     *
+     * This matches the API expected by examples.
+     */
+    void set_refinement_config(const amr::RefinementConfig<System>& config) {
+        set_refinement(config);
+    }
+
+    /**
+     * @brief Set refinement configuration from RefinementManager
+     *
+     * This is a convenience overload for RefinementManager which has
+     * a config member of type RefinementConfig.
+     *
+     * @param manager The refinement manager containing the configuration
+     */
+    void set_refinement_config(const amr::RefinementManager<System>& manager) {
+        set_refinement(manager.config);
     }
 
     /**
@@ -1002,6 +1071,21 @@ public:
         auto U_old = U_old_;
         const int n = n_cells_;
 
+        // CUDA: Copy static constexpr array to local variable for device access
+        // Use if constexpr to avoid copying for integrators that don't need these arrays
+        constexpr int max_stages = TimeIntegrator::stages;
+        Real a_stage[max_stages];
+
+        if constexpr (max_stages > 1) {
+            for (int prev = 0; prev < max_stages; ++prev) {
+                if constexpr (requires { TimeIntegrator::a[stage][prev]; }) {
+                    a_stage[prev] = TimeIntegrator::a[stage][prev];
+                } else {
+                    a_stage[prev] = Real(0);
+                }
+            }
+        }
+
         Kokkos::parallel_for(
             "rk_stage_solution",
             Kokkos::RangePolicy<ExecSpace>(0, n),
@@ -1010,7 +1094,7 @@ public:
 
                 // Sum contributions from previous stages
                 for (int prev = 0; prev < stage; ++prev) {
-                    Real coeff = TimeIntegrator::a[stage][prev];
+                    Real coeff = a_stage[prev];
                     const auto& k_prev = stage_rhs_[prev];
                     sum.rho  += coeff * k_prev(i).rho;
                     sum.rhou += coeff * k_prev(i).rhou;
@@ -1042,6 +1126,23 @@ public:
         auto U_old = U_old_;
         const int n = n_cells_;
 
+        // CUDA: Copy static constexpr array to local variable for device access
+        constexpr int max_stages = TimeIntegrator::stages;
+        Real b_coeffs[max_stages];
+
+        if constexpr (max_stages > 1) {
+            for (int s = 0; s < max_stages; ++s) {
+                if constexpr (requires { TimeIntegrator::b[s]; }) {
+                    b_coeffs[s] = TimeIntegrator::b[s];
+                } else {
+                    b_coeffs[s] = Real(0);
+                }
+            }
+        } else {
+            // Forward Euler: b[0] = 1
+            b_coeffs[0] = Real(1);
+        }
+
         Kokkos::parallel_for(
             "rk_combine",
             Kokkos::RangePolicy<ExecSpace>(0, n),
@@ -1050,8 +1151,8 @@ public:
                 Conserved sum{};
 
                 // Sum contributions from all stages (generic operator usage)
-                for (int s = 0; s < TimeIntegrator::stages; ++s) {
-                    Real coeff = TimeIntegrator::b[s];
+                for (int s = 0; s < max_stages; ++s) {
+                    Real coeff = b_coeffs[s];
                     const auto& k_s = stage_rhs_[s];
                     // Phase 6: Generic accumulation using operators
                     sum += k_s(i) * coeff;
