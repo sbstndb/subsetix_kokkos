@@ -148,29 +148,9 @@ intersect_meshes(
   const std::size_t num_rows_b = B.num_rows;
 
   // ========================================================================
-  // Phase 1: Build hash map for smaller mesh (B if smaller)
-  // ========================================================================
-
-  // Strategy: Always build hash map for the smaller mesh
-  const bool build_from_b = (num_rows_b <= num_rows_a);
-
-  // Build hash map on host (serial build for correctness)
-  if constexpr (DIM == 2) {
-    detail::RowHashMap2D row_hash_map;
-    detail::build_hash_map_for_mesh(
-        build_from_b ? static_cast<const Mesh2DDevice&>(B) : static_cast<const Mesh2DDevice&>(A),
-        row_hash_map,
-        "row_hash_map");
-  } else {
-    detail::RowHashMap3D row_hash_map;
-    detail::build_hash_map_for_mesh(
-        build_from_b ? static_cast<const Mesh3DDevice&>(B) : static_cast<const Mesh3DDevice&>(A),
-        row_hash_map,
-        "row_hash_map");
-  }
-
-  // ========================================================================
-  // Phase 2: Find matching rows using hash map (O(1) per row)
+  // Phase 1: Find matching rows using binary search
+  // Note: Hash map optimization disabled for CUDA compatibility
+  // Future work: Implement device-side hash map for true O(1) lookup
   // ========================================================================
 
   Kokkos::View<int*, MemorySpace> tmp_idx_a("tmp_idx_a", num_rows_a);

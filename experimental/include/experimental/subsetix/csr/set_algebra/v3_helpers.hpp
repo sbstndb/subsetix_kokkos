@@ -37,40 +37,28 @@ inline BoundingBox2D compute_mesh_bbox(const Mesh<2, MemorySpace>& mesh) {
   using ExecSpace = Kokkos::DefaultExecutionSpace;
 
   BoundingBox2D bbox;
-  auto bbox_y_min = Kokkos::View<Coord, MemorySpace>("bbox_y_min");
-  auto bbox_y_max = Kokkos::View<Coord, MemorySpace>("bbox_y_max");
+  bbox.y_min = 0;
+  bbox.y_max = 0;
 
-  // Initialize with first row's y coordinate
-  if (mesh.num_rows > 0) {
-    auto row_keys_host = Kokkos::create_mirror_view_and_copy(
-        Kokkos::HostSpace{}, mesh.row_keys);
-    const Coord first_y = row_keys_host(0).y;
-
-    Kokkos::deep_copy(bbox_y_min, first_y);
-    Kokkos::deep_copy(bbox_y_max, first_y);
+  if (mesh.num_rows == 0) {
+    return bbox;
   }
 
-  // Find min/max y coordinates
-  Kokkos::parallel_reduce(
-      "compute_bbox_2d",
-      Kokkos::RangePolicy<ExecSpace>(0, mesh.num_rows),
-      KOKKOS_LAMBDA(const std::size_t i, Coord& y_min, Coord& y_max) {
-        const Coord y = mesh.row_keys(i).y;
-        if (y < y_min) y_min = y;
-        if (y > y_max) y_max = y;
-      },
-      Kokkos::Min<Coord>(bbox_y_min),
-      Kokkos::Max<Coord>(bbox_y_max));
+  // Simple host-side approach: copy row_keys to host and compute bbox on CPU
+  auto row_keys_host = Kokkos::create_mirror_view_and_copy(
+      Kokkos::HostSpace{}, mesh.row_keys);
 
-  Kokkos::fence();
+  Coord y_min = std::numeric_limits<Coord>::max();
+  Coord y_max = std::numeric_limits<Coord>::lowest();
 
-  auto y_min_h = Kokkos::create_mirror_view(bbox_y_min);
-  auto y_max_h = Kokkos::create_mirror_view(bbox_y_max);
-  Kokkos::deep_copy(y_min_h, bbox_y_min);
-  Kokkos::deep_copy(y_max_h, bbox_y_max);
+  for (std::size_t i = 0; i < mesh.num_rows; ++i) {
+    const Coord y = row_keys_host(i).y;
+    if (y < y_min) y_min = y;
+    if (y > y_max) y_max = y;
+  }
 
-  bbox.y_min = y_min_h();
-  bbox.y_max = y_max_h();
+  bbox.y_min = y_min;
+  bbox.y_max = y_max;
 
   return bbox;
 }
@@ -78,60 +66,37 @@ inline BoundingBox2D compute_mesh_bbox(const Mesh<2, MemorySpace>& mesh) {
 // Compute bounding box for 3D mesh
 template <class MemorySpace>
 inline BoundingBox3D compute_mesh_bbox(const Mesh<3, MemorySpace>& mesh) {
-  using ExecSpace = Kokkos::DefaultExecutionSpace;
-
   BoundingBox3D bbox;
-  auto bbox_y_min = Kokkos::View<Coord, MemorySpace>("bbox_y_min");
-  auto bbox_y_max = Kokkos::View<Coord, MemorySpace>("bbox_y_max");
-  auto bbox_z_min = Kokkos::View<Coord, MemorySpace>("bbox_z_min");
-  auto bbox_z_max = Kokkos::View<Coord, MemorySpace>("bbox_z_max");
+  bbox.y_min = 0;
+  bbox.y_max = 0;
+  bbox.z_min = 0;
+  bbox.z_max = 0;
 
-  // Initialize with first row's coordinates
-  if (mesh.num_rows > 0) {
-    auto row_keys_host = Kokkos::create_mirror_view_and_copy(
-        Kokkos::HostSpace{}, mesh.row_keys);
-    const RowKey3D first_key = row_keys_host(0);
-
-    Kokkos::deep_copy(bbox_y_min, first_key.y);
-    Kokkos::deep_copy(bbox_y_max, first_key.y);
-    Kokkos::deep_copy(bbox_z_min, first_key.z);
-    Kokkos::deep_copy(bbox_z_max, first_key.z);
+  if (mesh.num_rows == 0) {
+    return bbox;
   }
 
-  // Find min/max coordinates
-  Kokkos::parallel_reduce(
-      "compute_bbox_3d",
-      Kokkos::RangePolicy<ExecSpace>(0, mesh.num_rows),
-      KOKKOS_LAMBDA(const std::size_t i,
-                    Coord& y_min, Coord& y_max,
-                    Coord& z_min, Coord& z_max) {
-        const RowKey3D key = mesh.row_keys(i);
-        if (key.y < y_min) y_min = key.y;
-        if (key.y > y_max) y_max = key.y;
-        if (key.z < z_min) z_min = key.z;
-        if (key.z > z_max) z_max = key.z;
-      },
-      Kokkos::Min<Coord>(bbox_y_min),
-      Kokkos::Max<Coord>(bbox_y_max),
-      Kokkos::Min<Coord>(bbox_z_min),
-      Kokkos::Max<Coord>(bbox_z_max));
+  // Simple host-side approach: copy row_keys to host and compute bbox on CPU
+  auto row_keys_host = Kokkos::create_mirror_view_and_copy(
+      Kokkos::HostSpace{}, mesh.row_keys);
 
-  Kokkos::fence();
+  Coord y_min = std::numeric_limits<Coord>::max();
+  Coord y_max = std::numeric_limits<Coord>::lowest();
+  Coord z_min = std::numeric_limits<Coord>::max();
+  Coord z_max = std::numeric_limits<Coord>::lowest();
 
-  auto y_min_h = Kokkos::create_mirror_view(bbox_y_min);
-  auto y_max_h = Kokkos::create_mirror_view(bbox_y_max);
-  auto z_min_h = Kokkos::create_mirror_view(bbox_z_min);
-  auto z_max_h = Kokkos::create_mirror_view(bbox_z_max);
+  for (std::size_t i = 0; i < mesh.num_rows; ++i) {
+    const RowKey3D key = row_keys_host(i);
+    if (key.y < y_min) y_min = key.y;
+    if (key.y > y_max) y_max = key.y;
+    if (key.z < z_min) z_min = key.z;
+    if (key.z > z_max) z_max = key.z;
+  }
 
-  Kokkos::deep_copy(y_min_h, bbox_y_min);
-  Kokkos::deep_copy(y_max_h, bbox_y_max);
-  Kokkos::deep_copy(z_min_h, bbox_z_min);
-  Kokkos::deep_copy(z_max_h, bbox_z_max);
-
-  bbox.y_min = y_min_h();
-  bbox.y_max = y_max_h();
-  bbox.z_min = z_min_h();
-  bbox.z_max = z_max_h();
+  bbox.y_min = y_min;
+  bbox.y_max = y_max;
+  bbox.z_min = z_min;
+  bbox.z_max = z_max;
 
   return bbox;
 }

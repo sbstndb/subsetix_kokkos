@@ -120,27 +120,45 @@ intersect_meshes(
   Kokkos::View<int*, MemorySpace> tmp_idx_b("tmp_idx_b", num_rows_a);
   Kokkos::View<std::size_t*, MemorySpace> positions("positions", num_rows_a);
 
-  Kokkos::parallel_for(
-      "v2_row_map",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const RowKey key = A.row_keys(i);
-        int idx_b = -1;
-        if constexpr (DIM == 2) {
-          idx_b = csr::detail::find_row_by_y(B.row_keys, num_rows_b, key.y);
-        } else {
-          idx_b = csr::detail::find_row_by_yz(B.row_keys, num_rows_b, key.y, key.z);
-        }
-        if (idx_b >= 0) {
-          flags(i) = 1;
-          tmp_idx_a(i) = static_cast<int>(i);
-          tmp_idx_b(i) = idx_b;
-        } else {
-          flags(i) = 0;
-          tmp_idx_a(i) = -1;
-          tmp_idx_b(i) = -1;
-        }
-      });
+  // Capture B.row_keys and num_rows_b once to avoid CUDA constexpr-if capture issues
+  const auto B_row_keys = B.row_keys;
+  const std::size_t num_rows_b_val = num_rows_b;
+
+  if constexpr (DIM == 2) {
+    Kokkos::parallel_for(
+        "v2_row_map_2d",
+        Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+        KOKKOS_LAMBDA(const std::size_t i) {
+          const RowKey key = A.row_keys(i);
+          const int idx_b = csr::detail::find_row_by_y(B_row_keys, num_rows_b_val, key.y);
+          if (idx_b >= 0) {
+            flags(i) = 1;
+            tmp_idx_a(i) = static_cast<int>(i);
+            tmp_idx_b(i) = idx_b;
+          } else {
+            flags(i) = 0;
+            tmp_idx_a(i) = -1;
+            tmp_idx_b(i) = -1;
+          }
+        });
+  } else {
+    Kokkos::parallel_for(
+        "v2_row_map_3d",
+        Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+        KOKKOS_LAMBDA(const std::size_t i) {
+          const RowKey key = A.row_keys(i);
+          const int idx_b = csr::detail::find_row_by_yz(B_row_keys, num_rows_b_val, key.y, key.z);
+          if (idx_b >= 0) {
+            flags(i) = 1;
+            tmp_idx_a(i) = static_cast<int>(i);
+            tmp_idx_b(i) = idx_b;
+          } else {
+            flags(i) = 0;
+            tmp_idx_a(i) = -1;
+            tmp_idx_b(i) = -1;
+          }
+        });
+  }
 
   // ========================================================================
   // Phase 2: Scan to count matching rows and compute positions
