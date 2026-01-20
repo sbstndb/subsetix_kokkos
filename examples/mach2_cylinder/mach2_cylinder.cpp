@@ -13,6 +13,8 @@
 // PHASE 4: Include FVD time integrators
 #include <subsetix/fvd/time/time_integrators.hpp>
 // PHASE 5: AMR is handled by CSR layer (csr_ops/amr.hpp)
+// PHASE 6: Multi-level operations use subsetix::multilevel
+#include <subsetix/multilevel/multilevel.hpp>
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
@@ -303,6 +305,69 @@ struct RemeshTiming {
 // For now, mach2 uses gradient-based AMR (current implementation).
 //
 // See: include/subsetix/csr_ops/amr.hpp
+// ============================================================================
+
+// ============================================================================
+// PHASE 6: MULTI-LEVEL AMR OPERATIONS WRAPPER
+// ============================================================================
+//
+// CURRENT MULTI-LEVEL IMPLEMENTATION:
+// ====================================
+// mach2 uses parallel arrays for multi-level management:
+//
+//   std::array<ConservedFields, MAX_AMR_LEVELS> U_levels;
+//   std::array<IntervalSet2DDevice, MAX_AMR_LEVELS> active_set;
+//   std::array<Real, MAX_AMR_LEVELS> dx_levels, dy_levels;
+//
+// Each level is managed independently with manual coordination.
+//
+// subsetix::multilevel provides structured containers:
+// ================================================
+//   MultilevelGeoDevice:      Geometry for all levels
+//   MultilevelFieldDevice<T>: Field data for all levels
+//
+// Benefits:
+//   - Single object for all levels (vs parallel arrays)
+//   - Device-safe (can be passed to Kokkos kernels)
+//   - Built-in level queries (dx_at(level), dy_at(level))
+//   - Consistent with FVD abstraction layer
+//
+// MIGRATION PATH:
+// ===============
+// Future wrapper to integrate with FVD AdaptiveSolver:
+//
+//   // Current: Parallel arrays
+//   std::array<ConservedFields, MAX_AMR_LEVELS> U_levels;
+//
+//   // Future: Multilevel container
+//   MultilevelSolution<System> multilevel_U;
+//   // Contains: geometry, U (all conserved variables), statistics
+//
+//   // Operations on multi-level structure:
+//   multilevel_U.apply_on_level(level, [&](auto& field) {
+//       apply_stencil(field, ...);
+//   });
+//
+//   multilevel_u.restrict(fine_level, coarse_level);
+//   multilevel_u.prolong(coarse_level, fine_level);
+//
+// FVD AdaptiveSolver integration:
+// ================================
+// The FVD AdaptiveSolver would work with MultilevelSolution:
+//
+//   AdaptiveSolver<System, Mesh, AMR> solver;
+//   solver.set_solution(multilevel_U);
+//   solver.step(dt);  // Handles all AMR operations internally
+//
+// AMR operations wrapped for FVD compatibility:
+//   - restriction: Fine -> coarse averaging
+//   - prolongation: Coarse -> fine interpolation
+//   - ghost filling: Multi-level boundary exchange
+//   - flux correction: Conservation at level interfaces
+//
+// For now, mach2 uses parallel arrays (current implementation).
+//
+// See: include/subsetix/multilevel/multilevel.hpp
 // ============================================================================
 
 template <typename T>
