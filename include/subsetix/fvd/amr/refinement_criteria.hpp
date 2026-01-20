@@ -598,6 +598,101 @@ public:
 };
 
 // ============================================================================
+// USER-DEFINED CRITERION (Phase 2)
+// ============================================================================
+
+/**
+ * @brief Concept for user-defined refinement functions
+ *
+ * A user-defined refinement function must be:
+ * - Trivially copyable (can be passed to device)
+ * - Callable with signature: RefinementAction(Conserved, Primitive, dx)
+ * - GPU-compatible (uses only KOKKOS_INLINE_FUNCTION compatible code)
+ */
+template<typename F, typename System>
+concept RefinementFunction =
+    std::is_trivially_copyable_v<F> &&
+    requires(const F& func,
+             const typename System::Conserved& U,
+             const typename System::Primitive& q,
+             const typename System::RealType dx)
+    {
+        { func(U, q, dx) } -> std::convertible_to<RefinementAction>;
+    };
+
+/**
+ * @brief Wrapper for user-defined refinement criteria
+ *
+ * Enables users to pass lambda functions or custom functors as refinement criteria.
+ * The wrapper is GPU-compatible when the user function is trivially copyable.
+ *
+ * Example usage:
+ *   auto mach_criterion = make_refinementCriterion<Euler2D<float>>(
+ *       KOKKOS_LAMBDA(const auto& U, const auto& q, float dx) {
+ *           float mach = Kokkos::sqrt(q.u*q.u + q.v*q.v) / Kokkos::sqrt(gamma * q.p / q.rho);
+ *           return (mach > 0.8f) ? RefinementAction::Refine : RefinementAction::Keep;
+ *       }
+ *   );
+ */
+template<typename System, typename Function>
+    requires RefinementFunction<Function, System>
+class UserDefinedCriterion {
+public:
+    using Real = typename System::RealType;
+    using Conserved = typename System::Conserved;
+    using Primitive = typename System::Primitive;
+
+    Function func;
+
+    KOKKOS_INLINE_FUNCTION
+    UserDefinedCriterion() = default;
+
+    KOKKOS_INLINE_FUNCTION
+    explicit UserDefinedCriterion(const Function& f) : func(f) {}
+
+    KOKKOS_INLINE_FUNCTION
+    RefinementAction evaluate(const Conserved& U,
+                               const Primitive& q,
+                               Real dx) const
+    {
+        return func(U, q, dx);
+    }
+
+    KOKKOS_INLINE_FUNCTION
+    RefinementAction evaluate(const Conserved& U_center,
+                               const Primitive& q_center,
+                               const Conserved* /* neighbors */,
+                               Real dx) const
+    {
+        // For user-defined functions, we use the simplified signature without neighbors
+        return func(U_center, q_center, dx);
+    }
+};
+
+/**
+ * @brief Factory function for creating user-defined refinement criteria
+ *
+ * Provides CTAD (Class Template Argument Deduction) for cleaner syntax.
+ *
+ * @tparam System The PDE system type
+ * @tparam Function The user-defined function type
+ * @param func The user-defined function (lambda, functor, etc.)
+ * @return UserDefinedCriterion<System, Function>
+ *
+ * Example:
+ *   auto criterion = make_refinementCriterion<Euler2D<float>>(
+ *       KOKKOS_LAMBDA(auto& U, auto& q, float dx) {
+ *           return q.rho > 1.0f ? RefinementAction::Refine : RefinementAction::Keep;
+ *       }
+ *   );
+ */
+template<typename System, RefinementFunction<System> Function>
+KOKKOS_INLINE_FUNCTION
+auto make_refinementCriterion(Function&& func) {
+    return UserDefinedCriterion<System, std::decay_t<Function>>(func);
+}
+
+// ============================================================================
 // COMBINABLE CRITERIA
 // ============================================================================
 
@@ -608,6 +703,8 @@ public:
  * - AND: refine only if ALL criteria agree
  * - OR: refine if ANY criterion agrees
  * - Vote: majority vote
+ *
+ * Phase 2: Now supports user-defined criteria via add_user_criterion()
  */
 template<typename System, int MaxCriteria = 8>
     requires FiniteVolumeSystem<System>
@@ -616,6 +713,11 @@ public:
     using Real = typename System::RealType;
     using Conserved = typename System::Conserved;
     using Primitive = typename System::Primitive;
+
+    // Function pointer type for user-defined criteria (device-compatible)
+    using UserEvaluateFn = KOKKOS_FUNCTION RefinementAction(*)(const Conserved&,
+                                                                 const Primitive&,
+                                                                 Real);
 
     enum LogicOp : uint8_t {
         And = 0,   // All criteria must return Refine
@@ -639,6 +741,15 @@ public:
         Smoothness = 6  // Phase 5: Coarsening criterion
     };
 
+    // Phase 2: Storage for user-defined criteria (function pointer + user data)
+    struct UserCriterionStorage {
+        UserEvaluateFn evaluate_fn = nullptr;  // Function pointer to user criterion
+        Real user_data[16] = {0};               // User-defined data (parameters, thresholds, etc.)
+
+        KOKKOS_INLINE_FUNCTION
+        UserCriterionStorage() = default;
+    };
+
     struct CriterionStorage {
         CriterionType type = None;
         int8_t index = -1;  // Index into type-specific arrays
@@ -656,6 +767,10 @@ public:
     ValueRangeCriterion<System> value_range_criteria[MaxCriteria];
     CurlCriterion<System> curl_criteria[MaxCriteria];
     SmoothnessCriterion<System> smoothness_criteria[MaxCriteria];  // Phase 5
+
+    // Phase 2: User-defined criteria storage (function pointers + user data)
+    UserCriterionStorage user_criteria[MaxCriteria];
+    int8_t num_user_criteria = 0;
 
     KOKKOS_FUNCTION
     CompositeCriterion() = default;
@@ -697,6 +812,61 @@ public:
         criteria[idx].index = idx;
         num_criteria++;
         return idx;
+    }
+
+    /**
+     * @brief Phase 2: Add a user-defined criterion via function pointer
+     *
+     * This allows users to register custom refinement functions that will be
+     * called on the device during refinement evaluation.
+     *
+     * @param fn Function pointer with signature: RefinementAction(const Conserved&, const Primitive&, Real)
+     * @return Index of the added criterion, or -1 if max criteria reached
+     *
+     * Note: For lambda functions, see the template version below or use
+     *       make_refinementCriterion() factory function.
+     */
+    int add_user_criterion(UserEvaluateFn fn) {
+        if (num_criteria >= MaxCriteria || num_user_criteria >= MaxCriteria) return -1;
+
+        int storage_idx = num_user_criteria;
+        user_criteria[storage_idx].evaluate_fn = fn;
+
+        int crit_idx = num_criteria;
+        criteria[crit_idx].type = Custom;
+        criteria[crit_idx].index = storage_idx;
+
+        num_criteria++;
+        num_user_criteria++;
+        return crit_idx;
+    }
+
+    /**
+     * @brief Phase 2: Add a user-defined criterion with parameters
+     *
+     * @param fn Function pointer to user criterion
+     * @param user_data Array of up to 16 Real values for user parameters
+     * @param data_size Number of valid entries in user_data
+     * @return Index of the added criterion, or -1 if max criteria reached
+     */
+    int add_user_criterion(UserEvaluateFn fn, const Real user_data[16], int data_size) {
+        if (num_criteria >= MaxCriteria || num_user_criteria >= MaxCriteria) return -1;
+
+        int storage_idx = num_user_criteria;
+        user_criteria[storage_idx].evaluate_fn = fn;
+
+        // Copy user data
+        for (int i = 0; i < data_size && i < 16; ++i) {
+            user_criteria[storage_idx].user_data[i] = user_data[i];
+        }
+
+        int crit_idx = num_criteria;
+        criteria[crit_idx].type = Custom;
+        criteria[crit_idx].index = storage_idx;
+
+        num_criteria++;
+        num_user_criteria++;
+        return crit_idx;
     }
 
     /**
@@ -828,6 +998,14 @@ private:
                 return smoothness_criteria[crit_storage.index].evaluate(
                     U_center, q_center, neighbors, dx
                 );
+            // Phase 2: Handle user-defined criteria
+            case Custom: {
+                const auto& user_crit = user_criteria[crit_storage.index];
+                if (user_crit.evaluate_fn != nullptr) {
+                    return user_crit.evaluate_fn(U_center, q_center, dx);
+                }
+                return RefinementAction::Keep;
+            }
             default:
                 return RefinementAction::Keep;
         }
@@ -855,6 +1033,14 @@ private:
             // Phase 5: Handle Smoothness criterion
             case static_cast<CriterionType>(Smoothness):
                 return smoothness_criteria[crit_storage.index].evaluate(U, q, dx);
+            // Phase 2: Handle user-defined criteria
+            case Custom: {
+                const auto& user_crit = user_criteria[crit_storage.index];
+                if (user_crit.evaluate_fn != nullptr) {
+                    return user_crit.evaluate_fn(U, q, dx);
+                }
+                return RefinementAction::Keep;
+            }
             default:
                 return RefinementAction::Keep;
         }
