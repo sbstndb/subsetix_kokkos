@@ -257,7 +257,9 @@ public:
 
 KOKKOS_INLINE_FUNCTION
 Primitive cons_to_prim(const Conserved& U, Real gamma) {
-    constexpr Real eps = static_cast<Real>(1e-12);
+    // Note: eps=1e-7 is appropriate for float32 (machine epsilon ~1.19e-7)
+    // Using eps=1e-12 would be below float precision and ineffective
+    constexpr Real eps = static_cast<Real>(1e-7);
     Primitive q;
     q.rho = U.rho;
     const Real inv_rho = static_cast<Real>(1.0) / (U.rho + eps);
@@ -282,7 +284,9 @@ Conserved prim_to_cons(const Primitive& q, Real gamma) {
 
 KOKKOS_INLINE_FUNCTION
 Real sound_speed(const Primitive& q, Real gamma) {
-    constexpr Real eps = static_cast<Real>(1e-12);
+    // Note: eps=1e-7 is appropriate for float32 (machine epsilon ~1.19e-7)
+    // Using eps=1e-12 would be below float precision and ineffective
+    constexpr Real eps = static_cast<Real>(1e-7);
     return Kokkos::sqrt(gamma * q.p / (q.rho + eps));
 }
 

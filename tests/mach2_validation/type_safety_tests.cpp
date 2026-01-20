@@ -261,7 +261,9 @@ void test_numerical_equivalence(TypeCheckResults& results) {
     Conserved U_converted = prim_to_cons(q, gamma);
 
     // Check equivalence
-    const Real tol = 1e-6f;
+    // Note: Float32 has ~7 significant digits, so for E ~ 15.0, 1 ULP ≈ 1.8e-6
+    // Using tol=1e-5 allows ~5-6 ULPs, which is reasonable for float32 precision
+    const Real tol = 1e-5f;
     bool rho_match = std::abs(U_original.rho - U_converted.rho) < tol;
     bool rhou_match = std::abs(U_original.rhou - U_converted.rhou) < tol;
     bool rhov_match = std::abs(U_original.rhov - U_converted.rhov) < tol;
