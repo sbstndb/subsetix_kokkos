@@ -90,16 +90,12 @@ jobs:
         working-directory: build-serial-asan
         run: ctest --preset serial-asan --output-on-failure
 
-  # Optional: Clang compilation check (non-blocking)
+  # Optional: Clang compilation check (Serial only, non-blocking)
+  # Note: Clang on GitHub Actions lacks OpenMP support
   clang-check:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     continue-on-error: true
-
-    strategy:
-      fail-fast: false
-      matrix:
-        backend: [serial, openmp]
 
     steps:
       - name: Checkout repository
@@ -113,21 +109,31 @@ jobs:
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ${{ runner.os }}-clang-${{ matrix.backend }}
+          key: ${{ runner.os }}-clang-serial
 
-      - name: Configure with Clang
+      - name: Cache Kokkos and dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ccache
+            build-clang-serial
+          key: ${{ runner.os }}-build-clang-serial-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-build-clang-serial-
+
+      - name: Configure with Clang (Serial only)
         run: |
           export CC=clang
           export CXX=clang++
-          cmake -B build-clang-${{ matrix.backend }} \
+          cmake -B build-clang-serial \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSUBSETIX_KOKKOS_OPENMP=$([ "${{ matrix.backend }}" == "openmp" ] && echo "ON" || echo "OFF") \
+            -DSUBSETIX_KOKKOS_OPENMP=OFF \
             -DSUBSETIX_USE_MPI=OFF
 
       - name: Build with Clang
-        run: cmake --build build-clang-${{ matrix.backend }} --parallel $(nproc)
+        run: cmake --build build-clang-serial --parallel $(nproc)
 
       - name: Test with Clang
-        working-directory: build-clang-${{ matrix.backend }}
+        working-directory: build-clang-serial
         run: ctest --output-on-failure
