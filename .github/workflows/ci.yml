@@ -49,7 +49,7 @@ jobs:
 
       - name: Run tests
         working-directory: ${{ format('build-{0}', matrix.backend) }}
-        run: ctest --preset ${{ matrix.backend }} --output-on-failure
+        run: ctest --output-on-failure
 
   # Debug build check with sanitizers
   debug-check:
@@ -88,7 +88,7 @@ jobs:
 
       - name: Run tests
         working-directory: build-serial-asan
-        run: ctest --preset serial-asan --output-on-failure
+        run: ctest --output-on-failure
 
   # Optional: Clang compilation check (Serial only, non-blocking)
   # Note: Clang on GitHub Actions lacks OpenMP support
