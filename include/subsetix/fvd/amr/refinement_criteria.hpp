@@ -715,9 +715,11 @@ public:
     using Primitive = typename System::Primitive;
 
     // Function pointer type for user-defined criteria (device-compatible)
-    using UserEvaluateFn = KOKKOS_FUNCTION RefinementAction(*)(const Conserved&,
-                                                                 const Primitive&,
-                                                                 Real);
+    // NOTE: KOKKOS_FUNCTION cannot be used in typedef - the actual functions
+    // passed to add_user_criterion() must be marked with KOKKOS_FUNCTION
+    using UserEvaluateFn = RefinementAction(*)(const Conserved&,
+                                                const Primitive&,
+                                                Real);
 
     enum LogicOp : uint8_t {
         And = 0,   // All criteria must return Refine

@@ -10,25 +10,16 @@
 namespace subsetix::fvd::solver {
 
 // ============================================================================
-// FORWARD DECLARATION OF UPDATED SOLVER
+// BRING ADAPTIVESOLVER INTO SOLVER NAMESPACE
 // ============================================================================
 
 /**
- * @brief Updated AdaptiveSolver with time integrator support
+ * @brief Import AdaptiveSolver from parent namespace
  *
- * This is the new signature that includes:
- * - System: The PDE system (Euler2D, etc.)
- * - Reconstruction: Spatial reconstruction scheme
- * - FluxScheme: Numerical flux scheme
- * - TimeIntegrator: Time integration scheme (ForwardEuler, RK2, RK3, RK4)
+ * The actual AdaptiveSolver class is defined in subsetix::fvd namespace.
+ * We bring it into the solver namespace here for the aliases below.
  */
-template<
-    FiniteVolumeSystem System,
-    typename Reconstruction = reconstruction::NoReconstruction,
-    template<typename> class FluxScheme = flux::RusanovFlux,
-    typename TimeIntegrator = time::ForwardEuler<typename System::RealType>
->
-class AdaptiveSolver;
+using subsetix::fvd::AdaptiveSolver;
 
 // ============================================================================
 // TYPE ALIASES FOR EULER 2D SYSTEM (float)
