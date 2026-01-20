@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+
+
 // Minimal Kokkos profiling tool: logs kernel durations to a JSONL file.
 #include <impl/Kokkos_Profiling_C_Interface.h>
 
