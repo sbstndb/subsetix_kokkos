@@ -8,6 +8,8 @@
 #include <subsetix/fvd/flux/flux_schemes.hpp>
 // PHASE 2b: Include FVD reconstruction (optional MUSCL)
 #include <subsetix/fvd/reconstruction/reconstruction.hpp>
+// PHASE 3: Include FVD boundary conditions
+#include <subsetix/fvd/solver/boundary_generic.hpp>
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
@@ -505,6 +507,56 @@ void fill_ghost_cells(ConservedFields& field,
         rho_out = value.rho;
       });
 }
+
+// ============================================================================
+// PHASE 3: HYBRID BOUNDARY CONDITION APPROACH
+// ============================================================================
+//
+// The FVD layer provides a generic boundary condition system:
+//
+// Available BC types in subsetix::fvd::AnyBc<System>:
+//   - Dirichlet: Fixed value (e.g., inflow)
+//   - Neumann: Zero gradient / extrapolation (e.g., outflow)
+//   - Reflective: Reflective wall (normal velocity reflected)
+//   - Custom: User-defined value
+//
+// Boundary configuration:
+//   subsetix::fvd::BoundaryConfig<System> cfg;
+//   cfg.left = AnyBc<System>::dirichlet_from_primitive(inflow, gamma);
+//   cfg.right = AnyBc<System>{AnyBc<System>::Neumann, Conserved{}};
+//   cfg.bottom = AnyBc<System>{AnyBc<System>::Reflective, Conserved{}};
+//   cfg.top = AnyBc<System>{AnyBc<System>::Reflective, Conserved{}};
+//
+// HYBRID APPROACH:
+// ================
+// For mach2_cylinder, we have TWO types of boundaries:
+//
+// 1. EXTERNAL BOUNDARIES (domain edges):
+//    - Left: Inflow (Dirichlet with mach2 state)
+//    - Right: Outflow (Neumann/extrapolation)
+//    - Top/Bottom: Slip walls (reflective)
+//    -> These can use FVD BoundaryConfig
+//
+// 2. INTERNAL OBSTACLE (cylinder):
+//    - Cylinder surface: No-slip or slip wall
+//    -> This requires CSR-specific handling (geometry-aware)
+//    -> Must use current fill_ghost_cells approach
+//
+// MIGRATION PATH:
+// ===============
+// Future work: Separate external BC handling from cylinder BC handling:
+//
+//   // For external boundaries, use FVD BC system:
+//   auto bc_config = BoundaryConfigBuilder<System>::inflow_outflow(inflow, gamma);
+//   apply_boundary_conditions(field, domain, bc_config, gamma);
+//
+//   // For cylinder obstacle, keep CSR-specific handling:
+//   fill_cylinder_ghost_cells(field, cylinder_mask, gamma, no_slip);
+//
+// For now, fill_ghost_cells handles both to maintain bit-identical results.
+//
+// See: include/subsetix/fvd/solver/boundary_generic.hpp
+// ============================================================================
 
 Real compute_dt(const ConservedFields& U,
                 Real gamma,
