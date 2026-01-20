@@ -176,13 +176,14 @@ private:
 };
 
 // ============================================================================
-// Hash map builder (parallel construction)
+// Hash map builder (serial construction)
 // ============================================================================
 
 /**
- * @brief Build hash map from row keys in parallel.
+ * @brief Build hash map from row keys.
  *
- * This is more efficient than serial insert() for large maps.
+ * Note: This is a serial build for simplicity.
+ * TODO: Implement parallel build with proper atomics.
  */
 template <class RowKey, class RowKeyView, class MemorySpace>
 inline void build_hash_map_parallel(
@@ -194,31 +195,26 @@ inline void build_hash_map_parallel(
 
   map_out.reserve(num_rows, "row_hash_map");
 
-  // Occupied is already initialized to 0, build directly
-  Kokkos::parallel_for(
-      "build_hash_map",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const RowKey key = row_keys(i);
-        const std::size_t start_idx = RowHashMap<RowKey, MemorySpace>::hash_device(key) % map_out.capacity_;
+  // For Serial backend, MemorySpace is HostSpace, so row_keys is already accessible
+  // For CUDA/OpenMP, we need to copy to HostSpace first
+  #ifdef KOKKOS_ENABLE_SERIAL
+    // Serial backend: row_keys is already in HostSpace, use directly
+    for (std::size_t i = 0; i < num_rows; ++i) {
+      RowKey key;
+      Kokkos::View<RowKey*, MemorySpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> const_row_keys(
+          const_cast<RowKey*>(row_keys.data()), num_rows);
+      key = const_row_keys(i);
+      map_out.insert(key, static_cast<int>(i));
+    }
+  #else
+    // Other backends: copy to host first
+    auto row_keys_host = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, row_keys);
+    for (std::size_t i = 0; i < num_rows; ++i) {
+      map_out.insert(row_keys_host(i), static_cast<int>(i));
+    }
+  #endif
 
-        // Linear probing to find slot
-        std::size_t idx = start_idx;
-        int expected = 0;
-        while (!Kokkos::atomic_compare_exchange(&map_out.occupied_(idx), expected, 1)) {
-          // Slot occupied, check if it's the same key (shouldn't happen with unique keys)
-          if (map_out.keys_(idx) == key) {
-            break;  // Duplicate key (shouldn't happen)
-          }
-          idx = (idx + 1) % map_out.capacity_;
-          expected = 0;  // Reset expected for next iteration
-        }
-
-        // Insert
-        map_out.keys_(idx) = key;
-        map_out.values_(idx) = static_cast<int>(i);
-      });
-
+  // Sync to device
   ExecSpace().fence();
 }
 

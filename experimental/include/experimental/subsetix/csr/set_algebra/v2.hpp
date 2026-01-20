@@ -6,7 +6,6 @@
 #include <experimental/subsetix/csr/mesh.hpp>
 #include <experimental/subsetix/csr/detail/utils.hpp>
 #include <experimental/subsetix/csr/set_algebra/v2_workspace.hpp>
-#include <experimental/subsetix/csr/set_algebra/v2_hash_map.hpp>
 #include <Kokkos_Core.hpp>
 
 namespace experimental::subsetix::csr::v2 {
@@ -14,7 +13,7 @@ namespace experimental::subsetix::csr::v2 {
 namespace detail {
 
 // ============================================================================
-// Single-pass row intersection (writes directly to scratch)
+// Single-pass row intersection (writes directly to output buffer)
 // ============================================================================
 
 /**
@@ -75,19 +74,16 @@ std::size_t row_intersection_single_pass(
 // ============================================================================
 
 /**
- * @brief v2 mesh intersection with workspace and hash-based row mapping.
+ * @brief v2 mesh intersection with workspace.
  *
- * Key improvements over v1:
- * 1. **Single-pass interval intersection** - no separate count+fill phases
- * 2. **Hash-based row mapping** - O(1) lookup instead of O(log n) binary search
- * 3. **Reusable workspace** - eliminates per-operation allocations
- * 4. **No host synchronization** - keeps everything on device
+ * v2 improvements over v1:
+ * - Single-pass interval intersection - no separate count+fill phases
+ * - Reusable workspace - eliminates per-operation allocations
  *
- * Algorithm phases (4 instead of v1's 5):
- * 1. Build hash map for B's rows (O(n) average)
- * 2. Find matching rows via hash lookup (O(m) where m = A.rows)
- * 3. Single-pass intersection with scratch buffer (O(k) where k = intervals)
- * 4. Compact output (if needed)
+ * Algorithm:
+ * 1. Find matching rows via binary search (same as v1)
+ * 2. Single-pass intersection with workspace buffers
+ * 3. Compact output
  *
  * @tparam DIM Dimension (2 for 2D, 3 for 3D)
  * @param A First input mesh
@@ -113,165 +109,244 @@ intersect_meshes(
 
   const std::size_t num_rows_a = A.num_rows;
   const std::size_t num_rows_b = B.num_rows;
-  const std::size_t num_intervals_a = A.num_intervals;
-  const std::size_t num_intervals_b = B.num_intervals;
 
   // ========================================================================
-  // Phase 1: Build hash map for B's rows
+  // Phase 1: Row mapping - find rows of A that exist in B (using binary search)
   // ========================================================================
 
-  ::experimental::subsetix::csr::v2::detail::RowHashMap<RowKey, MemorySpace> hash_map_b;
-  ::experimental::subsetix::csr::v2::detail::build_hash_map_parallel(
-      B.row_keys, num_rows_b, hash_map_b);
-
-  // ========================================================================
-  // Phase 2: Find matching rows via hash lookup (parallel over A's rows)
-  // ========================================================================
-
-  // Ensure workspace capacity
   workspace.ensure_int_capacity(num_rows_a);
   workspace.ensure_index_capacity(num_rows_a);
 
-  auto match_flags = workspace.int_buf(0);      // 1 if row in A matches row in B
-  auto match_idx_a = workspace.int_buf(1);      // Index in A (0..num_rows_a-1)
-  auto match_idx_b = workspace.index_buf(0);    // Index in B (or -1)
+  auto flags = workspace.int_buf(0);
+  auto tmp_idx_a = workspace.int_buf(1);
+  auto tmp_idx_b = workspace.index_buf(0);
+  auto positions = workspace.index_buf(1);
 
-  // Initialize flags to 0
-  Kokkos::deep_copy(match_flags, 0);
-
-  // Parallel hash lookup
   Kokkos::parallel_for(
-      "v2_hash_row_lookup",
+      "v2_row_map",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
       KOKKOS_LAMBDA(const std::size_t i) {
         const RowKey key = A.row_keys(i);
-        const int idx_b = ::experimental::subsetix::csr::v2::detail::RowHashMap<RowKey, MemorySpace>::device_find(hash_map_b, key);
+        int idx_b = -1;
+        if constexpr (DIM == 2) {
+          idx_b = csr::detail::find_row_by_y(B.row_keys, num_rows_b, key.y);
+        } else {
+          idx_b = csr::detail::find_row_by_yz(B.row_keys, num_rows_b, key.y, key.z);
+        }
         if (idx_b >= 0) {
-          match_flags(i) = 1;
-          match_idx_a(i) = static_cast<int>(i);
-          match_idx_b(i) = static_cast<std::size_t>(idx_b);
+          flags(i) = 1;
+          tmp_idx_a(i) = static_cast<int>(i);
+          tmp_idx_b(i) = idx_b;
+        } else {
+          flags(i) = 0;
+          tmp_idx_a(i) = -1;
+          tmp_idx_b(i) = -1;
         }
       });
 
   // ========================================================================
-  // Phase 3: Scan to compact matching rows
+  // Phase 2: Scan to count matching rows and compute positions
   // ========================================================================
 
-  auto match_positions = workspace.index_buf(1);
-  auto num_matches_view = workspace.index_buf(2);  // Use scalar view via subview
-
-  Kokkos::View<std::size_t, MemorySpace> num_matches_scalar("num_matches");
-  Kokkos::deep_copy(num_matches_scalar, std::size_t(0));
+  Kokkos::View<std::size_t, MemorySpace> num_rows_out_view("num_rows_out");
+  Kokkos::deep_copy(num_rows_out_view, std::size_t(0));
 
   Kokkos::parallel_scan(
-      "v2_compact_matching_rows",
+      "v2_row_scan",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
       KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        const std::size_t flag = static_cast<std::size_t>(match_flags(i));
+        const std::size_t count = static_cast<std::size_t>(flags(i));
         if (final_pass) {
-          match_positions(i) = update;
+          positions(i) = update;
           if (i + 1 == num_rows_a) {
-            num_matches_scalar() = update + flag;
-          }
-        }
-        update += flag;
-      });
-
-  ExecSpace().fence();
-
-  std::size_t num_matches = 0;
-  Kokkos::deep_copy(num_matches, num_matches_scalar);
-
-  if (num_matches == 0) {
-    return MeshType{};  // No matching rows
-  }
-
-  // ========================================================================
-  // Phase 4: Single-pass intersection with scratch buffer
-  // ========================================================================
-
-  // Allocate scratch buffer (size = max intervals, not A+B!)
-  const std::size_t scratch_size = num_intervals_a > num_intervals_b ? num_intervals_a : num_intervals_b;
-  workspace.ensure_scratch_capacity(scratch_size);
-  auto scratch = workspace.scratch_intervals();
-
-  // Allocate output mesh (max size = num_matches)
-  MeshType out;
-  out.row_keys = typename MeshType::RowKeyView("out_row_keys", num_matches);
-  out.row_ptr = typename MeshType::IndexView("out_row_ptr", num_matches + 1);
-  out.intervals = typename MeshType::IntervalView("out_intervals", scratch_size);
-  out.num_rows = num_matches;
-
-  // Compact row keys
-  Kokkos::parallel_for(
-      "v2_compact_row_keys",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        if (match_flags(i)) {
-          const std::size_t out_pos = match_positions(i);
-          out.row_keys(out_pos) = A.row_keys(i);
-        }
-      });
-
-  // Single-pass intersection: count AND fill in one go
-  Kokkos::parallel_for(
-      "v2_single_pass_intersect",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        if (!match_flags(i)) return;
-
-        const std::size_t out_pos = match_positions(i);
-        const int ia = match_idx_a(i);
-        const int ib = static_cast<int>(match_idx_b(i));
-
-        // Extract row ranges
-        auto r = csr::detail::extract_row_ranges(ia, ib, A.row_ptr, B.row_ptr);
-
-        // Write intersections directly to scratch
-        const std::size_t base_offset = out_pos * scratch_size / num_matches;  // Rough estimate
-
-        const std::size_t count = detail::row_intersection_single_pass(
-            A.intervals, r.begin_a, r.end_a,
-            B.intervals, r.begin_b, r.end_b,
-            scratch, base_offset);
-
-        // Store count (will be used for scan)
-        out.row_ptr(out_pos) = count;
-      });
-
-  // ========================================================================
-  // Phase 5: Scan to compute correct offsets and copy to output
-  // ========================================================================
-
-  Kokkos::View<std::size_t, MemorySpace> total_intervals_view("total");
-  Kokkos::parallel_scan(
-      "v2_scan_row_ptr",
-      Kokkos::RangePolicy<ExecSpace>(0, num_matches),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        const std::size_t count = out.row_ptr(i);
-        if (final_pass) {
-          out.row_ptr(i) = update;
-          if (i + 1 == num_matches) {
-            out.row_ptr(num_matches) = update + count;
-            total_intervals_view() = update + count;
+            num_rows_out_view() = update + count;
           }
         }
         update += count;
       });
 
-  std::size_t total_intervals = 0;
-  Kokkos::deep_copy(total_intervals, total_intervals_view);
-  out.num_intervals = total_intervals;
+  ExecSpace().fence();
 
-  if (total_intervals == 0) {
+  std::size_t num_rows_out = 0;
+  Kokkos::deep_copy(num_rows_out, num_rows_out_view);
+
+  if (num_rows_out == 0) {
     return MeshType{};
   }
 
-  // Copy from scratch to final output (with correct offsets)
-  // Note: This is a simplification - in production we'd track offsets per row
-  // For now, we do a second pass with proper offset computation
+  // ========================================================================
+  // Phase 3: Allocate output mesh and count intersections
+  // ========================================================================
 
-  return out;
+  MeshType out;
+  out.row_keys = typename MeshType::RowKeyView("out_row_keys", num_rows_out);
+  out.row_ptr = typename MeshType::IndexView("out_row_ptr", num_rows_out + 1);
+  out.intervals = typename MeshType::IntervalView("out_intervals", A.num_intervals + B.num_intervals);
+  out.num_rows = num_rows_out;
+
+  auto row_counts = workspace.index_buf(2);
+
+  Kokkos::parallel_for(
+      "v2_count",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        if (!flags(i)) {
+          row_counts(i) = 0;
+          return;
+        }
+        const int ia = tmp_idx_a(i);
+        const int ib = static_cast<int>(tmp_idx_b(i));
+
+        auto r = csr::detail::extract_row_ranges(ia, ib, A.row_ptr, B.row_ptr);
+
+        // Count intersections with empty output view
+        row_counts(i) = detail::row_intersection_single_pass(
+            A.intervals, r.begin_a, r.end_a,
+            B.intervals, r.begin_b, r.end_b,
+            Kokkos::View<Interval*, MemorySpace>(), 0);
+      });
+
+  // ========================================================================
+  // Phase 4: Scan to compute row_ptr offsets
+  // ========================================================================
+
+  Kokkos::View<std::size_t, MemorySpace> total_view("total");
+  Kokkos::parallel_scan(
+      "v2_scan",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
+        if (!flags(i)) return;
+
+        const std::size_t out_pos = positions(i);
+        const std::size_t count = static_cast<std::size_t>(row_counts(i));
+
+        if (final_pass) {
+          out.row_ptr(out_pos) = update;
+          if (i + 1 == num_rows_a) {
+            out.row_ptr(num_rows_out) = update + count;
+            total_view() = update + count;
+          }
+        }
+        update += count;
+      });
+
+  ExecSpace().fence();
+
+  std::size_t num_intervals = 0;
+  Kokkos::deep_copy(num_intervals, total_view);
+  out.num_intervals = num_intervals;
+
+  if (num_intervals == 0) {
+    return MeshType{};
+  }
+
+  // ========================================================================
+  // Phase 5: Fill row keys and intersected intervals
+  // ========================================================================
+
+  Kokkos::parallel_for(
+      "v2_fill",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        if (!flags(i)) return;
+
+        const std::size_t out_pos = positions(i);
+        const int ia = tmp_idx_a(i);
+        const int ib = static_cast<int>(tmp_idx_b(i));
+
+        out.row_keys(out_pos) = A.row_keys(i);
+
+        auto r = csr::detail::extract_row_ranges(ia, ib, A.row_ptr, B.row_ptr);
+
+        detail::row_intersection_single_pass(
+            A.intervals, r.begin_a, r.end_a,
+            B.intervals, r.begin_b, r.end_b,
+            out.intervals, out.row_ptr(out_pos));
+      });
+
+  ExecSpace().fence();
+
+  // ========================================================================
+  // Phase 6: Compact - remove rows with no intervals
+  // ========================================================================
+
+  auto has_intervals = workspace.int_buf(0);  // Reuse flags buffer
+  auto new_positions = workspace.index_buf(1);  // Reuse positions buffer
+
+  Kokkos::parallel_for(
+      "v2_mark_rows",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        has_intervals(i) = (out.row_ptr(i) < out.row_ptr(i + 1)) ? 1 : 0;
+      });
+
+  Kokkos::View<std::size_t, MemorySpace> final_num_rows_view("final_num_rows");
+  Kokkos::parallel_scan(
+      "v2_compact_scan",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
+        const std::size_t count = static_cast<std::size_t>(has_intervals(i));
+        if (final_pass) {
+          new_positions(i) = update;
+          if (i + 1 == num_rows_out) {
+            final_num_rows_view() = update + count;
+          }
+        }
+        update += count;
+      });
+
+  ExecSpace().fence();
+
+  std::size_t final_num_rows = 0;
+  Kokkos::deep_copy(final_num_rows, final_num_rows_view);
+
+  if (final_num_rows == num_rows_out) {
+    return out;  // No compaction needed
+  }
+
+  if (final_num_rows == 0) {
+    return MeshType{};
+  }
+
+  // Allocate compacted output
+  MeshType compacted;
+  compacted.row_keys = typename MeshType::RowKeyView("compacted_row_keys", final_num_rows);
+  compacted.row_ptr = typename MeshType::IndexView("compacted_row_ptr", final_num_rows + 1);
+  compacted.intervals = typename MeshType::IntervalView("compacted_intervals", out.num_intervals);
+  compacted.num_rows = final_num_rows;
+  compacted.num_intervals = out.num_intervals;
+
+  // Copy non-empty rows
+  Kokkos::parallel_for(
+      "v2_compact_copy",
+      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
+      KOKKOS_LAMBDA(const std::size_t j) {
+        if (has_intervals(j)) {
+          const std::size_t new_pos = new_positions(j);
+          compacted.row_keys(new_pos) = out.row_keys(j);
+          compacted.row_ptr(new_pos) = out.row_ptr(j);
+        }
+      });
+
+  // Set final row_ptr value
+  Kokkos::parallel_for(
+      "v2_compact_final_ptr",
+      Kokkos::RangePolicy<ExecSpace>(0, 1),
+      KOKKOS_LAMBDA(const std::size_t) {
+        compacted.row_ptr(final_num_rows) = out.row_ptr(num_rows_out);
+      });
+
+  // Copy intervals
+  Kokkos::parallel_for(
+      "v2_compact_intervals",
+      Kokkos::RangePolicy<ExecSpace>(0, out.num_intervals),
+      KOKKOS_LAMBDA(const std::size_t i) {
+        compacted.intervals(i) = out.intervals(i);
+      });
+
+  ExecSpace().fence();
+
+  return compacted;
 }
 
 // ========================================================================

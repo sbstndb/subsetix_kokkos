@@ -6,7 +6,7 @@
 
 message(STATUS "Experimental tests will be built")
 
-# v1 tests
+# v1 tests - use gtest_main (no actual Views created in tests, so Kokkos init not needed)
 add_executable(experimental_v1_test
   set_algebra/v1_test.cpp
 )
@@ -21,8 +21,9 @@ target_link_libraries(experimental_v1_test
 
 add_test(NAME ExperimentalV1Test COMMAND experimental_v1_test)
 
-# v2 tests
+# v2 tests - use custom test_main that initializes Kokkos
 add_executable(experimental_v2_test
+  test_main.cpp
   set_algebra/v2_test.cpp
 )
 
@@ -30,8 +31,9 @@ target_link_libraries(experimental_v2_test
   PRIVATE
     subsetix::core
     experimental_subsetix_csr
-    gtest_main
-    gmock_main
+    gtest
+    gmock
+    Kokkos::kokkos
 )
 
 add_test(NAME ExperimentalV2Test COMMAND experimental_v2_test)
