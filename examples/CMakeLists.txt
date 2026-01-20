@@ -168,3 +168,14 @@ target_link_libraries(mach2_cylinder_simplified
         subsetix::core
 )
 target_include_directories(mach2_cylinder_simplified PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Mach 2 cylinder with obstacle using FVD high-level API
+add_executable(mach2_cylinder_fvd_api
+    mach2_cylinder_fvd_api.cpp
+)
+
+target_link_libraries(mach2_cylinder_fvd_api
+    PRIVATE
+        subsetix::core
+)
+target_include_directories(mach2_cylinder_fvd_api PRIVATE ${CMAKE_SOURCE_DIR}/include)
