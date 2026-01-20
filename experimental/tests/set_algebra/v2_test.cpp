@@ -152,17 +152,367 @@ TEST(ExperimentalV2Test, CanRunV1Intersection) {
 }
 
 TEST(ExperimentalV2Test, CanRunV2Intersection) {
-  // TODO: v2 intersection has a bug that causes segfault
-  // This test is disabled until the bug is fixed
-  GTEST_SKIP() << "v2 intersection needs debugging - segfaults on non-empty meshes";
+  // Test that v2 intersection works with non-empty meshes
+  Mesh2DDevice A;
+  A.num_rows = 1;
+  A.num_intervals = 1;
+  A.row_keys = Mesh2DDevice::RowKeyView("A_row_keys", 1);
+  A.row_ptr = Mesh2DDevice::IndexView("A_row_ptr", 2);
+  A.intervals = Mesh2DDevice::IntervalView("A_intervals", 1);
+
+  Mesh2DDevice B;
+  B.num_rows = 1;
+  B.num_intervals = 1;
+  B.row_keys = Mesh2DDevice::RowKeyView("B_row_keys", 1);
+  B.row_ptr = Mesh2DDevice::IndexView("B_row_ptr", 2);
+  B.intervals = Mesh2DDevice::IntervalView("B_intervals", 1);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  A_keys_h(0) = RowKey2D{0};
+  A_ptr_h(0) = 0;
+  A_ptr_h(1) = 1;
+  A_int_h(0) = Interval{0, 10};
+
+  B_keys_h(0) = RowKey2D{0};
+  B_ptr_h(0) = 0;
+  B_ptr_h(1) = 1;
+  B_int_h(0) = Interval{5, 15};
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  // Test v2 intersection without workspace (auto-created)
+  auto result = v2::intersect_meshes_2d(A, B);
+
+  EXPECT_EQ(result.num_rows, 1);
+  EXPECT_EQ(result.num_intervals, 1);
 }
 
 // ============================================================================
 // Correctness Tests: v1 vs v2 comparison
 // ============================================================================
 
-// NOTE: v2 correctness tests are disabled due to a segfault bug
-// The v2 infrastructure is in place but needs further debugging
-// TODO: Fix the v2 segfault issue
+TEST(ExperimentalV2Test, V1_vs_V2_SimpleIntersection_2D) {
+  // Test: Two meshes with overlapping intervals on same row
+  Mesh2DDevice A;
+  A.num_rows = 1;
+  A.num_intervals = 1;
+  A.row_keys = Mesh2DDevice::RowKeyView("A_row_keys", 1);
+  A.row_ptr = Mesh2DDevice::IndexView("A_row_ptr", 2);
+  A.intervals = Mesh2DDevice::IntervalView("A_intervals", 1);
+
+  Mesh2DDevice B;
+  B.num_rows = 1;
+  B.num_intervals = 1;
+  B.row_keys = Mesh2DDevice::RowKeyView("B_row_keys", 1);
+  B.row_ptr = Mesh2DDevice::IndexView("B_row_ptr", 2);
+  B.intervals = Mesh2DDevice::IntervalView("B_intervals", 1);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  A_keys_h(0) = RowKey2D{0};
+  A_ptr_h(0) = 0;
+  A_ptr_h(1) = 1;
+  A_int_h(0) = Interval{0, 10};
+
+  B_keys_h(0) = RowKey2D{0};
+  B_ptr_h(0) = 0;
+  B_ptr_h(1) = 1;
+  B_int_h(0) = Interval{5, 15};
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  auto result_v1 = v1::intersect_meshes_2d(A, B);
+  auto result_v2 = v2::intersect_meshes_2d(A, B);
+
+  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
+  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
+  EXPECT_EQ(result_v1.num_rows, 1);
+  EXPECT_EQ(result_v1.num_intervals, 1);
+}
+
+TEST(ExperimentalV2Test, V1_vs_V2_NoIntersection_2D) {
+  // Test: Two meshes with non-overlapping intervals
+  Mesh2DDevice A;
+  A.num_rows = 1;
+  A.num_intervals = 1;
+  A.row_keys = Mesh2DDevice::RowKeyView("A_row_keys", 1);
+  A.row_ptr = Mesh2DDevice::IndexView("A_row_ptr", 2);
+  A.intervals = Mesh2DDevice::IntervalView("A_intervals", 1);
+
+  Mesh2DDevice B;
+  B.num_rows = 1;
+  B.num_intervals = 1;
+  B.row_keys = Mesh2DDevice::RowKeyView("B_row_keys", 1);
+  B.row_ptr = Mesh2DDevice::IndexView("B_row_ptr", 2);
+  B.intervals = Mesh2DDevice::IntervalView("B_intervals", 1);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  A_keys_h(0) = RowKey2D{0};
+  A_ptr_h(0) = 0;
+  A_ptr_h(1) = 1;
+  A_int_h(0) = Interval{0, 5};
+
+  B_keys_h(0) = RowKey2D{0};
+  B_ptr_h(0) = 0;
+  B_ptr_h(1) = 1;
+  B_int_h(0) = Interval{10, 20};
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  auto result_v1 = v1::intersect_meshes_2d(A, B);
+  auto result_v2 = v2::intersect_meshes_2d(A, B);
+
+  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
+  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
+  EXPECT_EQ(result_v1.num_rows, 0);
+  EXPECT_EQ(result_v1.num_intervals, 0);
+}
+
+TEST(ExperimentalV2Test, V1_vs_V2_MultipleIntervals_2D) {
+  // Test: Multiple intervals per row
+  Mesh2DDevice A;
+  A.num_rows = 1;
+  A.num_intervals = 3;
+  A.row_keys = Mesh2DDevice::RowKeyView("A_row_keys", 1);
+  A.row_ptr = Mesh2DDevice::IndexView("A_row_ptr", 2);
+  A.intervals = Mesh2DDevice::IntervalView("A_intervals", 3);
+
+  Mesh2DDevice B;
+  B.num_rows = 1;
+  B.num_intervals = 2;
+  B.row_keys = Mesh2DDevice::RowKeyView("B_row_keys", 1);
+  B.row_ptr = Mesh2DDevice::IndexView("B_row_ptr", 2);
+  B.intervals = Mesh2DDevice::IntervalView("B_intervals", 2);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  A_keys_h(0) = RowKey2D{0};
+  A_ptr_h(0) = 0;
+  A_ptr_h(1) = 3;
+  A_int_h(0) = Interval{0, 10};
+  A_int_h(1) = Interval{20, 30};
+  A_int_h(2) = Interval{40, 50};
+
+  B_keys_h(0) = RowKey2D{0};
+  B_ptr_h(0) = 0;
+  B_ptr_h(1) = 2;
+  B_int_h(0) = Interval{5, 15};
+  B_int_h(1) = Interval{25, 35};
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  auto result_v1 = v1::intersect_meshes_2d(A, B);
+  auto result_v2 = v2::intersect_meshes_2d(A, B);
+
+  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
+  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
+  EXPECT_EQ(result_v1.num_rows, 1);
+  EXPECT_EQ(result_v1.num_intervals, 2);
+}
+
+TEST(ExperimentalV2Test, V1_vs_V2_DifferentRows_2D) {
+  // Test: Meshes with different row keys
+  Mesh2DDevice A;
+  A.num_rows = 2;
+  A.num_intervals = 2;
+  A.row_keys = Mesh2DDevice::RowKeyView("A_row_keys", 2);
+  A.row_ptr = Mesh2DDevice::IndexView("A_row_ptr", 3);
+  A.intervals = Mesh2DDevice::IntervalView("A_intervals", 2);
+
+  Mesh2DDevice B;
+  B.num_rows = 2;
+  B.num_intervals = 2;
+  B.row_keys = Mesh2DDevice::RowKeyView("B_row_keys", 2);
+  B.row_ptr = Mesh2DDevice::IndexView("B_row_ptr", 3);
+  B.intervals = Mesh2DDevice::IntervalView("B_intervals", 2);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  A_keys_h(0) = RowKey2D{0};
+  A_keys_h(1) = RowKey2D{1};
+  A_ptr_h(0) = 0;
+  A_ptr_h(1) = 1;
+  A_ptr_h(2) = 2;
+  A_int_h(0) = Interval{0, 10};
+  A_int_h(1) = Interval{0, 10};
+
+  B_keys_h(0) = RowKey2D{1};
+  B_keys_h(1) = RowKey2D{2};
+  B_ptr_h(0) = 0;
+  B_ptr_h(1) = 1;
+  B_ptr_h(2) = 2;
+  B_int_h(0) = Interval{5, 15};
+  B_int_h(1) = Interval{0, 10};
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  auto result_v1 = v1::intersect_meshes_2d(A, B);
+  auto result_v2 = v2::intersect_meshes_2d(A, B);
+
+  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
+  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
+  EXPECT_EQ(result_v1.num_rows, 1);  // Only row 1 matches
+  EXPECT_EQ(result_v1.num_intervals, 1);
+}
+
+// ============================================================================
+// 3D Correctness Tests: v1 vs v2 comparison
+// ============================================================================
+
+TEST(ExperimentalV2Test, V1_vs_V2_SimpleIntersection_3D) {
+  // Test: Two 3D meshes with overlapping intervals on same row
+  Mesh3DDevice A;
+  A.num_rows = 1;
+  A.num_intervals = 1;
+  A.row_keys = Mesh3DDevice::RowKeyView("A_row_keys", 1);
+  A.row_ptr = Mesh3DDevice::IndexView("A_row_ptr", 2);
+  A.intervals = Mesh3DDevice::IntervalView("A_intervals", 1);
+
+  Mesh3DDevice B;
+  B.num_rows = 1;
+  B.num_intervals = 1;
+  B.row_keys = Mesh3DDevice::RowKeyView("B_row_keys", 1);
+  B.row_ptr = Mesh3DDevice::IndexView("B_row_ptr", 2);
+  B.intervals = Mesh3DDevice::IntervalView("B_intervals", 1);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  A_keys_h(0) = RowKey3D{0, 0};
+  A_ptr_h(0) = 0;
+  A_ptr_h(1) = 1;
+  A_int_h(0) = Interval{0, 10};
+
+  B_keys_h(0) = RowKey3D{0, 0};
+  B_ptr_h(0) = 0;
+  B_ptr_h(1) = 1;
+  B_int_h(0) = Interval{5, 15};
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  auto result_v1 = v1::intersect_meshes_3d(A, B);
+  auto result_v2 = v2::intersect_meshes_3d(A, B);
+
+  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
+  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
+  EXPECT_EQ(result_v1.num_rows, 1);
+  EXPECT_EQ(result_v1.num_intervals, 1);
+}
+
+TEST(ExperimentalV2Test, V1_vs_V2_DifferentZRows_3D) {
+  // Test: 3D meshes with different z coordinates
+  Mesh3DDevice A;
+  A.num_rows = 2;
+  A.num_intervals = 2;
+  A.row_keys = Mesh3DDevice::RowKeyView("A_row_keys", 2);
+  A.row_ptr = Mesh3DDevice::IndexView("A_row_ptr", 3);
+  A.intervals = Mesh3DDevice::IntervalView("A_intervals", 2);
+
+  Mesh3DDevice B;
+  B.num_rows = 2;
+  B.num_intervals = 2;
+  B.row_keys = Mesh3DDevice::RowKeyView("B_row_keys", 2);
+  B.row_ptr = Mesh3DDevice::IndexView("B_row_ptr", 3);
+  B.intervals = Mesh3DDevice::IntervalView("B_intervals", 2);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  A_keys_h(0) = RowKey3D{0, 0};
+  A_keys_h(1) = RowKey3D{1, 0};
+  A_ptr_h(0) = 0;
+  A_ptr_h(1) = 1;
+  A_ptr_h(2) = 2;
+  A_int_h(0) = Interval{0, 10};
+  A_int_h(1) = Interval{0, 10};
+
+  B_keys_h(0) = RowKey3D{1, 0};
+  B_keys_h(1) = RowKey3D{1, 1};
+  B_ptr_h(0) = 0;
+  B_ptr_h(1) = 1;
+  B_ptr_h(2) = 2;
+  B_int_h(0) = Interval{5, 15};
+  B_int_h(1) = Interval{0, 10};
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  auto result_v1 = v1::intersect_meshes_3d(A, B);
+  auto result_v2 = v2::intersect_meshes_3d(A, B);
+
+  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
+  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
+  EXPECT_EQ(result_v1.num_rows, 1);  // Only row (y=1, z=0) matches
+  EXPECT_EQ(result_v1.num_intervals, 1);
+}
 
 #endif // SUBSETIX_ENABLE_EXPERIMENTAL

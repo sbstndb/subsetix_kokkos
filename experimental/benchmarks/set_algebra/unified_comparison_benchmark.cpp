@@ -4,13 +4,11 @@
 #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
 
 #include <benchmark/benchmark.h>
-#include <experimental/subsetix/csr/set_algebra.hpp>
-#include <subsetix/csr_ops/set_algebra.hpp>
-#include <subsetix/geometry/csr_generators.hpp>
+#include <experimental/subsetix/csr/set_algebra/v1.hpp>
+#include <experimental/subsetix/csr/set_algebra/v2.hpp>
 #include <Kokkos_Core.hpp>
 
 using namespace experimental::subsetix::csr;
-namespace stable = subsetix::csr;
 
 // ============================================================================
 // Test Data Generation
@@ -244,8 +242,186 @@ static void BM_Intersection3D_V1_V2_FullOverlap(benchmark::State& state) {
   state.SetBytesProcessed(state.iterations() * (A.num_intervals + B.num_intervals) * sizeof(Interval));
 }
 
-BENCHMARK(BM_Intersection3D_V1_V2_FullOverlap)->Range(64, 8192)->Unit(benchmark::kMillisecond);
+static void BM_Intersection3D_V2_FullOverlap(benchmark::State& state) {
+  const int n = state.range(0);
 
-BENCHMARK_MAIN();
+  Mesh3DDevice A, B;
+  A.num_rows = n;
+  A.num_intervals = n;
+  A.row_keys = Mesh3DDevice::RowKeyView("A_row_keys", n);
+  A.row_ptr = Mesh3DDevice::IndexView("A_row_ptr", n + 1);
+  A.intervals = Mesh3DDevice::IntervalView("A_intervals", n);
+
+  B.num_rows = n;
+  B.num_intervals = n;
+  B.row_keys = Mesh3DDevice::RowKeyView("B_row_keys", n);
+  B.row_ptr = Mesh3DDevice::IndexView("B_row_ptr", n + 1);
+  B.intervals = Mesh3DDevice::IntervalView("B_intervals", n);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  for (int i = 0; i < n; ++i) {
+    A_keys_h(i) = RowKey3D{i, i % 10};
+    A_ptr_h(i) = i;
+    A_int_h(i) = Interval{0, 100};
+
+    B_keys_h(i) = RowKey3D{i, i % 10};
+    B_ptr_h(i) = i;
+    B_int_h(i) = Interval{50, 150};
+  }
+  A_ptr_h(n) = n;
+  B_ptr_h(n) = n;
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> ws;
+
+  for (auto _ : state) {
+    auto result = v2::intersect_meshes_3d(A, B, ws);
+    benchmark::DoNotOptimize(result.num_intervals);
+  }
+
+  state.SetItemsProcessed(state.iterations());
+  state.SetBytesProcessed(state.iterations() * (A.num_intervals + B.num_intervals) * sizeof(Interval));
+}
+
+BENCHMARK(BM_Intersection3D_V1_V2_FullOverlap)->Range(64, 8192)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_Intersection3D_V2_FullOverlap)->Range(64, 8192)->Unit(benchmark::kMillisecond);
+
+// ========================================================================
+// Large-scale 2D-only Benchmarks (2D can handle much larger meshes)
+// ========================================================================
+
+static void BM_Intersection2D_Large_V1(benchmark::State& state) {
+  const int n = state.range(0);
+
+  Mesh2DDevice A, B;
+  A.num_rows = n;
+  A.num_intervals = n;
+  A.row_keys = Mesh2DDevice::RowKeyView("A_row_keys", n);
+  A.row_ptr = Mesh2DDevice::IndexView("A_row_ptr", n + 1);
+  A.intervals = Mesh2DDevice::IntervalView("A_intervals", n);
+
+  B.num_rows = n;
+  B.num_intervals = n;
+  B.row_keys = Mesh2DDevice::RowKeyView("B_row_keys", n);
+  B.row_ptr = Mesh2DDevice::IndexView("B_row_ptr", n + 1);
+  B.intervals = Mesh2DDevice::IntervalView("B_intervals", n);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  for (int i = 0; i < n; ++i) {
+    A_keys_h(i) = RowKey2D{i};
+    A_ptr_h(i) = i;
+    A_int_h(i) = Interval{0, 100};
+
+    B_keys_h(i) = RowKey2D{i};
+    B_ptr_h(i) = i;
+    B_int_h(i) = Interval{50, 150};
+  }
+  A_ptr_h(n) = n;
+  B_ptr_h(n) = n;
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  for (auto _ : state) {
+    auto result = v1::intersect_meshes_2d(A, B);
+    benchmark::DoNotOptimize(result.num_intervals);
+  }
+
+  state.SetItemsProcessed(state.iterations());
+  state.SetBytesProcessed(state.iterations() * (A.num_intervals + B.num_intervals) * sizeof(Interval));
+}
+
+static void BM_Intersection2D_Large_V2(benchmark::State& state) {
+  const int n = state.range(0);
+
+  Mesh2DDevice A, B;
+  A.num_rows = n;
+  A.num_intervals = n;
+  A.row_keys = Mesh2DDevice::RowKeyView("A_row_keys", n);
+  A.row_ptr = Mesh2DDevice::IndexView("A_row_ptr", n + 1);
+  A.intervals = Mesh2DDevice::IntervalView("A_intervals", n);
+
+  B.num_rows = n;
+  B.num_intervals = n;
+  B.row_keys = Mesh2DDevice::RowKeyView("B_row_keys", n);
+  B.row_ptr = Mesh2DDevice::IndexView("B_row_ptr", n + 1);
+  B.intervals = Mesh2DDevice::IntervalView("B_intervals", n);
+
+  auto A_keys_h = Kokkos::create_mirror_view(A.row_keys);
+  auto A_ptr_h = Kokkos::create_mirror_view(A.row_ptr);
+  auto A_int_h = Kokkos::create_mirror_view(A.intervals);
+  auto B_keys_h = Kokkos::create_mirror_view(B.row_keys);
+  auto B_ptr_h = Kokkos::create_mirror_view(B.row_ptr);
+  auto B_int_h = Kokkos::create_mirror_view(B.intervals);
+
+  for (int i = 0; i < n; ++i) {
+    A_keys_h(i) = RowKey2D{i};
+    A_ptr_h(i) = i;
+    A_int_h(i) = Interval{0, 100};
+
+    B_keys_h(i) = RowKey2D{i};
+    B_ptr_h(i) = i;
+    B_int_h(i) = Interval{50, 150};
+  }
+  A_ptr_h(n) = n;
+  B_ptr_h(n) = n;
+
+  Kokkos::deep_copy(A.row_keys, A_keys_h);
+  Kokkos::deep_copy(A.row_ptr, A_ptr_h);
+  Kokkos::deep_copy(A.intervals, A_int_h);
+  Kokkos::deep_copy(B.row_keys, B_keys_h);
+  Kokkos::deep_copy(B.row_ptr, B_ptr_h);
+  Kokkos::deep_copy(B.intervals, B_int_h);
+
+  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> ws;
+
+  for (auto _ : state) {
+    auto result = v2::intersect_meshes_2d(A, B, ws);
+    benchmark::DoNotOptimize(result.num_intervals);
+  }
+
+  state.SetItemsProcessed(state.iterations());
+  state.SetBytesProcessed(state.iterations() * (A.num_intervals + B.num_intervals) * sizeof(Interval));
+}
+
+// Large 2D benchmarks: 16K, 32K, 64K, 128K rows
+BENCHMARK(BM_Intersection2D_Large_V1)->RangeMultiplier(2)->Range(16384, 131072)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_Intersection2D_Large_V2)->RangeMultiplier(2)->Range(16384, 131072)->Unit(benchmark::kMillisecond);
+
+int main(int argc, char** argv) {
+  Kokkos::initialize(argc, argv);
+  benchmark::Initialize(&argc, argv);
+  if (benchmark::ReportUnrecognizedArguments(argc, argv)) {
+    Kokkos::finalize();
+    return 1;
+  }
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  // Note: Not calling Kokkos::finalize() here because Fixtures may still hold Views
+  // that will be destroyed after main() returns.
+  return 0;
+}
 
 #endif // SUBSETIX_ENABLE_EXPERIMENTAL

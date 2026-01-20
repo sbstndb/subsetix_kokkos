@@ -34,7 +34,7 @@ public:
 
   // Buffer counts (tunable based on typical workload)
   static constexpr int NUM_INDEX_BUFS = 3;
-  static constexpr int NUM_INT_BUFS = 2;
+  static constexpr int NUM_INT_BUFS = 3;  // Increased for tmp_idx_b
 
   // Scratch interval buffer - single pass, no over-allocation
   using IntervalView = Kokkos::View<Interval*, MemorySpace>;
@@ -56,10 +56,10 @@ public:
     "workspace_index_0", "workspace_index_1", "workspace_index_2"
   };
   std::array<std::string, NUM_INT_BUFS> int_labels_ = {
-    "workspace_int_0", "workspace_int_1"
+    "workspace_int_0", "workspace_int_1", "workspace_int_2"
   };
 
-  KOKKOS_INLINE_FUNCTION
+  // FIX: Remove KOKKOS_INLINE_FUNCTION - default constructor is host-only
   MeshIntersectionWorkspace() = default;
 
   // ========================================================================
@@ -79,7 +79,7 @@ public:
     }
   }
 
-  KOKKOS_INLINE_FUNCTION
+  // FIX: Remove KOKKOS_INLINE_FUNCTION - these are host-only methods
   IntervalView scratch_intervals() const { return scratch_intervals_; }
 
   // ========================================================================
@@ -95,7 +95,6 @@ public:
     }
   }
 
-  KOKKOS_INLINE_FUNCTION
   IndexView index_buf(int idx) const { return index_bufs_[idx]; }
 
   // ========================================================================
@@ -111,7 +110,6 @@ public:
     }
   }
 
-  KOKKOS_INLINE_FUNCTION
   IntView int_buf(int idx) const { return int_bufs_[idx]; }
 
   // ========================================================================
@@ -123,6 +121,7 @@ public:
    *
    * Buffers retain their capacity for reuse.
    */
+  // FIX: Remove KOKKOS_INLINE_FUNCTION - this is a host-only method
   inline void clear() {
     scratch_capacity_ = 0;
     index_capacity_ = 0;
@@ -148,7 +147,7 @@ struct DeviceWorkspaceView {
 
   IntervalView scratch_intervals;
   IndexView index_bufs[3];
-  IntView int_bufs[2];
+  IntView int_bufs[3];  // Increased to 3
 
   KOKKOS_INLINE_FUNCTION
   IntervalView scratch() const { return scratch_intervals; }
@@ -168,7 +167,7 @@ DeviceWorkspaceView<MemorySpace> make_device_view(MeshIntersectionWorkspace<Memo
   DeviceWorkspaceView<MemorySpace> view;
   view.scratch_intervals = ws.scratch_intervals_;
   for (int i = 0; i < 3; ++i) view.index_bufs[i] = ws.index_bufs_[i];
-  for (int i = 0; i < 2; ++i) view.int_bufs[i] = ws.int_bufs_[i];
+  for (int i = 0; i < 3; ++i) view.int_bufs[i] = ws.int_bufs_[i];  // FIX: Copy 3 int bufs
   return view;
 }
 
