@@ -6,6 +6,8 @@
 #include <subsetix/fvd/system/euler2d.hpp>
 // PHASE 2a: Include FVD flux schemes
 #include <subsetix/fvd/flux/flux_schemes.hpp>
+// PHASE 2b: Include FVD reconstruction (optional MUSCL)
+#include <subsetix/fvd/reconstruction/reconstruction.hpp>
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
@@ -207,6 +209,9 @@ struct RunConfig {
   Real amr_fraction = static_cast<Real>(0.5); // fraction of domain length refined in each direction
   int amr_guard = 2;         // coarse-cell guard radius around the refined zone
   int amr_remesh_stride = 0; // 0 => static AMR, >0 => remesh every N steps
+
+  // PHASE 2b: MUSCL reconstruction (default: disabled for bit-identical results)
+  bool enable_muscl = false; // Set to true for 2nd order accuracy (not bit-identical)
 };
 
 struct IndicatorStencil {
@@ -1084,6 +1089,40 @@ struct EulerStencilSoA {
     return updated.rho;
   }
 };
+
+// ============================================================================
+// PHASE 2b: MUSCL RECONSTRUCTION INFRASTRUCTURE
+// ============================================================================
+//
+// The FVD layer provides complete MUSCL reconstruction with limiters:
+//
+// Available limiters:
+//   - subsetix::fvd::reconstruction::MinmodLimiter<Real>   (most dissipative)
+//   - subsetix::fvd::reconstruction::MCLimiter<Real>       (less dissipative)
+//   - subsetix::fvd::reconstruction::SuperbeeLimiter<Real> (least dissipative)
+//   - subsetix::fvd::reconstruction::VanLeerLimiter<Real>  (smooth, symmetric)
+//
+// Usage example (future work):
+//
+//   using MUSCL = subsetix::fvd::reconstruction::MUSCL_Reconstruction<MinmodLimiter>;
+//
+//   // In stencil, before computing flux:
+//   Primitive qL_reconstructed, qR_reconstructed;
+//   MUSCL::reconstruct_interface(q_ww, q_w, q_e, q_ee,
+//                                qL_reconstructed, qR_reconstructed);
+//
+//   // Then use reconstructed values in flux:
+//   auto flux = rusanov.flux_x(UL, UR, qL_reconstructed, qR_reconstructed);
+//
+// NOTE: MUSCL requires extended stencil (2 neighbors on each side).
+// The current CsrStencilPoint provides only immediate neighbors.
+// Future work: Extend stencil infrastructure for 2nd order schemes.
+//
+// For now, enable_muscl flag is provided in RunConfig for future use.
+// When enabled, it would switch to a MUSCL-enabled stencil variant.
+//
+// See: include/subsetix/fvd/reconstruction/reconstruction.hpp
+// ============================================================================
 
 void compute_diagnostics(const ConservedFields& U,
                          Field2DDevice<Real>& density,
