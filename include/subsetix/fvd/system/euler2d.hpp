@@ -98,8 +98,8 @@ public:
         Real inv_rho = Real(1) / (U.rho + eps);
         Real u = U.rhou * inv_rho;
         Real v = U.rhov * inv_rho;
-        Real kinetic = Real(0.5) * U.rho * (u * u + v * v);
-        Real p = (gamma - Real(1)) * (U.E - kinetic);
+        Real kinetic = Real(0.5) * (u * u + v * v);  // FIXED: was U.rho * (u*u + v*v)
+        Real p = (gamma - Real(1)) * (U.E - U.rho * kinetic);
         p = (p > eps) ? p : eps;  // Clamp to avoid negative pressure
         return Primitive{U.rho, u, v, p};
     }

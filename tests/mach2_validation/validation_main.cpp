@@ -112,19 +112,17 @@ int run_type_safety_checks() {
         std::cout << "  sizeof(Primitive):    "
                   << sizeof(Primitive) << " bytes\n";
 
-        #ifdef SUBSETIX_FVD_TYPES
-            using FVDSystem = fvd_types::System;
-            using FVDConserved = typename FVDSystem::Conserved;
-            using FVDPrimitive = typename FVDSystem::Primitive;
+        using FVDSystem = subsetix::fvd::Euler2D<Real>;
+        using FVDConserved = typename FVDSystem::Conserved;
+        using FVDPrimitive = typename FVDSystem::Primitive;
 
-            std::cout << "  sizeof(FVD::Conserved): "
-                      << sizeof(FVDConserved) << " bytes\n";
-            std::cout << "  sizeof(FVD::Primitive): "
-                      << sizeof(FVDPrimitive) << " bytes\n";
+        std::cout << "  sizeof(FVD::Conserved): "
+                  << sizeof(FVDConserved) << " bytes\n";
+        std::cout << "  sizeof(FVD::Primitive): "
+                  << sizeof(FVDPrimitive) << " bytes\n";
 
-            // Compile-time checks are in mach2_fvd_bridge.hpp
-            std::cout << "\n[PASS] Type safety static_asserts passed.\n";
-        #endif
+        // Compile-time checks are in mach2_fvd_bridge.hpp
+        std::cout << "\n[PASS] Type safety static_asserts passed.\n";
 
         // Check GPU safety
         std::cout << "\nChecking GPU safety...\n";
@@ -144,6 +142,7 @@ int run_type_safety_checks() {
     #else
         std::cout << "FVD layer is NOT enabled (SUBSETIX_FVD_CHANNELS=OFF).\n";
         std::cout << "[INFO] Type safety checks require FVD layer.\n";
+        std::cout << "[INFO] Run type_safety_tests.cpp for comprehensive type checking.\n";
     #endif
 
     std::cout << "\n=== TYPE SAFETY CHECKS COMPLETE ===\n";
