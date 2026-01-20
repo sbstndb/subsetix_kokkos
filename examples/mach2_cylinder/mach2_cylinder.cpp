@@ -10,6 +10,8 @@
 #include <subsetix/fvd/reconstruction/reconstruction.hpp>
 // PHASE 3: Include FVD boundary conditions
 #include <subsetix/fvd/solver/boundary_generic.hpp>
+// PHASE 4: Include FVD time integrators
+#include <subsetix/fvd/time/time_integrators.hpp>
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
@@ -214,6 +216,9 @@ struct RunConfig {
 
   // PHASE 2b: MUSCL reconstruction (default: disabled for bit-identical results)
   bool enable_muscl = false; // Set to true for 2nd order accuracy (not bit-identical)
+
+  // PHASE 4: Time integrator selection (default: Forward Euler for bit-identical results)
+  int time_integrator_order = 1; // 1=Euler, 2=Heun, 3=Kutta3/SSPRK3, 4=ClassicRK4
 };
 
 struct IndicatorStencil {
@@ -598,6 +603,63 @@ Real compute_dt(const ConservedFields& U,
   }
   return cfl / max_rate;
 }
+
+// ============================================================================
+// PHASE 4: TIME INTEGRATION WITH CSR ADAPTER
+// ============================================================================
+//
+// The FVD layer provides Runge-Kutta time integrators:
+//
+// Available integrators in subsetix::fvd::time:
+//   - ForwardEuler<Real>   (1st order, 1 stage)  - Current mach2 implementation
+//   - Heun2<Real>          (2nd order, 2 stages)
+//   - Kutta3<Real>         (3rd order, 3 stages)
+//   - SSPRK3<Real>         (3rd order, 3 stages, stability-preserving)
+//   - ClassicRK4<Real>     (4th order, 4 stages)
+//
+// CHALLENGE: CSR vs Dense Arrays
+// =================================
+// FVD time integrators expect dense Kokkos::View<Conserved**> arrays:
+//   Kokkos::View<Conserved**> U(ny, nx);  // Dense 2D array
+//
+// But mach2 uses CSR sparse fields:
+//   Field2DDevice<Real> rho;  // Compressed sparse storage
+//
+// SOLUTION: CSR Adapter (from mach2_fvd_bridge.hpp)
+// =================================
+// The CSRFieldAdapter converts between CSR and dense representations:
+//
+//   // Convert CSR to dense for FVD operations
+//   CSRFieldAdapter<System> adapter;
+//   auto dense_U = adapter.to_dense(csr_fields);
+//
+//   // Use FVD time integrator
+//   time::rk_step<System, SSPRK3<Real>>(dense_U, dt, t, rhs, ...);
+//
+//   // Convert back to CSR
+//   adapter.from_dense(dense_U, csr_fields);
+//
+// MIGRATION PATH:
+// ===============
+// Future work: Wrap time integration to support both CSR and dense:
+//
+//   if (cfg.time_integrator_order == 1) {
+//       // Current: Direct stencil application (bit-identical)
+//       apply_stencil(...);
+//   } else {
+//       // Higher-order: Use FVD time integrator with CSR adapter
+//       CSRFieldAdapter<System> adapter;
+//       auto dense = adapter.to_dense(U);
+//       time::rk_step<System, SSPRK3<Real>>(dense, dt, t, rhs, ...);
+//       adapter.from_dense(dense, U);
+//   }
+//
+// For now, mach2 uses Forward Euler (current implementation) for bit-identical results.
+//
+// See:
+//   - include/subsetix/fvd/time/time_integrators.hpp
+//   - examples/mach2_cylinder/mach2_fvd_bridge.hpp (CSRFieldAdapter)
+// ============================================================================
 
 IntervalSet2DDevice ensure_subset(const IntervalSet2DDevice& region,
                                   const IntervalSet2DDevice& field_geom,
