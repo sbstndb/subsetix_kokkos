@@ -12,6 +12,7 @@
 #include <subsetix/fvd/solver/boundary_generic.hpp>
 // PHASE 4: Include FVD time integrators
 #include <subsetix/fvd/time/time_integrators.hpp>
+// PHASE 5: AMR is handled by CSR layer (csr_ops/amr.hpp)
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
@@ -247,6 +248,62 @@ struct RemeshTiming {
   double prolong = 0.0;
   double overlap = 0.0;
 };
+
+// ============================================================================
+// PHASE 5: AMR CRITERIA INTEGRATION
+// ============================================================================
+//
+// CURRENT AMR IMPLEMENTATION:
+// ============================
+// mach2 uses gradient-based AMR refinement:
+//
+//   IndicatorStencil: Computes |grad(rho)| = |gx| + |gy|
+//   where gx = 0.5 * (rho_east - rho_west) / dx
+//         gy = 0.5 * (rho_north - rho_south) / dy
+//
+// Cells with |grad(rho)| > threshold are marked for refinement.
+//
+// AMR flow:
+//   1. build_refine_mask(): Apply IndicatorStencil to density field
+//   2. Threshold to select refinement region
+//   3. Expand region by guard cells
+//   4. Constrain to fraction of domain
+//   5. build_fine_geometry(): Create refined level
+//   6. prolong_to_fine(): Interpolate solution to new level
+//
+// CSR vs FVD AMR:
+// ==================
+// The CSR layer (csr_ops/amr.hpp) handles AMR natively:
+//   - IntervalSet2DDevice: Sparse geometry representation
+//   - build_interval_subset_device(): Create refined regions
+//   - restrict_fine_to_coarse(): Coarsening
+//   - prolong_*(): Prolongation/interpolation
+//
+// FVD AMR enhancements (future work):
+// ====================================
+// Potential improvements:
+//   1. Physics-based indicators (shock detection, vorticity)
+//   2. Multi-variable indicators (density + velocity gradients)
+//   3. Error estimators (adjoint-based, recovery-based)
+//   4. Wavelet-based indicators
+//   5. Feature-based indicators (tracked discontinuities)
+//
+// Integration path:
+//   if (cfg.amr_indicator_type == "gradient") {
+//       // Current: Simple gradient
+//       indicator = compute_gradient(rho);
+//   } else if (cfg.amr_indicator_type == "shock") {
+//       // Enhanced: Shock detection
+//       indicator = compute_shock_indicator(U);
+//   } else if (cfg.amr_indicator_type == "wavelet") {
+//       // Advanced: Wavelet analysis
+//       indicator = compute_wavelet_indicator(U);
+//   }
+//
+// For now, mach2 uses gradient-based AMR (current implementation).
+//
+// See: include/subsetix/csr_ops/amr.hpp
+// ============================================================================
 
 template <typename T>
 FieldReadAccessor<T>
