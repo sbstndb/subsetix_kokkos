@@ -97,7 +97,7 @@ include(FetchContent)
 FetchContent_Declare(
     kokkos
     GIT_REPOSITORY https://github.com/kokkos/kokkos.git
-    GIT_TAG 4.5.00
+    GIT_TAG 5.0.1
 )
 
 set(Kokkos_ENABLE_SERIAL ON CACHE BOOL "Enable Kokkos SERIAL backend" FORCE)
@@ -170,7 +170,7 @@ endif()
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.15.0
+    GIT_TAG v1.17.0
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
@@ -179,7 +179,7 @@ FetchContent_MakeAvailable(googletest)
 FetchContent_Declare(
     googlebenchmark
     GIT_REPOSITORY https://github.com/google/benchmark.git
-    GIT_TAG v1.8.4
+    GIT_TAG v1.9.4
 )
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googlebenchmark)
