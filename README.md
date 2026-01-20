@@ -12,13 +12,13 @@ Subsetix is a modern C++20 library for solving hyperbolic PDEs on sparse 2D doma
 
 Mach 2 flow over a cylinder obstacle, showing density field with adaptive mesh refinement around shock waves.
 
-<img src="media/mach2_field.png" alt="Mach 2 flow - full domain density field" width="600">
+<img src="media/mach2_field.png" alt="Mach 2 flow - full domain density field" width="300">
 
 ### Adaptive Mesh Refinement
 
 Close-up showing the 4-level AMR grid structure. Refinement automatically follows the shock front.
 
-<img src="media/mach2_zoom.png" alt="Mach 2 flow - AMR zoom" width="400">
+<img src="media/mach2_zoom.png" alt="Mach 2 flow - AMR zoom" width="200">
 
 **Run this example:**
 ```bash
