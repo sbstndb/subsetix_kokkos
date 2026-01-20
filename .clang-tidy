@@ -1,0 +1,51 @@
+# clang-tidy configuration for subsetix_kokkos
+# This project uses Kokkos for performance portability and C++20 features
+
+InheritParentConfig: false
+
+# Enable useful checks, disable problematic ones for Kokkos
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-macro-pedantic,
+  -bugprone-branch-clone,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-special-member-functions,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -modernize-use-auto,
+  performance-*,
+  -performance-no-int-to-ptr,
+  -performance-unnecessary-value-param,
+  readability-*,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -readability-qualified-auto,
+  -readability-redundant-access-specifiers,
+  portability-*,
+  -portability-simd-intrinsics,
+
+WarningsAsErrors: ''
+
+HeaderFilterRegex: '.*'
+
+CheckOptions:
+  # Allow sole default dtor
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 1
+
+  # Ignore destructors for virtual function check
+  - key: cppcoreguidelines-explicit-virtual-functions.IgnoreDestructors
+    value: 1
+
+  # NULL macro handling
+  - key: modernize-use-nullptr.NullMacros
+    value: 'NULL'
