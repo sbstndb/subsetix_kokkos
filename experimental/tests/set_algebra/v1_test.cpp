@@ -4,10 +4,10 @@
 #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
 
 #include <gtest/gtest.h>
-#include <subsetix/csr_ops_experimental/set_algebra.hpp>
+#include <experimental/subsetix/csr/set_algebra.hpp>
 #include <Kokkos_Core.hpp>
 
-using namespace subsetix::experimental;
+using namespace experimental::subsetix::csr;
 
 // Note: Kokkos is already initialized by the test framework
 // No need to initialize/finalize in each test

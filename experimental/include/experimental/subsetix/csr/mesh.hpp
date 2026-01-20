@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <cstddef>
 
-namespace subsetix::experimental {
+namespace experimental::subsetix::csr {
 
 // Basic coordinate type for cell indices
 using Coord = int32_t;
@@ -194,4 +194,4 @@ using Mesh3D = Mesh<3, MemorySpace>;
 using Mesh3DDevice = Mesh3D<Kokkos::DefaultExecutionSpace::memory_space>;
 using Mesh3DHost = Mesh3D<Kokkos::HostSpace>;
 
-} // namespace subsetix::experimental
+} // namespace experimental::subsetix::csr

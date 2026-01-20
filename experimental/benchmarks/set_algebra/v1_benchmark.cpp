@@ -4,10 +4,10 @@
 #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
 
 #include <benchmark/benchmark.h>
-#include <subsetix/csr_ops_experimental/set_algebra.hpp>
+#include <experimental/subsetix/csr/set_algebra.hpp>
 #include <Kokkos_Core.hpp>
 
-using namespace subsetix::experimental;
+using namespace experimental::subsetix::csr;
 
 // ============================================================================
 // 2D Mesh Intersection Benchmark

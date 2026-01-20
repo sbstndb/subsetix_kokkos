@@ -99,7 +99,21 @@ include/subsetix/
     ├── solver/      # AdaptiveSolver, solver_aliases
     ├── time/        # RK1, RK2, RK3 integrators
     └── mpi/         # MPI support (optional, stub when disabled)
+
+experimental/        # Alternative algorithm implementations (disabled by default)
+├── include/experimental/subsetix/csr/
+│   ├── mesh.hpp     # Mesh<2>, Mesh<3> template specializations
+│   ├── detail/utils.hpp
+│   └── set_algebra/v1.hpp  # v1 intersection algorithm (subsetix_kokkos_2 port)
+├── tests/           # Experimental tests
+└── benchmarks/      # Experimental benchmarks
 ```
+
+#### Experimental Module
+
+The `experimental/` directory provides alternative implementations of set algebra algorithms for research and comparison. It is **completely isolated** from the stable codebase and disabled by default.
+
+Enable with: `cmake -DSUBSETIX_ENABLE_EXPERIMENTAL=ON --preset serial`
 
 ### Execution Space Configuration
 

@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include <subsetix/csr_ops_experimental/geometry/mesh.hpp>
-#include <subsetix/csr_ops_experimental/detail/utils.hpp>
+#include <experimental/subsetix/csr/mesh.hpp>
+#include <experimental/subsetix/csr/detail/utils.hpp>
 
-namespace subsetix::experimental::v1 {
+namespace experimental::subsetix::csr::v1 {
 
 namespace detail {
 
@@ -116,7 +116,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
         Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
         KOKKOS_LAMBDA(const std::size_t i) {
           const RowKey key = rows_a(i);
-          const int idx_b = subsetix::experimental::detail::find_row_by_y(rows_b, num_rows_b, key.y);
+          const int idx_b = csr::detail::find_row_by_y(rows_b, num_rows_b, key.y);
           if (idx_b >= 0) {
             flags(i) = 1;
             tmp_idx_a(i) = static_cast<int>(i);
@@ -134,7 +134,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
         Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
         KOKKOS_LAMBDA(const std::size_t i) {
           const RowKey key = rows_a(i);
-          const int idx_b = subsetix::experimental::detail::find_row_by_yz(rows_b, num_rows_b, key.y, key.z);
+          const int idx_b = csr::detail::find_row_by_yz(rows_b, num_rows_b, key.y, key.z);
           if (idx_b >= 0) {
             flags(i) = 1;
             tmp_idx_a(i) = static_cast<int>(i);
@@ -229,7 +229,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
           return;
         }
 
-        const auto r = subsetix::experimental::detail::extract_row_ranges(ia, ib, row_ptr_a, row_ptr_b);
+        const auto r = csr::detail::extract_row_ranges(ia, ib, row_ptr_a, row_ptr_b);
 
         if (r.begin_a == r.end_a || r.begin_b == r.end_b) {
           row_counts(i) = 0;
@@ -280,7 +280,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
           return;
         }
 
-        const auto r = subsetix::experimental::detail::extract_row_ranges(ia, ib, row_ptr_a, row_ptr_b);
+        const auto r = csr::detail::extract_row_ranges(ia, ib, row_ptr_a, row_ptr_b);
 
         if (r.begin_a == r.end_a || r.begin_b == r.end_b) {
           return;
@@ -401,4 +401,4 @@ inline Mesh<DIM, ToSpace> mesh_to(const Mesh<DIM, FromSpace>& src) {
   return dst;
 }
 
-} // namespace subsetix::experimental::v1
+} // namespace experimental::subsetix::csr::v1

@@ -77,6 +77,16 @@ ctest --preset serial
 | `cuda-gcc12` | CUDA | NVIDIA GPU (requires GCC 12) |
 | `serial-asan` | Serial + sanitizers | Debug mode with AddressSanitizer |
 
+### Experimental Algorithms
+
+An experimental module (`experimental/`) provides alternative set algebra implementations for algorithm research. Disabled by default, enable with:
+
+```bash
+cmake -DSUBSETIX_ENABLE_EXPERIMENTAL=ON --preset serial
+```
+
+See `experimental/README.md` for details.
+
 ---
 
 ## Usage Examples

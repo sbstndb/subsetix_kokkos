@@ -9,6 +9,7 @@
 - Tests: `tests/` (standalone executables registered via CTest).
 - Examples: `examples/` (VTK generation and usage demos).
 - Benchmarks: `benchmarks/` (lightweight performance checks).
+- Experimental: `experimental/` (alternative algorithm implementations, disabled by default).
 - Build trees: `build-*` directories created by CMake presets (do not hard‑code paths).
 
 ## Build, Test, and Development Commands

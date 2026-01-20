@@ -5,10 +5,10 @@
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_StdAlgorithms.hpp>
-#include <subsetix/csr_ops_experimental/geometry/mesh.hpp>
+#include <experimental/subsetix/csr/mesh.hpp>
 #include <string>
 
-namespace subsetix::experimental::detail {
+namespace experimental::subsetix::csr::detail {
 
 // ============================================================================
 // Memory utilities
@@ -139,4 +139,4 @@ RowRanges extract_row_ranges(int ia, int ib,
   return r;
 }
 
-} // namespace subsetix::experimental::detail
+} // namespace experimental::subsetix::csr::detail

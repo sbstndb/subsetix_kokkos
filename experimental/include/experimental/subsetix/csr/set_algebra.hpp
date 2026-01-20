@@ -11,7 +11,7 @@
  * (intersection, union, difference, etc.) for 2D and 3D CSR meshes.
  *
  * Design goals:
- * - Isolated from stable code in csr_ops/
+ * - Isolated from stable code in subsetix/
  * - Templated for 2D and 3D meshes
  * - Extensible framework for comparing different algorithms
  * - Disabled by default (SUBSETIX_ENABLE_EXPERIMENTAL=OFF)
@@ -19,27 +19,24 @@
  * Usage:
  * @code
  *   #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
- *   #include <subsetix/csr_ops_experimental/set_algebra.hpp>
+ *   #include <experimental/subsetix/csr/set_algebra.hpp>
  *
- *   using namespace subsetix::experimental;
- *   auto result = v1::intersect_meshes<2>(mesh_a, mesh_b);
+ *   using namespace experimental::subsetix::csr::v1;
+ *   auto result = intersect_meshes<2>(mesh_a, mesh_b);
  *   #endif
  * @endcode
  */
 
 // Core geometry types (Mesh<2>, Mesh<3>)
-#include <subsetix/csr_ops_experimental/geometry/mesh.hpp>
+#include <experimental/subsetix/csr/mesh.hpp>
 
 // Utility functions
-#include <subsetix/csr_ops_experimental/detail/utils.hpp>
-
-// Concepts for algorithm requirements
-#include <subsetix/csr_ops_experimental/set_algebra/concepts.hpp>
+#include <experimental/subsetix/csr/detail/utils.hpp>
 
 // v1: Port of subsetix_kokkos_2 intersection algorithm
-#include <subsetix/csr_ops_experimental/set_algebra/v1.hpp>
+#include <experimental/subsetix/csr/set_algebra/v1.hpp>
 
-namespace subsetix::experimental {
+namespace experimental::subsetix::csr {
 
 /**
  * @brief Version 1 of set intersection algorithm.
@@ -52,10 +49,9 @@ namespace subsetix::experimental {
  * Works for both 2D and 3D meshes via template parameter.
  *
  * Usage:
- *   auto result = v1::intersect_meshes<2>(mesh_a, mesh_b);  // 2D
- *   auto result = v1::intersect_meshes<3>(mesh_a, mesh_b);  // 3D
+ *   using namespace v1;
+ *   auto result = intersect_meshes<2>(mesh_a, mesh_b);  // 2D
+ *   auto result = intersect_meshes<3>(mesh_a, mesh_b);  // 3D
  */
-// v1 namespace contains the intersect_meshes function
-// No type alias needed - use v1::intersect_meshes<DIM> directly
 
-} // namespace subsetix::experimental
+} // namespace experimental::subsetix::csr
