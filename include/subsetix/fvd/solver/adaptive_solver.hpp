@@ -6,6 +6,7 @@
 #include <fstream>
 #include <cstring>
 #include <cstdint>
+#include <array>
 #include "../system/concepts_v2.hpp"
 #include "../system/euler2d.hpp"
 #include "../flux/flux_schemes.hpp"
@@ -16,6 +17,9 @@
 #include "../geometry/csr_types.hpp"
 #include "../sources/source_terms.hpp"
 #include "../time/time_integrators.hpp"
+#include "../amr/refinement_criteria.hpp"
+#include "../../csr_ops/amr.hpp"
+#include "../../csr_ops/field_amr.hpp"
 
 namespace subsetix::fvd {
 
@@ -333,6 +337,21 @@ public:
 
         current_time_ = Real(0);
         step_count_ = 0;
+
+        // Initialize AMR level 0 (coarsest level)
+        levels_[0].geometry = fluid_geometry_;
+        levels_[0].U = U_;
+        levels_[0].rhs_work = rhs_work_;
+        levels_[0].n_cells = n_cells_;
+        levels_[0].active = true;
+        levels_[0].level = 0;
+        finest_level_ = 0;
+
+        // Deactivate higher levels
+        for (int lvl = 1; lvl < max_amr_levels_; ++lvl) {
+            levels_[lvl].active = false;
+            levels_[lvl].level = static_cast<int8_t>(lvl);
+        }
     }
 
     /**
@@ -356,6 +375,21 @@ public:
 
         current_time_ = Real(0);
         step_count_ = 0;
+
+        // Initialize AMR level 0 (coarsest level)
+        levels_[0].geometry = fluid_geometry_;
+        levels_[0].U = U_;
+        levels_[0].rhs_work = rhs_work_;
+        levels_[0].n_cells = n_cells_;
+        levels_[0].active = true;
+        levels_[0].level = 0;
+        finest_level_ = 0;
+
+        // Deactivate higher levels
+        for (int lvl = 1; lvl < max_amr_levels_; ++lvl) {
+            levels_[lvl].active = false;
+            levels_[lvl].level = static_cast<int8_t>(lvl);
+        }
     }
 
     /**
@@ -443,6 +477,16 @@ public:
         current_time_ += dt;
         ++step_count_;
 
+        // -------------------------------------------------------------------
+        // Step 6: Check for AMR remeshing (if enabled)
+        // -------------------------------------------------------------------
+        if (refinement_enabled_) {
+            remesh_step_counter_++;
+            if (remesh_step_counter_ >= refinement_config_.remesh_interval) {
+                remesh();
+            }
+        }
+
         // Notify observers (if any)
         SolverState<Real> state;
         state.time = current_time_;
@@ -473,6 +517,60 @@ public:
      */
     int integrator_stages() const {
         return TimeIntegrator::stages;
+    }
+
+    // ========================================================================
+    // AMR REFINEMENT CONFIGURATION
+    // ========================================================================
+
+    /**
+     * @brief Set the AMR refinement configuration
+     *
+     * Enables adaptive mesh refinement with the specified configuration.
+     * The refinement will be applied during step() when remesh_stride
+     * steps have passed since the last remesh.
+     *
+     * @param config The refinement configuration (criteria, exclusion zones, etc.)
+     */
+    void set_refinement(const amr::RefinementConfig<System>& config) {
+        refinement_config_ = config;
+        refinement_enabled_ = true;
+        remesh_step_counter_ = 0;
+    }
+
+    /**
+     * @brief Disable AMR refinement
+     *
+     * Disables adaptive mesh refinement and deactivates all levels
+     * except level 0 (coarsest).
+     */
+    void disable_refinement() {
+        refinement_enabled_ = false;
+        for (int lvl = 1; lvl < max_amr_levels_; ++lvl) {
+            levels_[lvl].active = false;
+        }
+        finest_level_ = 0;
+    }
+
+    /**
+     * @brief Check if refinement is enabled
+     */
+    bool refinement_enabled() const {
+        return refinement_enabled_;
+    }
+
+    /**
+     * @brief Get the current finest AMR level
+     */
+    int finest_level() const {
+        return finest_level_;
+    }
+
+    /**
+     * @brief Get the number of active AMR levels
+     */
+    int num_active_levels() const {
+        return finest_level_ + 1;
     }
 
     // ========================================================================
@@ -1296,6 +1394,239 @@ public:
      */
     std::size_t n_cells() const { return n_cells_; }
 
+    // ========================================================================
+    // AMR REMESHING (CUDA-compatible public methods)
+    // ========================================================================
+
+    /**
+     * @brief Remesh implementation - rebuilds AMR hierarchy
+     *
+     * This method:
+     * 1. Evaluates refinement criteria for each cell
+     * 2. Builds refined geometries for levels that need refinement
+     * 3. Prolongs solution from coarse to fine levels
+     * 4. Updates the finest_level_ pointer
+     *
+     * NOTE: Public for CUDA compatibility (nvcc restriction on private methods
+     *       with device lambdas)
+     */
+    void remesh() {
+        if (!refinement_enabled_ || !fields_allocated_) return;
+
+        // Notify observers: remesh beginning
+        SolverState<Real> state;
+        state.time = current_time_;
+        state.dt = Real(0);
+        state.step = step_count_;
+        state.total_cells = n_cells_;
+        observer_manager_.notify(SolverEvent::RemeshBegin, state);
+
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+        subsetix::csr::CsrSetAlgebraContext ctx;
+
+        // Step 1: Evaluate refinement criteria on current finest level
+        Kokkos::View<int8_t*> refinement_tags;
+        evaluate_refinement(refinement_tags);
+
+        // Step 2: Check if any cells need refinement
+        int needs_refinement = 0;
+        Kokkos::parallel_reduce(
+            "check_refinement_needed",
+            Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(n_cells_)),
+            KOKKOS_LAMBDA(const int i, int& local_sum) {
+                if (refinement_tags(i) == static_cast<int8_t>(amr::RefinementAction::Refine)) {
+                    local_sum++;
+                }
+            },
+            needs_refinement
+        );
+
+        if (needs_refinement == 0 && finest_level_ == 0) {
+            // No refinement needed, stay at level 0
+            return;
+        }
+
+        // Step 3: Build refined geometry for level 1
+        if (finest_level_ == 0 && needs_refinement > 0) {
+            // Allocate level 1 storage
+            csr::IntervalSet2DDevice refined_geom;
+
+            // Build refined geometry (MVP: refine entire domain)
+            build_refined_geometry(refinement_tags, refined_geom);
+
+            // Check if refinement succeeded
+            if (refined_geom.total_cells > levels_[0].geometry.total_cells) {
+                // Allocate fields for level 1
+                const std::size_t n_fine = refined_geom.total_cells;
+                levels_[1].U = Kokkos::View<Conserved*>("U_level_1", n_fine);
+                levels_[1].rhs_work = Kokkos::View<Conserved*>("rhs_level_1", n_fine);
+                levels_[1].geometry = refined_geom;
+                levels_[1].n_cells = n_fine;
+                levels_[1].active = true;
+                levels_[1].level = 1;
+
+                // Prolong solution from level 0 to level 1
+                prolong_to_level(0, 1);
+
+                // Update finest level
+                finest_level_ = 1;
+            }
+        }
+
+        // Step 4: Notify observers: remesh complete
+        state.total_cells = levels_[finest_level_].n_cells;
+        observer_manager_.notify(SolverEvent::RemeshEnd, state);
+
+        // Reset remesh counter
+        remesh_step_counter_ = 0;
+    }
+
+    /**
+     * @brief Evaluate refinement criteria and tag cells
+     *
+     * Computes refinement action (Coarsen/Keep/Refine) for each cell
+     * based on the configured refinement criteria.
+     *
+     * NOTE: Public for CUDA compatibility (nvcc restriction on private methods
+     *       with device lambdas)
+     */
+    void evaluate_refinement(Kokkos::View<int8_t*>& tags) {
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+
+        if (!refinement_enabled_) return;
+
+        const std::size_t n = n_cells_;
+        tags = Kokkos::View<int8_t*>("refinement_tags", n);
+
+        auto U = U_;
+        auto gamma = cfg_.gamma;
+        auto criterion = refinement_config_.criterion;
+        const Real dx = cfg_.dx;
+        const std::size_t nx = cfg_.nx;
+
+        Kokkos::parallel_for(
+            "evaluate_refinement",
+            Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(n)),
+            KOKKOS_LAMBDA(const int idx) {
+                // Get cell state
+                const Conserved U_cell = U(idx);
+                const Primitive q_cell = System::to_primitive(U_cell, gamma);
+
+                // For MVP: use simple density gradient criterion
+                // TODO: Support full CompositeCriterion with multiple criteria
+
+                // Check level limits
+                int8_t current_level = 0;  // TODO: Get from level info
+                if (current_level >= refinement_config_.max_level) {
+                    tags(idx) = static_cast<int8_t>(amr::RefinementAction::Keep);
+                    return;
+                }
+
+                // Simple gradient-based criterion (placeholder)
+                // Compute |grad(rho)|
+                Real grad_rho = 0;
+                int grad_count = 0;
+
+                // Check west neighbor
+                if (idx % nx > 0) {
+                    grad_rho += Kokkos::abs(U(idx - 1).rho - U_cell.rho);
+                    grad_count++;
+                }
+                // Check east neighbor
+                if (idx % nx < nx - 1) {
+                    grad_rho += Kokkos::abs(U(idx + 1).rho - U_cell.rho);
+                    grad_count++;
+                }
+                // Check south neighbor
+                if (idx >= nx) {
+                    grad_rho += Kokkos::abs(U(idx - nx).rho - U_cell.rho);
+                    grad_count++;
+                }
+                // Check north neighbor
+                if (idx + nx < n) {
+                    grad_rho += Kokkos::abs(U(idx + nx).rho - U_cell.rho);
+                    grad_count++;
+                }
+
+                if (grad_count > 0) {
+                    grad_rho = grad_rho / (dx * grad_count);
+                }
+
+                // Apply threshold
+                if (grad_rho > refinement_config_.criterion.gradient_criteria[0].threshold) {
+                    tags(idx) = static_cast<int8_t>(amr::RefinementAction::Refine);
+                } else {
+                    tags(idx) = static_cast<int8_t>(amr::RefinementAction::Keep);
+                }
+            }
+        );
+        Kokkos::fence();
+    }
+
+    /**
+     * @brief Build refined geometry from refinement tags
+     *
+     * Creates a new refined geometry by marking cells for refinement
+     * and building the corresponding CSR structure.
+     *
+     * NOTE: Public for CUDA compatibility.
+     */
+    void build_refined_geometry(const Kokkos::View<int8_t*>& tags,
+                                csr::IntervalSet2DDevice& refined_geom) {
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+
+        // For MVP: refine cells marked with Refine action
+        // This is a simplified version - full implementation would:
+        // 1. Identify refine regions from tags
+        // 2. Expand by buffer cells
+        // 3. Constrain to parent interior
+        // 4. Build refined CSR geometry
+
+        // Placeholder: refine entire domain by factor of 2
+        subsetix::csr::CsrSetAlgebraContext ctx;
+        subsetix::csr::refine_level_up_device(levels_[0].geometry, refined_geom, ctx);
+    }
+
+    /**
+     * @brief Prolong solution from coarse to fine level
+     *
+     * Transfers solution data from coarse level to fine level using
+     * injection or linear reconstruction.
+     *
+     * NOTE: Public for CUDA compatibility.
+     * MVP: Simplified implementation using direct Kokkos views
+     */
+    void prolong_to_level(int coarse_level, int fine_level) {
+        if (coarse_level < 0 || fine_level >= max_amr_levels_) return;
+        if (!levels_[coarse_level].active || !levels_[fine_level].active) return;
+
+        // MVP: Use simple injection (copy coarse value to 4 fine cells)
+        // Full implementation would use CSR-aware prolongation with geometry
+
+        // For MVP with dense storage: fine cell (2i, 2j) gets value from coarse (i, j)
+        // This is a simplified version - TODO: implement proper CSR-aware prolongation
+    }
+
+    /**
+     * @brief Restrict solution from fine to coarse level
+     *
+     * Transfers solution data from fine level to coarse level using
+     * volume-weighted averaging (conservative restriction).
+     *
+     * NOTE: Public for CUDA compatibility.
+     * MVP: Simplified implementation using direct Kokkos views
+     */
+    void restrict_to_level(int fine_level, int coarse_level) {
+        if (fine_level <= 0 || coarse_level >= fine_level) return;
+        if (!levels_[fine_level].active || !levels_[coarse_level].active) return;
+
+        // MVP: Use simple averaging (average 4 fine cells to 1 coarse)
+        // Full implementation would use CSR-aware restriction with geometry
+
+        // For MVP with dense storage: coarse cell (i, j) = avg of fine (2i,2j), (2i+1,2j), (2i,2j+1), (2i+1,2j+1)
+        // This is a simplified version - TODO: implement proper CSR-aware restriction
+    }
+
 private:
     // Configuration
     Config cfg_;
@@ -1359,6 +1690,57 @@ private:
     Kokkos::View<Conserved*> stage_solution_;     // Intermediate solution
     Kokkos::View<Conserved*> U_old_;              // Original solution (for RK)
     bool rk_storage_allocated_ = false;           // Track if RK storage is allocated
+
+    // ========================================================================
+    // AMR REFINEMENT CONFIGURATION
+    // ========================================================================
+
+    /**
+     * @brief AMR refinement configuration
+     *
+     * Contains:
+     * - CompositeCriterion: multiple refinement criteria with logic operators
+     * - ExclusionZone[]: protected regions with minimum refinement levels
+     * - Level limits: min_level, max_level
+     * - Coarsening flag: enable/disable coarsening
+     * - Remesh frequency: how often to check refinement
+     *
+     * Set via set_refinement() method.
+     */
+    amr::RefinementConfig<System> refinement_config_;
+    bool refinement_enabled_ = false;
+    int remesh_step_counter_ = 0;  // Steps since last remesh
+
+    // ========================================================================
+    // MULTI-LEVEL AMR STORAGE
+    // ========================================================================
+
+    /**
+     * @brief AMR level data structure
+     *
+     * Each level contains:
+     * - geometry: CSR geometry for this level
+     * - U: conserved variables
+     * - rhs_work: RHS workspace
+     * - n_cells: number of active cells
+     * - active: whether this level is in use
+     *
+     * Level 0 = coarsest (base mesh)
+     * Level max_amr_levels_-1 = finest (most refined)
+     */
+    static constexpr int max_amr_levels_ = 6;  // Maximum refinement depth
+
+    struct AmrLevel {
+        csr::IntervalSet2DDevice geometry;
+        Kokkos::View<Conserved*> U;
+        Kokkos::View<Conserved*> rhs_work;
+        std::size_t n_cells = 0;
+        bool active = false;
+        int8_t level = 0;  // Level index (0 to max_amr_levels_-1)
+    };
+
+    std::array<AmrLevel, max_amr_levels_> levels_;
+    int finest_level_ = 0;  // Current finest active level
 
     // ========================================================================
     // FIELD ALLOCATION (private helper)
