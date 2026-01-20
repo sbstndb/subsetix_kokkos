@@ -190,6 +190,28 @@ public:
 
         return cfg;
     }
+
+    /**
+     * @brief Reflective wall boundary condition
+     *
+     * Creates a reflective (slip) wall BC where normal velocity is reversed.
+     * Suitable for solid walls in inviscid flow.
+     */
+    static AnyBc<System> reflective_wall() {
+        // Reflective wall uses Reflective BC type
+        return AnyBc<System>{AnyBc<System>::Reflective, Conserved{}};
+    }
+
+    /**
+     * @brief Non-reflecting outflow boundary condition
+     *
+     * Creates a non-reflecting (Neumann) outflow BC where gradients are zero.
+     * Suitable for subsonic outflow where waves should exit without reflection.
+     */
+    static AnyBc<System> non_reflecting_outflow() {
+        // Non-reflecting outflow uses Neumann (zero gradient) BC type
+        return AnyBc<System>{AnyBc<System>::Neumann, Conserved{}};
+    }
 };
 
 } // namespace subsetix::fvd

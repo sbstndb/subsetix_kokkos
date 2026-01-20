@@ -52,6 +52,51 @@ namespace subsetix::fvd {
  *
  * C++20: Constrained with concepts for better error messages
  */
+
+// ============================================================================
+// FORWARD DECLARATIONS FOR NAMESPACE-LEVEL TYPES
+// ============================================================================
+
+/**
+ * @brief Checkpoint file format (forward declaration)
+ *
+ * Defined at namespace scope for example compatibility.
+ */
+enum class CheckpointFormat {
+    Binary,    // Custom binary format (fast, portable)
+    ASCII,     // Human-readable text format
+    HDF5       // HDF5 format (if available)
+};
+
+/**
+ * @brief Validation statistics (forward declaration)
+ */
+struct ValidationStats {
+    int nan_count = 0;
+    int negative_density_count = 0;
+    int negative_pressure_count = 0;
+    int cfl_violations = 0;
+    float max_mach_seen = 0.0f;
+    bool is_valid = true;
+};
+
+/**
+ * @brief Validation configuration (forward declaration)
+ */
+struct ValidationConfig {
+    bool check_negative_density = true;
+    bool check_negative_pressure = true;
+    bool check_nan = true;
+    bool check_inf = true;
+    bool check_cfl = true;
+    float max_mach = 100.0f;
+    float max_temperature = 10000.0f;
+    float min_pressure = 1e-10f;
+    float min_density = 1e-10f;
+    bool throw_on_error = false;
+    bool abort_on_error = false;
+};
+
 template<
     FiniteVolumeSystem System,
     typename Reconstruction = reconstruction::NoReconstruction,
@@ -530,6 +575,28 @@ public:
     }
 
     /**
+     * @brief Set a single boundary condition for one side
+     *
+     * Convenience method to set BC for individual side.
+     *
+     * @param side Boundary side ("left", "right", "bottom", "top")
+     * @param bc Boundary condition descriptor
+     */
+    void set_boundary_condition(const std::string& side, const AnyBc<System>& bc) {
+        if (side == "left") {
+            bc_config_.left = bc;
+        } else if (side == "right") {
+            bc_config_.right = bc;
+        } else if (side == "bottom") {
+            bc_config_.bottom = bc;
+        } else if (side == "top") {
+            bc_config_.top = bc;
+        }
+        // Notify observers: BC configuration was changed
+        observer_manager_.notify(SolverEvent::BoundaryConditionsChanged);
+    }
+
+    /**
      * @brief Enable time-dependent boundary conditions using BcManager
      *
      * Phase 3: Advanced BC system with time dependence and zonal BCs
@@ -857,6 +924,26 @@ public:
     void set_dt_limits(Real dt_min, Real dt_max) {
         cfg_.time_step.dt_min = dt_min;
         cfg_.time_step.dt_max = dt_max;
+    }
+
+    /**
+     * @brief Set adaptive time stepping configuration
+     *
+     * This is a convenience method for configuring adaptive time stepping
+     * using the TimeStepController::Config type.
+     *
+     * @param dt_config Time step controller configuration
+     */
+    template<typename RealType>
+    void set_adaptive_time_stepping(const typename time::TimeStepController<RealType>::Config& dt_config) {
+        cfg_.time_step.cfl_target = Real(dt_config.cfl_target);
+        cfg_.time_step.cfl_max = Real(dt_config.cfl_max);
+        cfg_.time_step.cfl_min = Real(dt_config.cfl_min);
+        cfg_.time_step.dt_max = Real(dt_config.dt_max);
+        cfg_.time_step.dt_min = Real(dt_config.dt_min);
+        cfg_.time_step.growth_factor = Real(dt_config.growth_factor);
+        cfg_.time_step.shrink_factor = Real(dt_config.shrink_factor);
+        cfg_.time_step.adjust_interval = dt_config.adjust_interval;
     }
 
     /**
@@ -2096,15 +2183,6 @@ public:
     // ========================================================================
 
     /**
-     * @brief Checkpoint file format
-     */
-    enum class CheckpointFormat {
-        Binary,    // Custom binary format (fast, portable)
-        ASCII,     // Human-readable text format
-        HDF5       // HDF5 format (if available)
-    };
-
-    /**
      * @brief Write checkpoint
      *
      * Saves complete solver state to file for restart.
@@ -2176,7 +2254,7 @@ public:
     }
 
     // ========================================================================
-    // VALIDATION (NEW: Runtime stability checks)
+    // VALIDATION (Runtime stability checks)
     // ========================================================================
 
     /**
@@ -2187,21 +2265,20 @@ public:
      * - NaN/Inf values
      * - CFL violation
      * - Mach number > specified limit
+     *
+     * Uses namespace-level ValidationConfig type.
      */
-    struct ValidationConfig {
-        bool check_negative_density = true;
-        bool check_negative_pressure = true;
-        bool check_nan = true;
-        bool check_cfl = true;
-        Real max_mach = Real(100);  // Warn if Mach > this
-        Real min_pressure = Real(1e-10);
-        Real min_density = Real(1e-10);
-        bool throw_on_error = false;  // Throw exception instead of warning
-        bool abort_on_error = false;  // Abort simulation on error
-    };
-
     void set_validation(const ValidationConfig& cfg) {
-        validation_ = cfg;
+        // Copy fields to internal validation config
+        validation_.check_negative_density = cfg.check_negative_density;
+        validation_.check_negative_pressure = cfg.check_negative_pressure;
+        validation_.check_nan = cfg.check_nan;
+        validation_.check_cfl = cfg.check_cfl;
+        validation_.max_mach = Real(cfg.max_mach);
+        validation_.min_pressure = Real(cfg.min_pressure);
+        validation_.min_density = Real(cfg.min_density);
+        validation_.throw_on_error = cfg.throw_on_error;
+        validation_.abort_on_error = cfg.abort_on_error;
         validation_enabled_ = true;
     }
 
@@ -2211,18 +2288,18 @@ public:
 
     /**
      * @brief Get validation statistics
+     *
+     * Returns namespace-level ValidationStats type.
      */
-    struct ValidationStats {
-        int nan_count = 0;
-        int negative_density_count = 0;
-        int negative_pressure_count = 0;
-        int cfl_violations = 0;
-        Real max_mach_seen = Real(0);
-        bool is_valid = true;
-    };
-
-    const ValidationStats& validation_stats() const {
-        return validation_stats_;
+    ValidationStats get_validation_stats() const {
+        ValidationStats stats;
+        stats.nan_count = validation_stats_.nan_count;
+        stats.negative_density_count = validation_stats_.negative_density_count;
+        stats.negative_pressure_count = validation_stats_.negative_pressure_count;
+        stats.cfl_violations = validation_stats_.cfl_violations;
+        stats.max_mach_seen = static_cast<float>(validation_stats_.max_mach_seen);
+        stats.is_valid = validation_stats_.is_valid;
+        return stats;
     }
 
     // ========================================================================
