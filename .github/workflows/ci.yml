@@ -196,7 +196,7 @@ jobs:
         run: |
           COVERAGE=$(lcov --summary coverage_filtered.info | grep "lines" | grep -oP '\d+\.\d+(?=%)')
           echo "Coverage: $COVERAGE%"
-          THRESHOLD=10
+          THRESHOLD=70
           if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
             echo "❌ Coverage $COVERAGE% is below threshold $THRESHOLD%"
             exit 1
