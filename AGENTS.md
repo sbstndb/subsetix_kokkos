@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 - Root: `CMakeLists.txt`, `CMakePresets.json`, `AGENTS.md`.
-- Public headers now live in modular folders: `include/subsetix/geometry/`, `field/`, `io/`, `multilevel/` (legacy root `csr_*.hpp` or `multilevel.hpp` stubs are removed).
+- Public headers live in modular folders: `include/subsetix/geometry/`, `field/`, `io/`, `multilevel/`. CSR types (`csr_*.hpp`) are organized within these modules (e.g. `geometry/csr_backend.hpp`).
 - Implementation headers: `include/subsetix/csr_ops/` (Parallel kernels) and `include/subsetix/detail/`.
 - Library targets: INTERFACE `subsetix::geometry`, `subsetix::field`, `subsetix::multilevel`, `subsetix::vtk`, and aggregate `subsetix::core` (legacy alias `subsetix_core` remains).
 - Tests: `tests/` (standalone executables registered via CTest).
@@ -16,16 +16,21 @@
 - Configure + build (serial):  
   - `cmake --preset serial`  
   - `cmake --build --preset serial`
-- Configure + build (OpenMP): `cmake --build --preset openmp`
+- Configure + build (OpenMP):
+  - `cmake --preset openmp`
+  - `cmake --build --preset openmp`
 - Configure + build (CUDA with GCC 12):  
   - `cmake --preset cuda-gcc12`  
   - `cmake --build --preset cuda-gcc12`
-- Run tests via CTest: `ctest --preset <serial|openmp|cuda-gcc12|serial-asan>`
+- Configure + build (MPI variants):
+  - `cmake --preset mpi-serial` (or `mpi-openmp`, `mpi-cuda-gcc12`)
+  - `cmake --build --preset mpi-serial`
+- Run tests via CTest: `ctest --preset <serial|openmp|cuda-gcc12|serial-asan|mpi-serial|mpi-openmp|mpi-cuda-gcc12>`
 - Prefer presets (Ninja generator) over calling `make` directly.
 
 ## Coding Style & Naming Conventions
 
-- Language: C++17, Kokkos-first for parallel code (no raw CUDA/OpenMP loops).
+- Language: C++20, Kokkos-first for parallel code (no raw CUDA/OpenMP loops).
 - Indentation: 2 spaces, no tabs; follow existing header style.
 - Namespaces: `subsetix::csr` for geometry/fields, `subsetix::vtk` for export.
 - Types in `CamelCase`, free functions in `snake_case`.
@@ -33,7 +38,7 @@
 
 ## Testing Guidelines
 
-- Tests use GoogleTest and live in `tests/`, all compiled into the `subsetix_tests` executable.
+- Tests use GoogleTest and live in `tests/`, organized into separate executables by domain: `subsetix_test_core`, `subsetix_test_ops`, `subsetix_test_advanced`, `subsetix_test_amr`, `subsetix_test_fvd_api`, `subsetix_test_fvd_execution`, `subsetix_test_fvd_integrators`.
 - Keep tests fast and deterministic; they must pass on serial, OpenMP, and CUDA (use preset `cuda-gcc12`).
 - Prefer focused `TEST()` cases over large monolithic tests; share common helpers in small headers or `.cpp` files.
 - When adding device code, exercise it at least in the serial preset.
