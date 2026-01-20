@@ -7,8 +7,16 @@
 #include "../../csr_ops/amr.hpp"
 #include "../../csr_ops/set_algebra.hpp"
 #include "../system/concepts_v2.hpp"
+#include "../system/euler2d.hpp"
+#include "../system/advection2d.hpp"
 
 namespace subsetix::fvd::amr {
+
+// Import CSR types for convenience
+using subsetix::csr::Field2DDevice;
+using subsetix::csr::IntervalSet2DDevice;
+using subsetix::csr::DeviceMemorySpace;
+using subsetix::csr::HostMemorySpace;
 
 // ============================================================================
 // AMR OPERATIONS WRAPPER
@@ -56,21 +64,22 @@ public:
      * Conservation: Injection conserves exactly, linear prediction is approximately conservative
      */
     static void prolong_level(
-        csr::Field2DDevice<Conserved>& fine_field,
-        const csr::Field2DDevice<Conserved>& coarse_field,
-        const csr::IntervalSet2DDevice& fine_subset = fine_field.geometry,
+        Field2DDevice<Conserved>& fine_field,
+        const Field2DDevice<Conserved>& coarse_field,
         bool use_linear_prediction = false
     ) {
-        csr::CsrSetAlgebraContext ctx;
+        // Use fine_field geometry as the subset
+        const IntervalSet2DDevice& fine_subset = fine_field.geometry;
+        subsetix::csr::CsrSetAlgebraContext ctx;
 
         if (use_linear_prediction) {
             // Use gradient-based reconstruction (2nd order)
-            csr::prolong_field_prediction_on_subset_device(
+            subsetix::csr::prolong_field_prediction_on_subset_device(
                 fine_field, coarse_field, fine_subset, &ctx
             );
         } else {
             // Use direct injection (1st order, conservative)
-            csr::prolong_field_on_subset_device(
+            subsetix::csr::prolong_field_on_subset_device(
                 fine_field, coarse_field, fine_subset, &ctx
             );
         }
@@ -81,16 +90,16 @@ public:
      */
     static void prolong_level(
         Kokkos::View<Conserved*>& fine_U,
-        const csr::IntervalSet2DDevice& fine_geom,
+        const IntervalSet2DDevice& fine_geom,
         const Kokkos::View<Conserved*>& coarse_U,
-        const csr::IntervalSet2DDevice& coarse_geom,
+        const IntervalSet2DDevice& coarse_geom,
         bool use_linear_prediction = false
     ) {
-        csr::Field2DDevice<Conserved> fine_field;
+        Field2DDevice<Conserved> fine_field;
         fine_field.geometry = fine_geom;
         fine_field.values = fine_U;
 
-        csr::Field2DDevice<Conserved> coarse_field;
+        Field2DDevice<Conserved> coarse_field;
         coarse_field.geometry = coarse_geom;
         coarse_field.values = coarse_U;
 
@@ -116,12 +125,13 @@ public:
      * Algorithm: For each coarse cell, average the 4 fine children (2x2 in 2D)
      */
     static void restrict_level(
-        csr::Field2DDevice<Conserved>& coarse_field,
-        const csr::Field2DDevice<Conserved>& fine_field,
-        const csr::IntervalSet2DDevice& coarse_subset = coarse_field.geometry
+        Field2DDevice<Conserved>& coarse_field,
+        const Field2DDevice<Conserved>& fine_field
     ) {
-        csr::CsrSetAlgebraContext ctx;
-        csr::restrict_field_on_subset_device(
+        // Use coarse_field geometry as the subset
+        const IntervalSet2DDevice& coarse_subset = coarse_field.geometry;
+        subsetix::csr::CsrSetAlgebraContext ctx;
+        subsetix::csr::restrict_field_on_subset_device(
             coarse_field, fine_field, coarse_subset, &ctx
         );
     }
@@ -131,15 +141,15 @@ public:
      */
     static void restrict_level(
         Kokkos::View<Conserved*>& coarse_U,
-        const csr::IntervalSet2DDevice& coarse_geom,
+        const IntervalSet2DDevice& coarse_geom,
         const Kokkos::View<Conserved*>& fine_U,
-        const csr::IntervalSet2DDevice& fine_geom
+        const IntervalSet2DDevice& fine_geom
     ) {
-        csr::Field2DDevice<Conserved> coarse_field;
+        Field2DDevice<Conserved> coarse_field;
         coarse_field.geometry = coarse_geom;
         coarse_field.values = coarse_U;
 
-        csr::Field2DDevice<Conserved> fine_field;
+        Field2DDevice<Conserved> fine_field;
         fine_field.geometry = fine_geom;
         fine_field.values = fine_U;
 
@@ -164,11 +174,11 @@ public:
      * - Result: 4x cell count increase
      */
     static void refine_geometry(
-        const csr::IntervalSet2DDevice& coarse_geometry,
-        csr::IntervalSet2DDevice& fine_geometry
+        const IntervalSet2DDevice& coarse_geometry,
+        IntervalSet2DDevice& fine_geometry
     ) {
-        csr::CsrSetAlgebraContext ctx;
-        csr::refine_level_up_device(coarse_geometry, fine_geometry, ctx);
+        subsetix::csr::CsrSetAlgebraContext ctx;
+        subsetix::csr::refine_level_up_device(coarse_geometry, fine_geometry, ctx);
     }
 
     // ========================================================================
@@ -191,11 +201,11 @@ public:
      * @note The fine geometry must be "refinement-compatible" (even number of cells in each block)
      */
     static void coarsen_geometry(
-        const csr::IntervalSet2DDevice& fine_geometry,
-        csr::IntervalSet2DDevice& coarse_geometry
+        const IntervalSet2DDevice& fine_geometry,
+        IntervalSet2DDevice& coarse_geometry
     ) {
-        csr::CsrSetAlgebraContext ctx;
-        csr::project_level_down_device(fine_geometry, coarse_geometry, ctx);
+        subsetix::csr::CsrSetAlgebraContext ctx;
+        subsetix::csr::project_level_down_device(fine_geometry, coarse_geometry, ctx);
     }
 
     // ========================================================================
