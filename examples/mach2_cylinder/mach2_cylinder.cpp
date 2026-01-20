@@ -4,6 +4,8 @@
 
 // PHASE 1: Include FVD layer for type definitions
 #include <subsetix/fvd/system/euler2d.hpp>
+// PHASE 2a: Include FVD flux schemes
+#include <subsetix/fvd/flux/flux_schemes.hpp>
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
@@ -178,12 +180,8 @@ struct ConservedFieldAccessor {
   }
 };
 
-struct Primitive {
-  Real rho;
-  Real u;
-  Real v;
-  Real p;
-};
+// PHASE 1: Primitive type removed - now using System::Primitive from FVD layer
+// The using declaration is at line ~86
 
 struct RunConfig {
   int nx = 400;
@@ -303,69 +301,24 @@ Real sound_speed(const Primitive& q, Real gamma) {
   return System::sound_speed(q, gamma);
 }
 
+// ============================================================================
+// FLUX FUNCTIONS - PHASE 2a: Using FVD flux schemes
+// ============================================================================
+
+// Physical flux wrappers - delegate to FVD System
 KOKKOS_INLINE_FUNCTION
 Conserved flux_x(const Conserved& U, const Primitive& q) {
-  Conserved F;
-  F.rho = U.rhou;
-  F.rhou = U.rho * q.u * q.u + q.p;
-  F.rhov = U.rho * q.u * q.v;
-  F.E = (U.E + q.p) * q.u;
-  return F;
+  return System::flux_phys_x(U, q);
 }
 
 KOKKOS_INLINE_FUNCTION
 Conserved flux_y(const Conserved& U, const Primitive& q) {
-  Conserved F;
-  F.rho = U.rhov;
-  F.rhou = U.rho * q.u * q.v;
-  F.rhov = U.rho * q.v * q.v + q.p;
-  F.E = (U.E + q.p) * q.v;
-  return F;
+  return System::flux_phys_y(U, q);
 }
 
-KOKKOS_INLINE_FUNCTION
-Conserved rusanov_flux_x(const Conserved& UL,
-                         const Conserved& UR,
-                         const Primitive& qL,
-                         const Primitive& qR,
-                         Real gamma) {
-  const Real aL = sound_speed(qL, gamma);
-  const Real aR = sound_speed(qR, gamma);
-  const Real smax = std::fmax(std::fabs(qL.u) + aL,
-                              std::fabs(qR.u) + aR);
-
-  const Conserved FL = flux_x(UL, qL);
-  const Conserved FR = flux_x(UR, qR);
-
-  Conserved F;
-  F.rho = 0.5 * (FL.rho + FR.rho) - 0.5 * smax * (UR.rho - UL.rho);
-  F.rhou = 0.5 * (FL.rhou + FR.rhou) - 0.5 * smax * (UR.rhou - UL.rhou);
-  F.rhov = 0.5 * (FL.rhov + FR.rhov) - 0.5 * smax * (UR.rhov - UL.rhov);
-  F.E = 0.5 * (FL.E + FR.E) - 0.5 * smax * (UR.E - UL.E);
-  return F;
-}
-
-KOKKOS_INLINE_FUNCTION
-Conserved rusanov_flux_y(const Conserved& UL,
-                         const Conserved& UR,
-                         const Primitive& qL,
-                         const Primitive& qR,
-                         Real gamma) {
-  const Real aL = sound_speed(qL, gamma);
-  const Real aR = sound_speed(qR, gamma);
-  const Real smax = std::fmax(std::fabs(qL.v) + aL,
-                              std::fabs(qR.v) + aR);
-
-  const Conserved FL = flux_y(UL, qL);
-  const Conserved FR = flux_y(UR, qR);
-
-  Conserved F;
-  F.rho = 0.5 * (FL.rho + FR.rho) - 0.5 * smax * (UR.rho - UL.rho);
-  F.rhou = 0.5 * (FL.rhou + FR.rhou) - 0.5 * smax * (UR.rhou - UL.rhou);
-  F.rhov = 0.5 * (FL.rhov + FR.rhov) - 0.5 * smax * (UR.rhov - UL.rhov);
-  F.E = 0.5 * (FL.E + FR.E) - 0.5 * smax * (UR.E - UL.E);
-  return F;
-}
+// Note: rusanov_flux_x/y removed in Phase 2a
+// Numerical flux is now computed directly in EulerStencilSoA
+// using flux::RusanovFlux<System> from FVD layer
 
 KOKKOS_INLINE_FUNCTION
 bool in_domain(Coord x, Coord y, const Box2D& domain) {
@@ -1055,6 +1008,10 @@ void restrict_fine_to_coarse(ConservedFields& coarse_field,
                                       coarse_region);
 }
 
+// ============================================================================
+// EULER STENCIL - PHASE 2a: Using FVD RusanovFlux
+// ============================================================================
+
 struct EulerStencilSoA {
   Real gamma;
   Real dt;
@@ -1062,6 +1019,18 @@ struct EulerStencilSoA {
   Real dy;
   ConservedViews U_in;
   ConservedViews U_out;
+  // PHASE 2a: FVD flux scheme
+  subsetix::fvd::flux::RusanovFlux<System> rusanov;
+
+  // PHASE 2a: Constructor to initialize rusanov with gamma
+  EulerStencilSoA(Real g, Real t, Real dx_, Real dy_,
+                  ConservedViews in_, ConservedViews out_)
+      : gamma(g), dt(t), dx(dx_), dy(dy_), U_in(in_), U_out(out_),
+        rusanov(g) {}
+
+  // Default constructor for device
+  KOKKOS_INLINE_FUNCTION
+  EulerStencilSoA() = default;
 
   KOKKOS_INLINE_FUNCTION
   Real operator()(Coord /*x*/, Coord /*y*/,
@@ -1084,18 +1053,15 @@ struct EulerStencilSoA {
     const Primitive q_down = cons_to_prim(down_state, gamma);
     const Primitive q_up = cons_to_prim(up_state, gamma);
 
+    // PHASE 2a: Use FVD RusanovFlux instead of local functions
     const Conserved flux_w =
-        rusanov_flux_x(left_state, center, q_left,
-                       q_center, gamma);
+        rusanov.flux_x(left_state, center, q_left, q_center);
     const Conserved flux_e =
-        rusanov_flux_x(center, right_state, q_center,
-                       q_right, gamma);
+        rusanov.flux_x(center, right_state, q_center, q_right);
     const Conserved flux_s =
-        rusanov_flux_y(down_state, center, q_down,
-                       q_center, gamma);
+        rusanov.flux_y(down_state, center, q_down, q_center);
     const Conserved flux_n =
-        rusanov_flux_y(center, up_state, q_center,
-                       q_up, gamma);
+        rusanov.flux_y(center, up_state, q_center, q_up);
 
     Conserved updated;
     updated.rho =
