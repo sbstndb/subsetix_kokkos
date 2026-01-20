@@ -88,3 +88,13 @@ add_executable(subsetix_test_fvd_integrators
 target_link_libraries(subsetix_test_fvd_integrators PRIVATE subsetix::core GTest::gtest)
 target_include_directories(subsetix_test_fvd_integrators PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME FvdIntegratorsTests COMMAND subsetix_test_fvd_integrators)
+
+# 8. Mach2 Validation Tests: Type safety and validation framework
+# Tests for mach2_cylinder FVD migration validation
+add_executable(subsetix_test_mach2_validation
+    mach2_validation/type_safety_tests.cpp
+)
+target_link_libraries(subsetix_test_mach2_validation PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_mach2_validation PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(subsetix_test_mach2_validation PRIVATE ${CMAKE_SOURCE_DIR}/examples/mach2_cylinder)
+add_test(NAME Mach2ValidationTests COMMAND subsetix_test_mach2_validation)

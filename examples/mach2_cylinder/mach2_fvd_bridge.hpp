@@ -17,6 +17,7 @@
 #include <Kokkos_Core.hpp>
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/geometry/csr_backend.hpp>
+#include <subsetix/csr_ops/field_subset.hpp>
 
 // Forward declaration - FVD types will be included later
 namespace subsetix::fvd {
@@ -31,6 +32,7 @@ using subsetix::csr::Box2D;
 using subsetix::csr::IntervalSet2DDevice;
 using subsetix::csr::Field2DDevice;
 using subsetix::csr::DeviceMemorySpace;
+using subsetix::csr::ExecSpace;
 
 // ============================================================================
 // ORIGINAL MACH2 TYPES (for compatibility and gradual migration)
@@ -194,7 +196,7 @@ public:
 
         Kokkos::parallel_for(
             "csr_to_dense_conversion",
-            Kokkos::RangePolicy<DeviceMemorySpace>(0, n),
+            Kokkos::RangePolicy<ExecSpace>(0, n),
             KOKKOS_LAMBDA(const std::size_t idx) {
                 // Convert from SoA to AoS
                 U_dense(idx).rho = rho(idx);
@@ -227,7 +229,7 @@ public:
         // Copy data from dense to CSR (parallel)
         Kokkos::parallel_for(
             "dense_to_csr_conversion",
-            Kokkos::RangePolicy<DeviceMemorySpace>(0, n),
+            Kokkos::RangePolicy<ExecSpace>(0, n),
             KOKKOS_LAMBDA(const std::size_t idx) {
                 // Convert from AoS to SoA
                 rho(idx) = U_dense(idx).rho;
@@ -352,8 +354,10 @@ inline Real compute_total_mass(const ConservedFields& U) {
 
     Kokkos::parallel_reduce(
         "mach2_total_mass",
-        Kokkos::RangePolicy<DeviceMemorySpace>(0, static_cast<int>(U.size())),
-        KOKKOS_LAMBDA(const int idx, Real& sum) { sum += rho(idx); },
+        Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(U.size())),
+        KOKKOS_LAMBDA(const int idx, Real& sum) {
+          sum += rho(idx);
+        },
         total);
 
     return total;

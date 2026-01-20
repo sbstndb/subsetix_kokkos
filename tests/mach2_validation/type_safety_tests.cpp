@@ -28,8 +28,12 @@ struct TypeCheckResults {
     int failed = 0;
     int warnings = 0;
 
-    void pass(const char* test) {
-        std::cout << "[PASS] " << test << "\n";
+    void pass(const char* test, const char* details = "") {
+        std::cout << "[PASS] " << test;
+        if (details[0] != '\0') {
+            std::cout << ": " << details;
+        }
+        std::cout << "\n";
         ++passed;
     }
 
@@ -71,19 +75,21 @@ void test_structure_sizes(TypeCheckResults& results) {
     constexpr size_t expected_conserved_align = alignof(Real);
 
     if (sizeof(Conserved) == expected_conserved_size) {
-        results.pass("Conserved size", std::to_string(sizeof(Conserved)) + " bytes");
+        auto msg = std::to_string(sizeof(Conserved)) + " bytes";
+        results.pass("Conserved size", msg.c_str());
     } else {
-        results.fail("Conserved size",
-                    (std::to_string(sizeof(Conserved)) + " vs expected " +
-                     std::to_string(expected_conserved_size))).c_str());
+        auto msg = std::to_string(sizeof(Conserved)) + " vs expected " +
+                   std::to_string(expected_conserved_size);
+        results.fail("Conserved size", msg.c_str());
     }
 
     if (alignof(Conserved) == expected_conserved_align) {
-        results.pass("Conserved alignment", std::to_string(alignof(Conserved)) + " bytes");
+        auto msg = std::to_string(alignof(Conserved)) + " bytes";
+        results.pass("Conserved alignment", msg.c_str());
     } else {
-        results.fail("Conserved alignment",
-                    (std::to_string(alignof(Conserved)) + " vs expected " +
-                     std::to_string(expected_conserved_align))).c_str());
+        auto msg = std::to_string(alignof(Conserved)) + " vs expected " +
+                   std::to_string(expected_conserved_align);
+        results.fail("Conserved alignment", msg.c_str());
     }
 
     // Primitive structure
@@ -91,19 +97,21 @@ void test_structure_sizes(TypeCheckResults& results) {
     constexpr size_t expected_primitive_align = alignof(Real);
 
     if (sizeof(Primitive) == expected_primitive_size) {
-        results.pass("Primitive size", std::to_string(sizeof(Primitive)) + " bytes");
+        auto msg = std::to_string(sizeof(Primitive)) + " bytes";
+        results.pass("Primitive size", msg.c_str());
     } else {
-        results.fail("Primitive size",
-                    (std::to_string(sizeof(Primitive)) + " vs expected " +
-                     std::to_string(expected_primitive_size))).c_str());
+        auto msg = std::to_string(sizeof(Primitive)) + " vs expected " +
+                   std::to_string(expected_primitive_size);
+        results.fail("Primitive size", msg.c_str());
     }
 
     if (alignof(Primitive) == expected_primitive_align) {
-        results.pass("Primitive alignment", std::to_string(alignof(Primitive)) + " bytes");
+        auto msg = std::to_string(alignof(Primitive)) + " bytes";
+        results.pass("Primitive alignment", msg.c_str());
     } else {
-        results.fail("Primitive alignment",
-                    (std::to_string(alignof(Primitive)) + " vs expected " +
-                     std::to_string(expected_primitive_align))).c_str());
+        auto msg = std::to_string(alignof(Primitive)) + " vs expected " +
+                   std::to_string(expected_primitive_align);
+        results.fail("Primitive alignment", msg.c_str());
     }
 
     // Layout verification (offset checks)
@@ -273,9 +281,11 @@ void test_numerical_equivalence(TypeCheckResults& results) {
     Real a = sound_speed(q, gamma);
     const Real expected_a = std::sqrt(gamma * q.p / q.rho);
     if (std::abs(a - expected_a) < tol) {
-        results.pass("Sound speed calculation", std::to_string(a));
+        auto msg = std::to_string(a);
+        results.pass("Sound speed calculation", msg.c_str());
     } else {
-        results.fail("Sound speed", (std::to_string(a) + " vs " + std::to_string(expected_a)).c_str());
+        auto msg = std::to_string(a) + " vs " + std::to_string(expected_a);
+        results.fail("Sound speed", msg.c_str());
     }
 
     // Test known values (standard atmosphere at sea level)
@@ -286,11 +296,12 @@ void test_numerical_equivalence(TypeCheckResults& results) {
     // Expected sound speed at sea level: sqrt(1.4 * 101325 / 1.225) ≈ 340.3 m/s
     const Real expected_a_sea = 340.3f;
     if (std::abs(a_sea - expected_a_sea) < 1.0f) {
-        results.pass("Sea level sound speed", std::to_string(a_sea) + " m/s");
+        auto msg = std::to_string(a_sea) + " m/s";
+        results.pass("Sea level sound speed", msg.c_str());
     } else {
-        results.fail("Sea level sound speed",
-                    (std::to_string(a_sea) + " m/s vs expected " +
-                     std::to_string(expected_a_sea) + " m/s").c_str());
+        auto msg = std::to_string(a_sea) + " m/s vs expected " +
+                   std::to_string(expected_a_sea) + " m/s";
+        results.fail("Sea level sound speed", msg.c_str());
     }
 }
 
@@ -302,7 +313,8 @@ void test_kokkos_compatibility(TypeCheckResults& results) {
     using DeviceSpace = Kokkos::DefaultExecutionSpace::device_type;
 
     std::cout << "  Execution Space: " << Kokkos::DefaultExecutionSpace::name() << "\n";
-    std::cout << "  Memory Space: " << Kokkos::DefaultExecutionSpace::memory_space_name() << "\n";
+    // Note: memory_space_name() is not available in all Kokkos versions
+    // std::cout << "  Memory Space: " << Kokkos::DefaultExecutionSpace::memory_space_name() << "\n";
 
     // Test that types can be used in Kokkos views
     using ConservedView = Kokkos::View<Conserved*, ExecSpace>;
