@@ -1022,6 +1022,30 @@ public:
         return state;
     }
 
+    /**
+     * @brief Get const access to the solution field (for testing/validation)
+     *
+     * @return const view of conserved variables
+     *
+     * @note This is primarily intended for testing and validation.
+     *       Direct modification of U outside of the solver can break consistency.
+     */
+    const Kokkos::View<Conserved*>& get_solution() const {
+        return U_;
+    }
+
+    /**
+     * @brief Get mutable access to the solution field (for initial conditions)
+     *
+     * @return mutable view of conserved variables
+     *
+     * @warning Use with caution. Direct modification can break solver invariants.
+     *          This is provided for setting custom initial conditions.
+     */
+    Kokkos::View<Conserved*>& get_solution_mutable() {
+        return U_;
+    }
+
     // ========================================================================
     // SOURCE TERMS (NEW: Add source support)
     // ========================================================================
