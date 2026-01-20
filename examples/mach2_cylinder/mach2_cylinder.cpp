@@ -15,6 +15,8 @@
 // PHASE 5: AMR is handled by CSR layer (csr_ops/amr.hpp)
 // PHASE 6: Multi-level operations use subsetix::multilevel
 #include <subsetix/multilevel/multilevel.hpp>
+// PHASE 7: AdaptiveSolver is the high-level FVD interface
+#include <subsetix/fvd/solver/adaptive_solver.hpp>
 
 #include <subsetix/field/csr_field.hpp>
 #include <subsetix/field/csr_field_ops.hpp>
@@ -368,6 +370,114 @@ struct RemeshTiming {
 // For now, mach2 uses parallel arrays (current implementation).
 //
 // See: include/subsetix/multilevel/multilevel.hpp
+// ============================================================================
+
+// ============================================================================
+// PHASE 7: ADAPTIVE SOLVER FULL INTEGRATION
+// ============================================================================
+//
+// FVD ADAPTIVE SOLVER:
+// ====================
+// The AdaptiveSolver is the high-level interface that integrates all FVD components:
+//
+//   AdaptiveSolver<System, Reconstruction, FluxScheme>
+//
+// Template parameters:
+//   - System: Euler2D<Real>, Advection2D<Real>, etc.
+//   - Reconstruction: NoReconstruction or MUSCL_Reconstruction<Limiter>
+//   - FluxScheme: RusanovFlux, HLLCFlux, or RoeFlux
+//
+// Features:
+//   - AMR refinement criteria (density, pressure, Mach gradients)
+//   - Boundary condition configuration
+//   - Observer callbacks (progress, remesh, error)
+//   - Source terms (gravity, custom)
+//   - Checkpoint/restart (binary/ASCII)
+//   - Validation (negative density/pressure, NaN, CFL)
+//   - Profiling (timing, memory usage)
+//   - Streaming output (VTK during simulation)
+//
+// CURRENT STATUS:
+// ===============
+// The AdaptiveSolver is currently a STUB - step() returns fake dt:
+//
+//   Real step() {
+//       Real dt = cfg_.cfl * Kokkos::min(cfg_.dx, cfg_.dy) / Real(2);
+//       current_time_ += dt;
+//       return dt;  // STUB: doesn't actually solve equations
+//   }
+//
+// INTEGRATION PATH:
+// =================
+// To make mach2 work with AdaptiveSolver, need to:
+//
+// 1. Wrap mach2's time loop as RHS function:
+//
+//    auto rhs = [&](const auto& U, auto& RHS, int stage, Real t) {
+//        // Apply mach2 stencil to compute RHS
+//        apply_csr_stencil_on_set_device(...);
+//    };
+//
+// 2. Create AdaptiveSolver instance:
+//
+//    AdaptiveSolver<System, NoReconstruction, RusanovFlux> solver(
+//        fluid_geometry, domain, cfg);
+//
+//    // Configure BCs
+//    auto bc_config = BoundaryConfigBuilder<System>::inflow_outflow(inflow, gamma);
+//    solver.set_boundary_conditions(bc_config);
+//
+// 3. Use CSR adapter for multi-level data:
+//
+//    CSRFieldAdapter<System> adapter;
+//    for (step = 0; step < max_steps; ++step) {
+//        Real dt = compute_dt(...);
+//
+//        // Convert CSR to dense for each level
+//        for (int lvl = 0; lvl <= finest; ++lvl) {
+//            dense_U[lvl] = adapter.to_dense(U_levels[lvl]);
+//        }
+//
+//        // Call FVD solver
+//        solver.step_with_rhs(dt, rhs);  // Future API
+//
+//        // Convert back to CSR
+//        for (int lvl = 0; lvl <= finest; ++lvl) {
+//            adapter.from_dense(dense_U[lvl], U_levels[lvl]);
+//        }
+//    }
+//
+// TARGET ARCHITECTURE:
+// ===================
+// Once AdaptiveSolver::step() is fully implemented, mach2 would simplify to:
+//
+//   // Setup
+//   AdaptiveSolver<System, NoReconstruction, RusanovFlux> solver(
+//       fluid_geometry, domain, config);
+//   solver.set_refinement_criteria(RefinementCriteria::density(0.1, 4));
+//   solver.initialize(inflow_state);
+//
+//   // Main loop
+//   while (solver.get_time() < t_final) {
+//       solver.step();  // Handles: RHS, time integration, AMR, BCs, output
+//   }
+//
+//   // Output
+//   solver.write_vtk("output.vtk");
+//
+// BENEFITS:
+// ==========
+// - Declarative API (configure, then step)
+// - Built-in AMR management
+// - Observer pattern for monitoring
+// - Checkpoint/restart support
+// - Validation and profiling
+// - Works with ANY System (Euler2D, Advection2D, etc.)
+//
+// For now, mach2 uses manual time loop (current implementation).
+// The AdaptiveSolver is the target architecture for future FVD integration.
+//
+// See: include/subsetix/fvd/solver/adaptive_solver.hpp
 // ============================================================================
 
 template <typename T>
