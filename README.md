@@ -184,22 +184,6 @@ include/subsetix/
     └── time/        # Runge-Kutta integrators
 ```
 
-### Solver Configuration
-
-#### Available Solvers (Type Aliases)
-
-```cpp
-// 1st order
-using EulerSolver1st = EulerSolver1stRusanov<float>;
-
-// 2nd order
-using EulerSolver2ndHLLC = EulerSolver2ndHLLC<float>;
-using EulerSolver2ndRoe  = EulerSolver2ndRoe<float>;
-
-// High-order
-using EulerSolverRK3 = EulerSolverRK3<float>;
-```
-
 ### API Reference
 
 #### Geometry Builder
