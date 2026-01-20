@@ -194,6 +194,7 @@ public:
     // ========================================================================
 
     static constexpr int num_vars = 1;
+    static constexpr int n_conserved = 1;  // Number of conserved variables
     static constexpr const char* name = "Advection2D";
 };
 
@@ -245,6 +246,14 @@ struct system_traits<Advection2D<Real>> {
     static Real get_primitive_field(const typename Advection2D<Real>::Primitive& q,
                                     int field_idx) {
         return q.value;  // All fields map to the scalar value for advection
+    }
+
+    /// Get conserved field by index (0-based) - for refinement criteria compatibility
+    /// For Advection2D, index 0 returns the scalar value
+    KOKKOS_INLINE_FUNCTION
+    static Real get_conserved_field(const typename Advection2D<Real>::Conserved& U,
+                                     int field_idx) {
+        return U.value;  // All fields map to the scalar value for advection
     }
 };
 

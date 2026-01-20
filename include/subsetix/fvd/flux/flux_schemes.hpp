@@ -106,7 +106,7 @@ private:
     /// Compute maximum wave speed in x-direction (generic for any System)
     KOKKOS_INLINE_FUNCTION
     Real compute_max_wave_speed_x(const Primitive& qL, const Primitive& qR) const {
-        if constexpr (System::num_vars >= 4) {
+        if constexpr (System::n_conserved >= 4) {
             // For systems with velocity components (Euler2D and similar)
             Real aL = System::sound_speed(qL, gamma);
             Real aR = System::sound_speed(qR, gamma);
@@ -120,7 +120,7 @@ private:
     /// Compute maximum wave speed in y-direction (generic for any System)
     KOKKOS_INLINE_FUNCTION
     Real compute_max_wave_speed_y(const Primitive& qL, const Primitive& qR) const {
-        if constexpr (System::num_vars >= 4) {
+        if constexpr (System::n_conserved >= 4) {
             // For systems with velocity components (Euler2D and similar)
             Real aL = System::sound_speed(qL, gamma);
             Real aR = System::sound_speed(qR, gamma);

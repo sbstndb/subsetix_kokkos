@@ -300,7 +300,7 @@ struct BcDescriptor {
             return static_value;
         } else if (type == TimeDependentDirichlet || type == TimeDependentInlet) {
             // Phase 6: Generic implementation for ANY System
-            if constexpr (System::num_vars >= 4) {
+            if constexpr (System::n_conserved >= 4) {
                 // For systems with multiple primitive variables (Euler2D and similar)
                 Real rho = time_policy.rho(t);
                 Real u = time_policy.u(t);

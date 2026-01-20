@@ -78,7 +78,7 @@ public:
                                Real dx) const
     {
         // Phase 6: Generic implementation for ANY System
-        if constexpr (System::num_vars >= 4) {
+        if constexpr (System::n_conserved >= 4) {
             // For systems with multiple conserved variables (Euler2D and similar)
             Real grad_rho = Real(0);
 
@@ -182,7 +182,7 @@ private:
                         Real dx) const
     {
         // Phase 6: Generic implementation for ANY System
-        if constexpr (System::num_vars >= 4) {
+        if constexpr (System::n_conserved >= 4) {
             // For systems with pressure (Euler2D and similar)
             switch (sensor_type) {
                 case Ducros: {
@@ -262,7 +262,7 @@ public:
                                Real dx) const
     {
         // Phase 6: Generic implementation for ANY System
-        if constexpr (System::num_vars >= 4) {
+        if constexpr (System::n_conserved >= 4) {
             // For systems with velocity components (Euler2D and similar)
             // Compute vorticity: dv/dx - du/dy
             Real du_dy = Real(0);
@@ -374,7 +374,7 @@ private:
             case VelocityY: return Traits::get_primitive_field(q, 2);
             case VelocityMag: {
                 // For systems with separate velocity components (Euler2D)
-                if constexpr (System::num_vars >= 4) {
+                if constexpr (System::n_conserved >= 4) {
                     Real u = Traits::get_primitive_field(q, 1);
                     Real v = Traits::get_primitive_field(q, 2);
                     return Kokkos::sqrt(u*u + v*v);
@@ -385,7 +385,7 @@ private:
             }
             case Mach: {
                 // For systems with pressure (Euler2D)
-                if constexpr (System::num_vars >= 4) {
+                if constexpr (System::n_conserved >= 4) {
                     Real u = Traits::get_primitive_field(q, 1);
                     Real v = Traits::get_primitive_field(q, 2);
                     Real p = Traits::get_primitive_field(q, 3);
@@ -432,7 +432,7 @@ public:
                                Real dx) const
     {
         // Phase 6: Generic implementation for ANY System
-        if constexpr (System::num_vars >= 4) {
+        if constexpr (System::n_conserved >= 4) {
             // For systems with velocity components (Euler2D and similar)
             // Same as vorticity for now
             Real du_dy = Real(0);
@@ -522,7 +522,7 @@ public:
     {
         // Phase 6: Generic implementation - work directly without helpers
         // This avoids compiler issues with if constexpr and helper functions
-        if constexpr (System::num_vars >= 4) {
+        if constexpr (System::n_conserved >= 4) {
             // For systems with multiple conserved variables (Euler2D and similar)
             bool all_valid = true;
             for (int i = 0; i < 4; ++i) {

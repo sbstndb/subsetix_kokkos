@@ -157,3 +157,14 @@ target_link_libraries(fvd_simulation_examples
         subsetix::core
 )
 target_include_directories(fvd_simulation_examples PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Simplified Mach 2 cylinder example using high-level FVD API
+add_executable(mach2_cylinder_simplified
+    mach2_cylinder_simplified.cpp
+)
+
+target_link_libraries(mach2_cylinder_simplified
+    PRIVATE
+        subsetix::core
+)
+target_include_directories(mach2_cylinder_simplified PRIVATE ${CMAKE_SOURCE_DIR}/include)

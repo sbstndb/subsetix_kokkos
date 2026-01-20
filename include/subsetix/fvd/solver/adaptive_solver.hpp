@@ -1307,7 +1307,7 @@ public:
                 Real speed = Real(0);
 
                 // Phase 6: Generic wave speed computation for ANY System
-                if constexpr (System::num_vars >= 4) {
+                if constexpr (System::n_conserved >= 4) {
                     // For systems with velocity components (Euler2D and similar)
                     Real a = System::sound_speed(q, gamma);
                     Real vel = Kokkos::sqrt(q.u * q.u + q.v * q.v);

@@ -201,6 +201,12 @@ public:
         auto q = to_primitive(U, gamma);
         return q.p;
     }
+
+    // ========================================================================
+    // 6. System metadata
+    // ========================================================================
+
+    static constexpr int n_conserved = 4;  // Number of conserved variables
 };
 
 // ============================================================================
@@ -225,6 +231,20 @@ struct system_traits<Euler2D<Real>> {
             case 1: return q.u;
             case 2: return q.v;
             case 3: return q.p;
+            default: return Real(0);
+        }
+    }
+
+    /// Get conserved field by index (0-based) - for refinement criteria compatibility
+    /// Maps: 0->rho, 1->rhou, 2->rhov, 3->E
+    KOKKOS_INLINE_FUNCTION
+    static Real get_conserved_field(const typename Euler2D<Real>::Conserved& U,
+                                     int field_idx) {
+        switch (field_idx) {
+            case 0: return U.rho;
+            case 1: return U.rhou;
+            case 2: return U.rhov;
+            case 3: return U.E;
             default: return Real(0);
         }
     }
