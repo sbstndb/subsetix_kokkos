@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Main CI job - tests Serial and OpenMP backends with GCC
+  build-and-test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [serial, openmp]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-gcc-${{ matrix.backend }}
+
+      - name: Cache Kokkos and dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ccache
+            build-${{ matrix.backend }}
+          key: ${{ runner.os }}-build-${{ matrix.backend }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ matrix.backend }}-
+
+      - name: Configure CMake
+        run: cmake --preset ${{ matrix.backend }}
+
+      - name: Build
+        run: cmake --build ${{ format('build-{0}', matrix.backend) }} --parallel $(nproc)
+
+      - name: Run tests
+        working-directory: ${{ format('build-{0}', matrix.backend) }}
+        run: ctest --preset ${{ matrix.backend }} --output-on-failure
+
+  # Debug build check with sanitizers
+  debug-check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-debug
+
+      - name: Cache Kokkos and dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ccache
+            build-serial-asan
+          key: ${{ runner.os }}-build-serial-asan-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-serial-asan-
+
+      - name: Configure CMake with sanitizers
+        run: cmake --preset serial-asan
+
+      - name: Build
+        run: cmake --build build-serial-asan --parallel $(nproc)
+
+      - name: Run tests
+        working-directory: build-serial-asan
+        run: ctest --preset serial-asan --output-on-failure
+
+  # Optional: Clang compilation check (non-blocking)
+  clang-check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    continue-on-error: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [serial, openmp]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Clang and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache clang
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-clang-${{ matrix.backend }}
+
+      - name: Configure with Clang
+        run: |
+          export CC=clang
+          export CXX=clang++
+          cmake -B build-clang-${{ matrix.backend }} \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSUBSETIX_KOKKOS_OPENMP=$([ "${{ matrix.backend }}" == "openmp" ] && echo "ON" || echo "OFF") \
+            -DSUBSETIX_USE_MPI=OFF
+
+      - name: Build with Clang
+        run: cmake --build build-clang-${{ matrix.backend }} --parallel $(nproc)
+
+      - name: Test with Clang
+        working-directory: build-clang-${{ matrix.backend }}
+        run: ctest --output-on-failure
