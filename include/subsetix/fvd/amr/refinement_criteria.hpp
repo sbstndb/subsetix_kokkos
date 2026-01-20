@@ -77,25 +77,38 @@ public:
                                const Conserved* neighbors,
                                Real dx) const
     {
-        // Compute gradient using finite differences
-        // neighbors[0] = left, [1] = right, [2] = bottom, [3] = top
+        // Phase 6: Generic implementation for ANY System
+        if constexpr (System::num_vars >= 4) {
+            // For systems with multiple conserved variables (Euler2D and similar)
+            Real grad_rho = Real(0);
 
-        Real grad_rho = Real(0);
-        Real grad_p = Real(0);
-        Real grad_u = Real(0);
+            if (neighbors[0].rho > Real(0) && neighbors[1].rho > Real(0)) {
+                grad_rho = Kokkos::abs(neighbors[1].rho - neighbors[0].rho) / (Real(2) * dx);
+            }
+            if (neighbors[2].rho > Real(0) && neighbors[3].rho > Real(0)) {
+                Real grad_y = Kokkos::abs(neighbors[3].rho - neighbors[2].rho) / (Real(2) * dx);
+                grad_rho = Kokkos::max(grad_rho, grad_y);
+            }
 
-        if (neighbors[0].rho > Real(0) && neighbors[1].rho > Real(0)) {
-            grad_rho = Kokkos::abs(neighbors[1].rho - neighbors[0].rho) / (Real(2) * dx);
+            if (use_rho && grad_rho > threshold) {
+                return RefinementAction::Refine;
+            }
+            return RefinementAction::Keep;
+        } else {
+            // For scalar systems (Advection2D), gradient of the scalar value
+            Real grad = Real(0);
+            if (neighbors[0].value > Real(0) || neighbors[1].value > Real(0)) {
+                grad = Kokkos::abs(neighbors[1].value - neighbors[0].value) / (Real(2) * dx);
+            }
+            if (neighbors[2].value > Real(0) || neighbors[3].value > Real(0)) {
+                Real grad_y = Kokkos::abs(neighbors[3].value - neighbors[2].value) / (Real(2) * dx);
+                grad = Kokkos::max(grad, grad_y);
+            }
+            if (grad > threshold) {
+                return RefinementAction::Refine;
+            }
+            return RefinementAction::Keep;
         }
-        if (neighbors[2].rho > Real(0) && neighbors[3].rho > Real(0)) {
-            Real grad_y = Kokkos::abs(neighbors[3].rho - neighbors[2].rho) / (Real(2) * dx);
-            grad_rho = Kokkos::max(grad_rho, grad_y);
-        }
-
-        if (use_rho && grad_rho > threshold) {
-            return RefinementAction::Refine;
-        }
-        return RefinementAction::Keep;
     }
 
     KOKKOS_INLINE_FUNCTION
@@ -168,37 +181,53 @@ private:
                         const Conserved* neighbors,
                         Real dx) const
     {
-        switch (sensor_type) {
-            case Ducros: {
-                // Need velocity gradients for Ducros
-                // Simplified version: use pressure gradient as proxy
-                Real grad_p_max = Real(0);
-                for (int i = 0; i < 4; ++i) {
-                    if (neighbors[i].rho > Real(0)) {
-                        // Approximate pressure from conserved
-                        Real dp = Kokkos::abs(q_center.p - (Real(0.4) * neighbors[i].E));  // Simplified
-                        grad_p_max = Kokkos::max(grad_p_max, dp / dx);
+        // Phase 6: Generic implementation for ANY System
+        if constexpr (System::num_vars >= 4) {
+            // For systems with pressure (Euler2D and similar)
+            switch (sensor_type) {
+                case Ducros: {
+                    // Need velocity gradients for Ducros
+                    // Simplified version: use pressure gradient as proxy
+                    Real grad_p_max = Real(0);
+                    for (int i = 0; i < 4; ++i) {
+                        if (neighbors[i].rho > Real(0)) {
+                            // Approximate pressure from conserved
+                            Real dp = Kokkos::abs(q_center.p - (Real(0.4) * neighbors[i].E));  // Simplified
+                            grad_p_max = Kokkos::max(grad_p_max, dp / dx);
+                        }
                     }
+                    return grad_p_max / (q_center.p + Real(1e-10));
                 }
-                return grad_p_max / (q_center.p + Real(1e-10));
-            }
-            case Jameson: {
-                // |grad(p)| * dx / p
-                Real grad_p = Real(0);
-                int count = 0;
-                for (int i = 0; i < 4; ++i) {
-                    if (neighbors[i].rho > Real(0)) {
-                        grad_p += Kokkos::abs(neighbors[i].rho - q_center.rho);
-                        count++;
+                case Jameson: {
+                    // |grad(p)| * dx / p
+                    Real grad_p = Real(0);
+                    int count = 0;
+                    for (int i = 0; i < 4; ++i) {
+                        if (neighbors[i].rho > Real(0)) {
+                            grad_p += Kokkos::abs(neighbors[i].rho - q_center.rho);
+                            count++;
+                        }
                     }
+                    if (count > 0) {
+                        grad_p = grad_p * dx / (count * (q_center.p + Real(1e-10)));
+                    }
+                    return grad_p;
                 }
-                if (count > 0) {
-                    grad_p = grad_p * dx / (count * (q_center.p + Real(1e-10)));
-                }
-                return grad_p;
+                default:
+                    return Real(0);
             }
-            default:
-                return Real(0);
+        } else {
+            // For scalar systems (Advection2D), use gradient of scalar value
+            Real grad_val = Real(0);
+            int count = 0;
+            for (int i = 0; i < 4; ++i) {
+                grad_val += Kokkos::abs(neighbors[i].value - q_center.value);
+                count++;
+            }
+            if (count > 0) {
+                grad_val = grad_val * dx / (count * (Kokkos::abs(q_center.value) + Real(1e-10)));
+            }
+            return grad_val;
         }
     }
 };
@@ -232,31 +261,37 @@ public:
                                const Conserved* neighbors,
                                Real dx) const
     {
-        // Compute vorticity: dv/dx - du/dy
-        // Simplified using neighbor differences
-        Real du_dy = Real(0);
-        Real dv_dx = Real(0);
+        // Phase 6: Generic implementation for ANY System
+        if constexpr (System::num_vars >= 4) {
+            // For systems with velocity components (Euler2D and similar)
+            // Compute vorticity: dv/dx - du/dy
+            Real du_dy = Real(0);
+            Real dv_dx = Real(0);
 
-        if (neighbors[0].rho > Real(0) && neighbors[1].rho > Real(0)) {
-            // dv/dx ≈ (v_right - v_left) / (2*dx)
-            Real v_left = neighbors[0].rhov / (neighbors[0].rho + Real(1e-10));
-            Real v_right = neighbors[1].rhov / (neighbors[1].rho + Real(1e-10));
-            dv_dx = (v_right - v_left) / (Real(2) * dx);
+            if (neighbors[0].rho > Real(0) && neighbors[1].rho > Real(0)) {
+                // dv/dx ≈ (v_right - v_left) / (2*dx)
+                Real v_left = neighbors[0].rhov / (neighbors[0].rho + Real(1e-10));
+                Real v_right = neighbors[1].rhov / (neighbors[1].rho + Real(1e-10));
+                dv_dx = (v_right - v_left) / (Real(2) * dx);
+            }
+
+            if (neighbors[2].rho > Real(0) && neighbors[3].rho > Real(0)) {
+                // du/dy ≈ (u_top - u_bottom) / (2*dx)
+                Real u_bottom = neighbors[2].rhou / (neighbors[2].rho + Real(1e-10));
+                Real u_top = neighbors[3].rhou / (neighbors[3].rho + Real(1e-10));
+                du_dy = (u_top - u_bottom) / (Real(2) * dx);
+            }
+
+            Real vorticity = Kokkos::abs(dv_dx - du_dy);
+
+            if (vorticity > threshold) {
+                return RefinementAction::Refine;
+            }
+            return RefinementAction::Keep;
+        } else {
+            // For scalar systems (Advection2D), vorticity doesn't apply
+            return RefinementAction::Keep;
         }
-
-        if (neighbors[2].rho > Real(0) && neighbors[3].rho > Real(0)) {
-            // du/dy ≈ (u_top - u_bottom) / (2*dx)
-            Real u_bottom = neighbors[2].rhou / (neighbors[2].rho + Real(1e-10));
-            Real u_top = neighbors[3].rhou / (neighbors[3].rho + Real(1e-10));
-            du_dy = (u_top - u_bottom) / (Real(2) * dx);
-        }
-
-        Real vorticity = Kokkos::abs(dv_dx - du_dy);
-
-        if (vorticity > threshold) {
-            return RefinementAction::Refine;
-        }
-        return RefinementAction::Keep;
     }
 
     KOKKOS_INLINE_FUNCTION
@@ -328,17 +363,40 @@ public:
 private:
     KOKKOS_INLINE_FUNCTION
     Real get_value(const Primitive& q) const {
+        // Phase 6: Use system_traits for generic field access
+        // This works for ANY System (Euler2D, Advection2D, etc.)
+        using Traits = system_traits<System>;
+
         switch (variable) {
-            case Density: return q.rho;
-            case Pressure: return q.p;
-            case VelocityX: return q.u;
-            case VelocityY: return q.v;
-            case VelocityMag:
-                return Kokkos::sqrt(q.u*q.u + q.v*q.v);
-            case Mach:
-                // Approximate (assuming ideal gas)
-                return Kokkos::sqrt(q.u*q.u + q.v*q.v) / Kokkos::sqrt(q.p);
-            default: return q.rho;
+            case Density: return Traits::get_primitive_field(q, 0);
+            case Pressure: return Traits::get_primitive_field(q, 3);
+            case VelocityX: return Traits::get_primitive_field(q, 1);
+            case VelocityY: return Traits::get_primitive_field(q, 2);
+            case VelocityMag: {
+                // For systems with separate velocity components (Euler2D)
+                if constexpr (System::num_vars >= 4) {
+                    Real u = Traits::get_primitive_field(q, 1);
+                    Real v = Traits::get_primitive_field(q, 2);
+                    return Kokkos::sqrt(u*u + v*v);
+                } else {
+                    // For scalar systems (Advection2D), return the scalar value
+                    return Traits::get_primitive_field(q, 0);
+                }
+            }
+            case Mach: {
+                // For systems with pressure (Euler2D)
+                if constexpr (System::num_vars >= 4) {
+                    Real u = Traits::get_primitive_field(q, 1);
+                    Real v = Traits::get_primitive_field(q, 2);
+                    Real p = Traits::get_primitive_field(q, 3);
+                    // Approximate (assuming ideal gas)
+                    return Kokkos::sqrt(u*u + v*v) / Kokkos::sqrt(p);
+                } else {
+                    // For scalar systems (Advection2D), return the scalar value
+                    return Traits::get_primitive_field(q, 0);
+                }
+            }
+            default: return Traits::get_primitive_field(q, 0);
         }
     }
 };
@@ -373,25 +431,32 @@ public:
                                const Conserved* neighbors,
                                Real dx) const
     {
-        // Same as vorticity for now
-        Real du_dy = Real(0);
-        Real dv_dx = Real(0);
+        // Phase 6: Generic implementation for ANY System
+        if constexpr (System::num_vars >= 4) {
+            // For systems with velocity components (Euler2D and similar)
+            // Same as vorticity for now
+            Real du_dy = Real(0);
+            Real dv_dx = Real(0);
 
-        if (neighbors[0].rho > Real(0) && neighbors[1].rho > Real(0)) {
-            Real v_left = neighbors[0].rhov / (neighbors[0].rho + Real(1e-10));
-            Real v_right = neighbors[1].rhov / (neighbors[1].rho + Real(1e-10));
-            dv_dx = (v_right - v_left) / (Real(2) * dx);
+            if (neighbors[0].rho > Real(0) && neighbors[1].rho > Real(0)) {
+                Real v_left = neighbors[0].rhov / (neighbors[0].rho + Real(1e-10));
+                Real v_right = neighbors[1].rhov / (neighbors[1].rho + Real(1e-10));
+                dv_dx = (v_right - v_left) / (Real(2) * dx);
+            }
+
+            if (neighbors[2].rho > Real(0) && neighbors[3].rho > Real(0)) {
+                Real u_bottom = neighbors[2].rhou / (neighbors[2].rho + Real(1e-10));
+                Real u_top = neighbors[3].rhou / (neighbors[3].rho + Real(1e-10));
+                du_dy = (u_top - u_bottom) / (Real(2) * dx);
+            }
+
+            Real curl = Kokkos::abs(dv_dx - du_dy);
+
+            return (curl > threshold) ? RefinementAction::Refine : RefinementAction::Keep;
+        } else {
+            // For scalar systems (Advection2D), curl doesn't apply
+            return RefinementAction::Keep;
         }
-
-        if (neighbors[2].rho > Real(0) && neighbors[3].rho > Real(0)) {
-            Real u_bottom = neighbors[2].rhou / (neighbors[2].rho + Real(1e-10));
-            Real u_top = neighbors[3].rhou / (neighbors[3].rho + Real(1e-10));
-            du_dy = (u_top - u_bottom) / (Real(2) * dx);
-        }
-
-        Real curl = Kokkos::abs(dv_dx - du_dy);
-
-        return (curl > threshold) ? RefinementAction::Refine : RefinementAction::Keep;
     }
 
     KOKKOS_INLINE_FUNCTION
@@ -400,6 +465,135 @@ public:
                                Real dx) const
     {
         return RefinementAction::Keep;
+    }
+};
+
+// ============================================================================
+// PHASE 5: SMOOTHNESS CRITERION (for coarsening)
+// ============================================================================
+
+/**
+ * @brief Coarsening criterion based on solution smoothness
+ *
+ * Phase 5: Detects smooth regions where cells can be merged
+ *
+ * Coarsens where:
+ * - Solution variation is below threshold (smooth)
+ * - All 4 fine siblings have similar values
+ * - No sharp gradients or discontinuities
+ *
+ * This is the counterpart to GradientCriterion for refinement.
+ */
+template<typename System>
+    requires FiniteVolumeSystem<System>
+class SmoothnessCriterion {
+public:
+    using Real = typename System::RealType;
+    using Conserved = typename System::Conserved;
+    using Primitive = typename System::Primitive;
+
+    Real coarsen_threshold = Real(0.05);  // Lower than refine threshold (hysteresis)
+    bool use_rho = true;
+    bool use_p = true;
+    bool use_u = false;
+    Real min_value = Real(0);   // For relative variation
+
+    KOKKOS_INLINE_FUNCTION
+    SmoothnessCriterion() = default;
+
+    /**
+     * @brief Evaluate if cell can be coarsened (smooth region)
+     *
+     * For coarsening, neighbors represent the 4 fine siblings:
+     * - neighbors[0] = bottom-left
+     * - neighbors[1] = bottom-right
+     * - neighbors[2] = top-left
+     * - neighbors[3] = top-right
+     *
+     * Coarsening is allowed only if:
+     * 1. All 4 siblings have similar values (low variance)
+     * 2. Variation is below threshold
+     */
+    KOKKOS_INLINE_FUNCTION
+    RefinementAction evaluate(const Conserved& /* U_center */,
+                               const Primitive& /* q_center */,
+                               const Conserved* siblings,
+                               Real /* dx */) const
+    {
+        // Phase 6: Generic implementation - work directly without helpers
+        // This avoids compiler issues with if constexpr and helper functions
+        if constexpr (System::num_vars >= 4) {
+            // For systems with multiple conserved variables (Euler2D and similar)
+            bool all_valid = true;
+            for (int i = 0; i < 4; ++i) {
+                if (siblings[i].rho <= Real(0)) {
+                    all_valid = false;
+                    break;
+                }
+            }
+
+            if (!all_valid) {
+                return RefinementAction::Keep;
+            }
+
+            // Compute variance among the 4 siblings
+            Real variance_rho = Real(0);
+            Real mean_rho = Real(0);
+
+            for (int i = 0; i < 4; ++i) {
+                mean_rho += siblings[i].rho;
+            }
+            mean_rho *= Real(0.25);
+
+            // Compute variance: sum((x_i - mean)^2) / n
+            for (int i = 0; i < 4; ++i) {
+                Real dr = siblings[i].rho - mean_rho;
+                variance_rho += dr * dr;
+            }
+            variance_rho *= Real(0.25);
+
+            // Standard deviation = sqrt(variance)
+            Real std_rho = Kokkos::sqrt(variance_rho);
+
+            // Relative variation: std / (mean + eps)
+            constexpr Real eps = Real(1e-10);
+            Real rel_variation_rho = std_rho / (mean_rho + eps);
+
+            // Coarsen if variation is small enough (smooth region)
+            if (use_rho && rel_variation_rho < coarsen_threshold) {
+                return RefinementAction::Coarsen;
+            }
+
+            return RefinementAction::Keep;
+        } else {
+            // For scalar systems (Advection2D), compute variance of scalar value
+            Real mean_val = Real(0);
+            for (int i = 0; i < 4; ++i) {
+                mean_val += siblings[i].value;
+            }
+            mean_val *= Real(0.25);
+
+            // Compute variance
+            Real variance_val = Real(0);
+            for (int i = 0; i < 4; ++i) {
+                Real dr = siblings[i].value - mean_val;
+                variance_val += dr * dr;
+            }
+            variance_val *= Real(0.25);
+
+            // Standard deviation = sqrt(variance)
+            Real std_val = Kokkos::sqrt(variance_val);
+
+            // Relative variation
+            constexpr Real eps = Real(1e-10);
+            Real rel_variation = std_val / (Kokkos::abs(mean_val) + eps);
+
+            // Coarsen if variation is small enough
+            if (rel_variation < coarsen_threshold) {
+                return RefinementAction::Coarsen;
+            }
+            return RefinementAction::Keep;
+        }
     }
 };
 
@@ -441,7 +635,8 @@ public:
         Vorticity = 3,
         ValueRange = 4,
         Curl = 5,
-        Custom = 99
+        Custom = 99,
+        Smoothness = 6  // Phase 5: Coarsening criterion
     };
 
     struct CriterionStorage {
@@ -460,6 +655,7 @@ public:
     VorticityCriterion<System> vorticity_criteria[MaxCriteria];
     ValueRangeCriterion<System> value_range_criteria[MaxCriteria];
     CurlCriterion<System> curl_criteria[MaxCriteria];
+    SmoothnessCriterion<System> smoothness_criteria[MaxCriteria];  // Phase 5
 
     KOKKOS_FUNCTION
     CompositeCriterion() = default;
@@ -517,6 +713,21 @@ public:
     }
 
     /**
+     * @brief Phase 5: Add a smoothness criterion (host-side)
+     *
+     * For coarsening: detects smooth regions where cells can be merged.
+     */
+    int add_smoothness(const SmoothnessCriterion<System>& crit) {
+        if (num_criteria >= MaxCriteria) return -1;
+        int idx = num_criteria;
+        smoothness_criteria[idx] = crit;
+        criteria[idx].type = static_cast<CriterionType>(Smoothness);
+        criteria[idx].index = idx;
+        num_criteria++;
+        return idx;
+    }
+
+    /**
      * @brief Evaluate composite criterion (device-side)
      *
      * Loops over all criteria and combines results using the logic operator.
@@ -539,7 +750,17 @@ public:
             if (action == RefinementAction::Coarsen) coarsen_count++;
         }
 
-        // Combine based on logic operator
+        // Phase 5: Enhanced logic with Coarsen support
+        // Priority: Coarsen > Keep > Refine (hysteresis)
+        // Coarsen only if ALL smoothness criteria agree
+        // Refine based on logic operator (AND/OR/Vote)
+
+        // Check for unanimous coarsening (all criteria must agree)
+        if (coarsen_count == num_criteria && num_criteria > 0) {
+            return RefinementAction::Coarsen;
+        }
+
+        // Otherwise, use refinement logic
         switch (logic_op) {
             case And:
                 return (refine_count == num_criteria)
@@ -602,6 +823,11 @@ private:
                 return curl_criteria[crit_storage.index].evaluate(
                     U_center, q_center, neighbors, dx
                 );
+            // Phase 5: Handle Smoothness criterion
+            case static_cast<CriterionType>(Smoothness):
+                return smoothness_criteria[crit_storage.index].evaluate(
+                    U_center, q_center, neighbors, dx
+                );
             default:
                 return RefinementAction::Keep;
         }
@@ -626,6 +852,9 @@ private:
                 return value_range_criteria[crit_storage.index].evaluate(U, q, dx);
             case Curl:
                 return curl_criteria[crit_storage.index].evaluate(U, q, dx);
+            // Phase 5: Handle Smoothness criterion
+            case static_cast<CriterionType>(Smoothness):
+                return smoothness_criteria[crit_storage.index].evaluate(U, q, dx);
             default:
                 return RefinementAction::Keep;
         }
@@ -836,6 +1065,28 @@ public:
         crit.max_val = max_val;
         crit.invert = invert;
         config.criterion.add_value_range(crit);
+    }
+
+    /**
+     * @brief Add smoothness criterion (for coarsening)
+     *
+     * Phase 5: Coarsens cells in smooth regions where solution variation
+     * is below threshold. Uses hysteresis (coarsen_threshold < refine_threshold)
+     * to prevent refinement thrashing.
+     */
+    void add_smoothness_criterion(Real coarsen_threshold = Real(0.05),
+                                  bool use_rho = true,
+                                  bool use_p = true,
+                                  bool use_u = false,
+                                  Real min_value = Real(0))
+    {
+        SmoothnessCriterion<System> crit;
+        crit.coarsen_threshold = coarsen_threshold;
+        crit.use_rho = use_rho;
+        crit.use_p = use_p;
+        crit.use_u = use_u;
+        crit.min_value = min_value;
+        config.criterion.add_smoothness(crit);
     }
 
     /**

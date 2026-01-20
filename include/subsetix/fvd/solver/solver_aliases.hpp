@@ -5,6 +5,7 @@
 #include "../system/euler2d.hpp"
 #include "../flux/flux_schemes.hpp"
 #include "../reconstruction/reconstruction.hpp"
+#include "../time/time_integrators.hpp"
 
 namespace subsetix::fvd {
 
@@ -190,6 +191,68 @@ using EulerSolver2ndVanLeer = AdaptiveSolver<Euler2D<Real>,
 // EulerSolver2ndHLLC<> solver(fluid, domain, cfg);
 //
 // RESULT: 90% less code!
+//
+// ============================================================================
+
+// ============================================================================
+// RUNGE-KUTTA TIME INTEGRATOR ALIASES (Phase 6)
+// ============================================================================
+
+/**
+ * @brief 1st order + Forward Euler (default)
+ */
+template<typename Real = float>
+using EulerSolverEuler = EulerSolver1st<Real>;
+
+/**
+ * @brief 1st order + Heun's RK2
+ */
+template<typename Real = float>
+using EulerSolverRK2 = AdaptiveSolver<Euler2D<Real>,
+                                      reconstruction::NoReconstruction,
+                                      flux::RusanovFlux,
+                                      time::Heun2<Real>>;
+
+/**
+ * @brief 1st order + Kutta's RK3
+ *
+ * Used in fvd_simulation_examples.cpp
+ */
+template<typename Real = float>
+using EulerSolverRK3 = AdaptiveSolver<Euler2D<Real>,
+                                      reconstruction::NoReconstruction,
+                                      flux::RusanovFlux,
+                                      time::Kutta3<Real>>;
+
+/**
+ * @brief 1st order + SSPRK3
+ */
+template<typename Real = float>
+using EulerSolverSSPRK3 = AdaptiveSolver<Euler2D<Real>,
+                                         reconstruction::NoReconstruction,
+                                         flux::RusanovFlux,
+                                         time::SSPRK3<Real>>;
+
+/**
+ * @brief 1st order + Classic RK4
+ */
+template<typename Real = float>
+using EulerSolverRK4 = AdaptiveSolver<Euler2D<Real>,
+                                      reconstruction::NoReconstruction,
+                                      flux::RusanovFlux,
+                                      time::ClassicRK4<Real>>;
+
+// ============================================================================
+// ALIAS SUMMARY TABLE (EXTENDED)
+// ============================================================================
+//
+// | Alias             | Order | Flux    | Time Integrator | Use Case                    |
+// |-------------------|-------|---------|-----------------|-----------------------------|
+// | EulerSolverEuler  | 1st   | Rusanov | Forward Euler   | Simplest, default           |
+// | EulerSolverRK2    | 1st   | Rusanov | Heun's RK2      | 2nd order time              |
+// | EulerSolverRK3    | 1st   | Rusanov | Kutta's RK3     | 3rd order time              |
+// | EulerSolverSSPRK3 | 1st   | Rusanov | SSPRK3          | 3rd order SSP               |
+// | EulerSolverRK4    | 1st   | Rusanov | Classic RK4     | 4th order time              |
 //
 // ============================================================================
 

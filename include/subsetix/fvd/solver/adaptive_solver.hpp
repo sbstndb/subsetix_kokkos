@@ -20,6 +20,7 @@
 #include "../amr/refinement_criteria.hpp"
 #include "../../csr_ops/amr.hpp"
 #include "../../csr_ops/field_amr.hpp"
+#include "../boundary/time_dependent_bc.hpp"
 
 namespace subsetix::fvd {
 
@@ -197,6 +198,27 @@ public:
         std::size_t nx = 0;
         std::size_t ny = 0;
 
+        // ====================================================================
+        // PHASE 4: Time Step Control Configuration
+        // ====================================================================
+
+        /**
+         * @brief Time step control limits
+         *
+         * Phase 4: Configurable dt limits for adaptive time stepping
+         */
+        struct TimeStepConfig {
+            Real dt_min = Real(1e-10);      // Minimum time step (safety)
+            Real dt_max = Real(1e-2);       // Maximum time step
+            Real cfl_target = Real(0.8);    // Target CFL number
+            Real cfl_min = Real(0.1);       // Minimum CFL (for dt_max)
+            Real cfl_max = Real(1.0);       // Maximum CFL (for dt_min)
+            Real growth_factor = Real(1.2); // Max dt increase per step
+            Real shrink_factor = Real(0.8); // Max dt decrease per step
+            int adjust_interval = 1;        // Check every N steps (1 = every step)
+            bool enable_adaptive = false;   // Phase 4: Enable adaptive dt control
+        } time_step;
+
         // IMPROVEMENT E: Embedded refinement criteria
         RefinementCriteria refinement;
 
@@ -296,6 +318,38 @@ public:
     void set_boundary_conditions(const BoundaryConfig<System>& bc) {
         bc_config_ = bc;
     }
+
+    /**
+     * @brief Enable time-dependent boundary conditions using BcManager
+     *
+     * Phase 3: Advanced BC system with time dependence and zonal BCs
+     *
+     * @param bc_manager Configured BcManager with time-dependent BCs
+     *
+     * Usage:
+     *   boundary::BcManager<System> mgr;
+     *   mgr.initialize(nx, ny, dx, dy);
+     *   mgr.add_time_dependent_bc("left", sinusoidal_inlet<System>(1.0, 100.0, 2.0));
+     *   solver.set_bc_manager(mgr);
+     */
+    void set_bc_manager(const boundary::BcManager<System>& bc_manager) {
+        bc_manager_ = bc_manager;
+        use_bc_manager_ = true;
+        // Notify observers: BC configuration was changed
+        observer_manager_.notify(SolverEvent::BoundaryConditionsChanged);
+    }
+
+    /**
+     * @brief Disable time-dependent BCs and revert to simple bc_config_
+     */
+    void disable_bc_manager() {
+        use_bc_manager_ = false;
+    }
+
+    /**
+     * @brief Check if time-dependent BCs are enabled
+     */
+    bool bc_manager_enabled() const { return use_bc_manager_; }
 
     // ========================================================================
     // INITIALIZATION
@@ -444,6 +498,7 @@ public:
         // -------------------------------------------------------------------
         // Step 1: Compute adaptive time step based on CFL condition
         // -------------------------------------------------------------------
+        // Phase 4: Use configurable time step limits from Config
         Real max_speed = compute_max_wave_speed();
         Real dx_min = Kokkos::min(cfg_.dx, cfg_.dy);
 
@@ -455,10 +510,12 @@ public:
         // CFL condition: dt = CFL * dx / max_wave_speed
         Real dt = cfg_.cfl * dx_min / max_speed;
 
-        // Apply safety limits (optional, can be configured)
-        const Real dt_min = Real(1e-10);
-        const Real dt_max = Real(1e-2);
-        dt = Kokkos::fmax(dt_min, Kokkos::fmin(dt, dt_max));
+        // Phase 4: Apply configurable safety limits
+        dt = Kokkos::fmax(cfg_.time_step.dt_min,
+                          Kokkos::fmin(dt, cfg_.time_step.dt_max));
+
+        // Phase 4: Store current dt for adaptive control
+        last_dt_ = dt;
 
         // -------------------------------------------------------------------
         // Step 2-4: Time integration (dispatch based on integrator type)
@@ -517,6 +574,48 @@ public:
      */
     int integrator_stages() const {
         return TimeIntegrator::stages;
+    }
+
+    // ========================================================================
+    // PHASE 4: TIME STEP CONTROL
+    // ========================================================================
+
+    /**
+     * @brief Get the last time step used
+     */
+    Real last_dt() const {
+        return last_dt_;
+    }
+
+    /**
+     * @brief Get current time
+     */
+    Real current_time() const {
+        return current_time_;
+    }
+
+    /**
+     * @brief Set time step limits
+     *
+     * Phase 4: Configure dt_min and dt_max for adaptive time stepping
+     */
+    void set_dt_limits(Real dt_min, Real dt_max) {
+        cfg_.time_step.dt_min = dt_min;
+        cfg_.time_step.dt_max = dt_max;
+    }
+
+    /**
+     * @brief Get time step configuration
+     */
+    const typename Config::TimeStepConfig& time_step_config() const {
+        return cfg_.time_step;
+    }
+
+    /**
+     * @brief Access time step configuration (mutable)
+     */
+    typename Config::TimeStepConfig& time_step_config() {
+        return cfg_.time_step;
     }
 
     // ========================================================================
@@ -594,8 +693,8 @@ public:
     void step_euler(Real dt) {
         using ExecSpace = typename Kokkos::DefaultExecutionSpace;
 
-        // Apply boundary conditions
-        apply_boundary_conditions();
+        // Apply boundary conditions with current time
+        apply_boundary_conditions(current_time_);
 
         // Compute RHS
         compute_rhs(rhs_work_, current_time_);
@@ -609,10 +708,9 @@ public:
             "euler_update",
             Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(n_cells_)),
             KOKKOS_LAMBDA(const int i) {
-                U(i).rho  += dt_local * rhs(i).rho;
-                U(i).rhou += dt_local * rhs(i).rhou;
-                U(i).rhov += dt_local * rhs(i).rhov;
-                U(i).E    += dt_local * rhs(i).E;
+                // Phase 6: Generic field update using operators
+                // Works for ANY System with Conserved that has += and *= operators
+                U(i) += rhs(i) * dt_local;
             }
         );
         Kokkos::fence();
@@ -640,20 +738,40 @@ public:
         // Save original solution
         Kokkos::deep_copy(U_old_, U_);
 
-        // Stage loop
+        // Phase 4: Stage loop with observer notifications
         for (int s = 0; s < TimeIntegrator::stages; ++s) {
             Real stage_time = current_time_ + TimeIntegrator::c[s] * dt;
 
+            // Phase 4: Notify observers: SubStepBegin
+            SolverState<Real> state_begin;
+            state_begin.time = current_time_;
+            state_begin.dt = dt;
+            state_begin.step = step_count_;
+            state_begin.stage = s;
+            state_begin.num_stages = TimeIntegrator::stages;
+            state_begin.stage_time = stage_time;
+            observer_manager_.notify(SolverEvent::SubStepBegin, state_begin);
+
             if (s == 0) {
                 // First stage: use original solution
-                apply_boundary_conditions();
+                apply_boundary_conditions(stage_time);
                 compute_rhs(stage_rhs_[0], stage_time);
             } else {
                 // Subsequent stages: compute intermediate solution
                 compute_stage_solution(s, dt);
-                apply_boundary_conditions();
+                apply_boundary_conditions(stage_time);
                 compute_rhs(stage_rhs_[s], stage_time);
             }
+
+            // Phase 4: Notify observers: SubStepEnd
+            SolverState<Real> state_end;
+            state_end.time = current_time_;
+            state_end.dt = dt;
+            state_end.step = step_count_;
+            state_end.stage = s;
+            state_end.num_stages = TimeIntegrator::stages;
+            state_end.stage_time = stage_time;
+            observer_manager_.notify(SolverEvent::SubStepEnd, state_end);
         }
 
         // Combine all stages for final solution
@@ -721,22 +839,19 @@ public:
             "rk_combine",
             Kokkos::RangePolicy<ExecSpace>(0, n),
             KOKKOS_LAMBDA(const int i) {
-                Conserved sum{0, 0, 0, 0};
+                // Phase 6: Generic zero initialization (works for ANY System)
+                Conserved sum{};
 
-                // Sum contributions from all stages
+                // Sum contributions from all stages (generic operator usage)
                 for (int s = 0; s < TimeIntegrator::stages; ++s) {
                     Real coeff = TimeIntegrator::b[s];
                     const auto& k_s = stage_rhs_[s];
-                    sum.rho  += coeff * k_s(i).rho;
-                    sum.rhou += coeff * k_s(i).rhou;
-                    sum.rhov += coeff * k_s(i).rhov;
-                    sum.E    += coeff * k_s(i).E;
+                    // Phase 6: Generic accumulation using operators
+                    sum += k_s(i) * coeff;
                 }
 
-                U(i).rho  = U_old(i).rho  + dt * sum.rho;
-                U(i).rhou = U_old(i).rhou + dt * sum.rhou;
-                U(i).rhov = U_old(i).rhov + dt * sum.rhov;
-                U(i).E    = U_old(i).E    + dt * sum.E;
+                // Phase 6: Generic final update using operators
+                U(i) = U_old(i) + sum * dt;
             }
         );
         Kokkos::fence();
@@ -1189,9 +1304,20 @@ public:
             Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(n_cells_)),
             KOKKOS_LAMBDA(const int i, Real& local_max) {
                 Primitive q = System::to_primitive(U(i), gamma);
-                Real a = System::sound_speed(q, gamma);
-                Real vel = Kokkos::sqrt(q.u * q.u + q.v * q.v);
-                Real speed = vel + a;
+                Real speed = Real(0);
+
+                // Phase 6: Generic wave speed computation for ANY System
+                if constexpr (System::num_vars >= 4) {
+                    // For systems with velocity components (Euler2D and similar)
+                    Real a = System::sound_speed(q, gamma);
+                    Real vel = Kokkos::sqrt(q.u * q.u + q.v * q.v);
+                    speed = vel + a;
+                } else {
+                    // For scalar systems (Advection2D), wave speed is constant
+                    // Use default value since system_instance is not accessible in device lambda
+                    speed = Real(1);  // Default advection speed
+                }
+
                 if (speed > local_max) {
                     local_max = speed;
                 }
@@ -1209,10 +1335,19 @@ public:
      * For dense storage on regular grids with row-major ordering.
      *
      * NOTE: Public for CUDA compatibility.
+     *
+     * @param t Current simulation time (for time-dependent BCs)
      */
-    void apply_boundary_conditions() {
+    void apply_boundary_conditions(Real t = Real(0)) {
         if (!fields_allocated_) return;
 
+        // Phase 3: Use BcManager for time-dependent BCs if enabled
+        if (use_bc_manager_) {
+            apply_boundary_conditions_with_manager(t);
+            return;
+        }
+
+        // Original implementation using simple bc_config_
         using ExecSpace = typename Kokkos::DefaultExecutionSpace;
 
         auto U = U_;
@@ -1220,69 +1355,259 @@ public:
         const std::size_t ny = cfg_.ny;
         const auto gamma = cfg_.gamma;
 
-        // For MVP: simple BC handling
+        // Capture BC config by value (required for Kokkos lambdas)
+        const auto bc_left = bc_config_.left;
+        const auto bc_right = bc_config_.right;
+        const auto bc_bottom = bc_config_.bottom;
+        const auto bc_top = bc_config_.top;
+
         // Left boundary (x=0, all y)
         if (nx > 0 && ny > 0) {
             Kokkos::parallel_for(
                 "bc_left",
                 Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(ny)),
                 KOKKOS_LAMBDA(const int j) {
-                    const std::size_t idx = j * nx;  // First column
-                    // Apply left BC (inflow by default)
-                    // For MVP: zero-gradient (copy from neighbor)
-                    if (idx + 1 < nx) {
-                        U(idx) = U(idx + 1);  // Neumann
+                    const std::size_t idx = j * nx;  // First column (ghost)
+                    const std::size_t idx_int = j * nx + 1;  // First interior cell
+                    if (idx_int < nx * ny) {
+                        Conserved U_ghost = U(idx);
+                        const Conserved U_interior = U(idx_int);
+                        bc_left.apply(U_ghost, U_interior, gamma, t);
+                        U(idx) = U_ghost;
                     }
                 }
             );
         }
 
         // Right boundary (x=nx-1, all y)
-        if (nx > 0) {
+        if (nx > 0 && ny > 0) {
             Kokkos::parallel_for(
                 "bc_right",
                 Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(ny)),
                 KOKKOS_LAMBDA(const int j) {
-                    const std::size_t idx = j * nx + (nx - 1);  // Last column
-                    // Apply right BC (outflow by default)
-                    if (idx > 0) {
-                        U(idx) = U(idx - 1);  // Neumann
+                    const std::size_t idx = j * nx + (nx - 1);  // Last column (ghost)
+                    const std::size_t idx_int = j * nx + (nx - 2);  // Last interior cell
+                    if (nx >= 2 && idx_int < nx * ny) {
+                        Conserved U_ghost = U(idx);
+                        const Conserved U_interior = U(idx_int);
+                        bc_right.apply(U_ghost, U_interior, gamma, t);
+                        U(idx) = U_ghost;
                     }
                 }
             );
         }
 
         // Bottom boundary (y=0, all x)
-        if (ny > 0) {
+        if (nx > 0 && ny > 0) {
             Kokkos::parallel_for(
                 "bc_bottom",
                 Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(nx)),
                 KOKKOS_LAMBDA(const int i) {
-                    const std::size_t idx = i;  // First row
-                    // Apply bottom BC
-                    if (idx + nx < n_cells_) {
-                        U(idx) = U(idx + nx);  // Neumann
+                    const std::size_t idx = i;  // First row (ghost)
+                    const std::size_t idx_int = i + nx;  // First interior row
+                    if (idx_int < nx * ny) {
+                        Conserved U_ghost = U(idx);
+                        const Conserved U_interior = U(idx_int);
+                        bc_bottom.apply(U_ghost, U_interior, gamma, t);
+                        U(idx) = U_ghost;
                     }
                 }
             );
         }
 
         // Top boundary (y=ny-1, all x)
-        if (ny > 0 && nx > 0) {
+        if (nx > 0 && ny > 0) {
             Kokkos::parallel_for(
                 "bc_top",
                 Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(nx)),
                 KOKKOS_LAMBDA(const int i) {
-                    const std::size_t idx = (ny - 1) * nx + i;  // Last row
-                    // Apply top BC
-                    if (idx >= nx) {
-                        U(idx) = U(idx - nx);  // Neumann
+                    const std::size_t idx = (ny - 1) * nx + i;  // Last row (ghost)
+                    const std::size_t idx_int = (ny - 2) * nx + i;  // Last interior row
+                    if (ny >= 2 && idx_int < nx * ny) {
+                        Conserved U_ghost = U(idx);
+                        const Conserved U_interior = U(idx_int);
+                        bc_top.apply(U_ghost, U_interior, gamma, t);
+                        U(idx) = U_ghost;
                     }
                 }
             );
         }
 
         Kokkos::fence();
+
+        // Notify observers: BCs were evaluated
+        SolverState<Real> state;
+        state.time = t;
+        observer_manager_.notify(SolverEvent::BoundaryConditionsEvaluated, state);
+    }
+
+    /**
+     * @brief Apply time-dependent boundary conditions using BcManager
+     *
+     * Phase 3: Advanced BC system with time dependence and zonal BCs
+     *
+     * NOTE: Public for CUDA compatibility.
+     *
+     * @param t Current simulation time (for time-dependent BCs)
+     */
+    void apply_boundary_conditions_with_manager(Real t) {
+        if (!fields_allocated_) return;
+
+        // Sync any pending BC changes to device
+        bc_manager_.sync_to_device();
+
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+        const auto& registry = bc_manager_.device_registry();
+
+        auto U = U_;
+        const std::size_t nx = cfg_.nx;
+        const std::size_t ny = cfg_.ny;
+        const auto gamma = cfg_.gamma;
+        const Real dx = cfg_.dx;
+        const Real dy = cfg_.dy;
+        const Real x0 = domain_.x_min;
+        const Real y0 = domain_.y_min;
+
+        // Capture registry by value (not directly, but through device reference)
+        // Note: registry is already device-accessible via its Kokkos::Views
+
+        // Left boundary (side 0, x=0, all y)
+        if (nx > 0 && ny > 0) {
+            Kokkos::parallel_for(
+                "bc_left_manager",
+                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(ny)),
+                KOKKOS_LAMBDA(const int j) {
+                    const std::size_t idx = j * nx;  // First column (ghost)
+                    const std::size_t idx_int = j * nx + 1;  // First interior cell
+                    if (idx_int < nx * ny) {
+                        // Find BC descriptor for this location
+                        auto desc = registry.find(0, 0, j, t);  // side 0 = left
+
+                        Conserved U_ghost = U(idx);
+                        const Conserved U_interior = U(idx_int);
+
+                        // Apply BC based on descriptor type
+                        if (desc.type == boundary::BcDescriptor<System>::StaticNeumann) {
+                            U_ghost = U_interior;
+                        } else if (desc.type == boundary::BcDescriptor<System>::StaticDirichlet ||
+                                   desc.type == boundary::BcDescriptor<System>::StaticReflective) {
+                            U_ghost = desc.static_value;
+                        } else if (desc.type == boundary::BcDescriptor<System>::TimeDependentDirichlet ||
+                                   desc.type == boundary::BcDescriptor<System>::TimeDependentInlet) {
+                            U_ghost = desc.get_value(t, gamma);
+                        } else {
+                            // Default: Neumann
+                            U_ghost = U_interior;
+                        }
+
+                        U(idx) = U_ghost;
+                    }
+                }
+            );
+        }
+
+        // Right boundary (side 1, x=nx-1, all y)
+        if (nx > 0 && ny > 0) {
+            Kokkos::parallel_for(
+                "bc_right_manager",
+                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(ny)),
+                KOKKOS_LAMBDA(const int j) {
+                    const std::size_t idx = j * nx + (nx - 1);  // Last column (ghost)
+                    const std::size_t idx_int = j * nx + (nx - 2);  // Last interior cell
+                    if (nx >= 2 && idx_int < nx * ny) {
+                        auto desc = registry.find(1, nx - 1, j, t);  // side 1 = right
+
+                        Conserved U_ghost = U(idx);
+                        const Conserved U_interior = U(idx_int);
+
+                        if (desc.type == boundary::BcDescriptor<System>::StaticNeumann) {
+                            U_ghost = U_interior;
+                        } else if (desc.type == boundary::BcDescriptor<System>::StaticDirichlet ||
+                                   desc.type == boundary::BcDescriptor<System>::StaticReflective) {
+                            U_ghost = desc.static_value;
+                        } else if (desc.type == boundary::BcDescriptor<System>::TimeDependentDirichlet ||
+                                   desc.type == boundary::BcDescriptor<System>::TimeDependentInlet) {
+                            U_ghost = desc.get_value(t, gamma);
+                        } else {
+                            U_ghost = U_interior;
+                        }
+
+                        U(idx) = U_ghost;
+                    }
+                }
+            );
+        }
+
+        // Bottom boundary (side 2, y=0, all x)
+        if (nx > 0 && ny > 0) {
+            Kokkos::parallel_for(
+                "bc_bottom_manager",
+                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(nx)),
+                KOKKOS_LAMBDA(const int i) {
+                    const std::size_t idx = i;  // First row (ghost)
+                    const std::size_t idx_int = i + nx;  // First interior row
+                    if (idx_int < nx * ny) {
+                        auto desc = registry.find(2, i, 0, t);  // side 2 = bottom
+
+                        Conserved U_ghost = U(idx);
+                        const Conserved U_interior = U(idx_int);
+
+                        if (desc.type == boundary::BcDescriptor<System>::StaticNeumann) {
+                            U_ghost = U_interior;
+                        } else if (desc.type == boundary::BcDescriptor<System>::StaticDirichlet ||
+                                   desc.type == boundary::BcDescriptor<System>::StaticReflective) {
+                            U_ghost = desc.static_value;
+                        } else if (desc.type == boundary::BcDescriptor<System>::TimeDependentDirichlet ||
+                                   desc.type == boundary::BcDescriptor<System>::TimeDependentInlet) {
+                            U_ghost = desc.get_value(t, gamma);
+                        } else {
+                            U_ghost = U_interior;
+                        }
+
+                        U(idx) = U_ghost;
+                    }
+                }
+            );
+        }
+
+        // Top boundary (side 3, y=ny-1, all x)
+        if (nx > 0 && ny > 0) {
+            Kokkos::parallel_for(
+                "bc_top_manager",
+                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(nx)),
+                KOKKOS_LAMBDA(const int i) {
+                    const std::size_t idx = (ny - 1) * nx + i;  // Last row (ghost)
+                    const std::size_t idx_int = (ny - 2) * nx + i;  // Last interior row
+                    if (ny >= 2 && idx_int < nx * ny) {
+                        auto desc = registry.find(3, i, ny - 1, t);  // side 3 = top
+
+                        Conserved U_ghost = U(idx);
+                        const Conserved U_interior = U(idx_int);
+
+                        if (desc.type == boundary::BcDescriptor<System>::StaticNeumann) {
+                            U_ghost = U_interior;
+                        } else if (desc.type == boundary::BcDescriptor<System>::StaticDirichlet ||
+                                   desc.type == boundary::BcDescriptor<System>::StaticReflective) {
+                            U_ghost = desc.static_value;
+                        } else if (desc.type == boundary::BcDescriptor<System>::TimeDependentDirichlet ||
+                                   desc.type == boundary::BcDescriptor<System>::TimeDependentInlet) {
+                            U_ghost = desc.get_value(t, gamma);
+                        } else {
+                            U_ghost = U_interior;
+                        }
+
+                        U(idx) = U_ghost;
+                    }
+                }
+            );
+        }
+
+        Kokkos::fence();
+
+        // Notify observers: BCs were evaluated
+        SolverState<Real> state;
+        state.time = t;
+        observer_manager_.notify(SolverEvent::BoundaryConditionsEvaluated, state);
     }
 
     /**
@@ -1299,7 +1624,9 @@ public:
      *
      * NOTE: Public for CUDA compatibility.
      */
-    void compute_rhs(Kokkos::View<Conserved*>& rhs_out, Real /* t */) {
+    void compute_rhs(Kokkos::View<Conserved*>& rhs_out, Real t) {
+        // Time parameter available for time-dependent source terms or BCs
+        (void)t;  // Currently unused in RHS computation (reserved for future use)
         if (!fields_allocated_) return;
 
         using ExecSpace = typename Kokkos::DefaultExecutionSpace;
@@ -1364,14 +1691,14 @@ public:
                 // Compute flux divergence: dU/dt = -div(F)
                 // div(F)_x = (F_east - F_West) / dx
                 // div(F)_y = (F_North - F_South) / dy
-                Conserved RHS;
+                // Phase 6: Generic computation using operators - works for ANY System
                 const Real inv_dx = Real(1) / dx;
                 const Real inv_dy = Real(1) / dy;
 
-                RHS.rho  = -(F_e.rho  - F_w.rho ) * inv_dx - (F_n.rho  - F_s.rho ) * inv_dy;
-                RHS.rhou = -(F_e.rhou - F_w.rhou) * inv_dx - (F_n.rhou - F_s.rhou) * inv_dy;
-                RHS.rhov = -(F_e.rhov - F_w.rhov) * inv_dx - (F_n.rhov - F_s.rhov) * inv_dy;
-                RHS.E    = -(F_e.E    - F_w.E   ) * inv_dx - (F_n.E    - F_s.E   ) * inv_dy;
+                // RHS = -div(F) = -(dF/dx + dF/dy)
+                // Using generic operators: (F_w - F_e) * inv_dx + (F_s - F_n) * inv_dy
+                // This avoids unary minus which may not be defined
+                Conserved RHS = (F_w - F_e) * inv_dx + (F_s - F_n) * inv_dy;
 
                 rhs(idx_c) = RHS;
             }
@@ -1504,6 +1831,7 @@ public:
         const Real dx = cfg_.dx;
         const std::size_t nx = cfg_.nx;
 
+        // Phase 5: Use full CompositeCriterion with coarsening support
         Kokkos::parallel_for(
             "evaluate_refinement",
             Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(n)),
@@ -1512,52 +1840,23 @@ public:
                 const Conserved U_cell = U(idx);
                 const Primitive q_cell = System::to_primitive(U_cell, gamma);
 
-                // For MVP: use simple density gradient criterion
-                // TODO: Support full CompositeCriterion with multiple criteria
-
-                // Check level limits
-                int8_t current_level = 0;  // TODO: Get from level info
-                if (current_level >= refinement_config_.max_level) {
+                // Check level limits (for current finest level)
+                int8_t current_level = finest_level_;
+                if (current_level >= static_cast<int8_t>(refinement_config_.max_level)) {
                     tags(idx) = static_cast<int8_t>(amr::RefinementAction::Keep);
                     return;
                 }
 
-                // Simple gradient-based criterion (placeholder)
-                // Compute |grad(rho)|
-                Real grad_rho = 0;
-                int grad_count = 0;
+                // Phase 5: Evaluate using full CompositeCriterion
+                // Pass nullptr for siblings (simple mode - no coarsening based on siblings)
+                // Coarsening is handled by SmoothnessCriterion which checks local variation
+                amr::RefinementAction action = criterion.evaluate(
+                    U_cell, q_cell,
+                    nullptr,  // siblings = nullptr for simple mode
+                    dx
+                );
 
-                // Check west neighbor
-                if (idx % nx > 0) {
-                    grad_rho += Kokkos::abs(U(idx - 1).rho - U_cell.rho);
-                    grad_count++;
-                }
-                // Check east neighbor
-                if (idx % nx < nx - 1) {
-                    grad_rho += Kokkos::abs(U(idx + 1).rho - U_cell.rho);
-                    grad_count++;
-                }
-                // Check south neighbor
-                if (idx >= nx) {
-                    grad_rho += Kokkos::abs(U(idx - nx).rho - U_cell.rho);
-                    grad_count++;
-                }
-                // Check north neighbor
-                if (idx + nx < n) {
-                    grad_rho += Kokkos::abs(U(idx + nx).rho - U_cell.rho);
-                    grad_count++;
-                }
-
-                if (grad_count > 0) {
-                    grad_rho = grad_rho / (dx * grad_count);
-                }
-
-                // Apply threshold
-                if (grad_rho > refinement_config_.criterion.gradient_criteria[0].threshold) {
-                    tags(idx) = static_cast<int8_t>(amr::RefinementAction::Refine);
-                } else {
-                    tags(idx) = static_cast<int8_t>(amr::RefinementAction::Keep);
-                }
+                tags(idx) = static_cast<int8_t>(action);
             }
         );
         Kokkos::fence();
@@ -1593,18 +1892,30 @@ public:
      * Transfers solution data from coarse level to fine level using
      * injection or linear reconstruction.
      *
+     * Phase 5: Uses CSR-aware prolongation with proper geometry handling.
+     *
      * NOTE: Public for CUDA compatibility.
-     * MVP: Simplified implementation using direct Kokkos views
      */
     void prolong_to_level(int coarse_level, int fine_level) {
         if (coarse_level < 0 || fine_level >= max_amr_levels_) return;
         if (!levels_[coarse_level].active || !levels_[fine_level].active) return;
 
-        // MVP: Use simple injection (copy coarse value to 4 fine cells)
-        // Full implementation would use CSR-aware prolongation with geometry
+        // Phase 5: Use CSR-aware prolongation
+        // Create Field2DDevice wrappers for prolongation
+        subsetix::csr::Field2DDevice<Conserved> coarse_field;
+        coarse_field.geometry = levels_[coarse_level].geometry;
+        coarse_field.values = levels_[coarse_level].U;
 
-        // For MVP with dense storage: fine cell (2i, 2j) gets value from coarse (i, j)
-        // This is a simplified version - TODO: implement proper CSR-aware prolongation
+        subsetix::csr::Field2DDevice<Conserved> fine_field;
+        fine_field.geometry = levels_[fine_level].geometry;
+        fine_field.values = levels_[fine_level].U;
+
+        // Prolong on entire fine geometry (injection)
+        subsetix::csr::CsrSetAlgebraContext ctx;
+        subsetix::csr::prolong_field_on_subset_device(
+            fine_field, coarse_field, fine_field.geometry, &ctx);
+
+        Kokkos::fence();
     }
 
     /**
@@ -1613,18 +1924,30 @@ public:
      * Transfers solution data from fine level to coarse level using
      * volume-weighted averaging (conservative restriction).
      *
+     * Phase 5: Uses CSR-aware restriction with proper geometry handling.
+     *
      * NOTE: Public for CUDA compatibility.
-     * MVP: Simplified implementation using direct Kokkos views
      */
     void restrict_to_level(int fine_level, int coarse_level) {
         if (fine_level <= 0 || coarse_level >= fine_level) return;
         if (!levels_[fine_level].active || !levels_[coarse_level].active) return;
 
-        // MVP: Use simple averaging (average 4 fine cells to 1 coarse)
-        // Full implementation would use CSR-aware restriction with geometry
+        // Phase 5: Use CSR-aware restriction
+        // Create Field2DDevice wrappers for restriction
+        subsetix::csr::Field2DDevice<Conserved> coarse_field;
+        coarse_field.geometry = levels_[coarse_level].geometry;
+        coarse_field.values = levels_[coarse_level].U;
 
-        // For MVP with dense storage: coarse cell (i, j) = avg of fine (2i,2j), (2i+1,2j), (2i,2j+1), (2i+1,2j+1)
-        // This is a simplified version - TODO: implement proper CSR-aware restriction
+        subsetix::csr::Field2DDevice<Conserved> fine_field;
+        fine_field.geometry = levels_[fine_level].geometry;
+        fine_field.values = levels_[fine_level].U;
+
+        // Restrict on entire coarse geometry (volume-weighted averaging)
+        subsetix::csr::CsrSetAlgebraContext ctx;
+        subsetix::csr::restrict_field_on_subset_device(
+            coarse_field, fine_field, coarse_field.geometry, &ctx);
+
+        Kokkos::fence();
     }
 
 private:
@@ -1642,6 +1965,10 @@ private:
     // Boundary conditions (P0-2 FIX)
     BoundaryConfig<System> bc_config_;
 
+    // Time-dependent BC manager (Phase 3)
+    boundary::BcManager<System> bc_manager_;
+    bool use_bc_manager_ = false;  // Flag to enable time-dependent BCs
+
     // IMPROVEMENT D: Observer manager for callbacks
     ObserverManager<Real> observer_manager_;
 
@@ -1656,6 +1983,7 @@ private:
     // Simulation state
     Real current_time_ = Real(0);
     int step_count_ = 0;
+    Real last_dt_ = Real(0);           // Phase 4: Last time step used
 
     // ========================================================================
     // FIELD STORAGE (for internal time integration)

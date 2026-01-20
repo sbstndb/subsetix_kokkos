@@ -146,3 +146,14 @@ target_link_libraries(fvd_mach2_cylinder_example
         subsetix::core
 )
 target_include_directories(fvd_mach2_cylinder_example PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Phase 6: FVD simulation examples (includes Advection2D example)
+add_executable(fvd_simulation_examples
+    fvd_simulation_examples.cpp
+)
+
+target_link_libraries(fvd_simulation_examples
+    PRIVATE
+        subsetix::core
+)
+target_include_directories(fvd_simulation_examples PRIVATE ${CMAKE_SOURCE_DIR}/include)

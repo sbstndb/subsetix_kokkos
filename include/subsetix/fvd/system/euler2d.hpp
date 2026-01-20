@@ -50,6 +50,42 @@ public:
         KOKKOS_INLINE_FUNCTION
         Conserved(Real r_, Real rhox_, Real rhoy_, Real E_)
             : rho(r_), rhou(rhox_), rhov(rhoy_), E(E_) {}
+
+        // Phase 6: Generic operators for multi-system support
+        KOKKOS_INLINE_FUNCTION
+        Conserved& operator+=(const Conserved& other) {
+            rho  += other.rho;
+            rhou += other.rhou;
+            rhov += other.rhov;
+            E    += other.E;
+            return *this;
+        }
+
+        KOKKOS_INLINE_FUNCTION
+        Conserved& operator*=(Real s) {
+            rho  *= s;
+            rhou *= s;
+            rhov *= s;
+            E    *= s;
+            return *this;
+        }
+
+        KOKKOS_INLINE_FUNCTION
+        Conserved operator+(const Conserved& other) const {
+            return Conserved{rho + other.rho, rhou + other.rhou,
+                            rhov + other.rhov, E + other.E};
+        }
+
+        KOKKOS_INLINE_FUNCTION
+        Conserved operator*(Real s) const {
+            return Conserved{rho * s, rhou * s, rhov * s, E * s};
+        }
+
+        KOKKOS_INLINE_FUNCTION
+        Conserved operator-(const Conserved& other) const {
+            return Conserved{rho - other.rho, rhou - other.rhou,
+                            rhov - other.rhov, E - other.E};
+        }
     };
 
     /// Primitive variables Q = (rho, u, v, p)
@@ -178,6 +214,20 @@ struct system_traits<Euler2D<Real>> {
     static constexpr const char* const names[n_conserved] = {
         "rho", "rhou", "rhov", "E"
     };
+
+    /// Get primitive field by index (0-based) - for refinement criteria compatibility
+    /// Maps: 0->rho, 1->u, 2->v, 3->p
+    KOKKOS_INLINE_FUNCTION
+    static Real get_primitive_field(const typename Euler2D<Real>::Primitive& q,
+                                    int field_idx) {
+        switch (field_idx) {
+            case 0: return q.rho;
+            case 1: return q.u;
+            case 2: return q.v;
+            case 3: return q.p;
+            default: return Real(0);
+        }
+    }
 };
 
 // ============================================================================

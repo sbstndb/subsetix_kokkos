@@ -62,11 +62,13 @@ enum class SolverEvent : int {
     SimulationEnd,
     StepBegin,
     StepEnd,
-    SubStepBegin,      // NEW: For RK sub-stages
-    SubStepEnd,        // NEW: For RK sub-stages
+    SubStepBegin,      // For RK sub-stages
+    SubStepEnd,        // For RK sub-stages
     RemeshBegin,
     RemeshEnd,
     OutputWritten,
+    BoundaryConditionsEvaluated,  // Phase 3: BCs were evaluated
+    BoundaryConditionsChanged,      // Phase 3: BC config was modified
     Error,
     CustomEvent
 };
@@ -85,6 +87,8 @@ inline const char* to_string(SolverEvent event) {
         case SolverEvent::RemeshBegin: return "RemeshBegin";
         case SolverEvent::RemeshEnd: return "RemeshEnd";
         case SolverEvent::OutputWritten: return "OutputWritten";
+        case SolverEvent::BoundaryConditionsEvaluated: return "BoundaryConditionsEvaluated";
+        case SolverEvent::BoundaryConditionsChanged: return "BoundaryConditionsChanged";
         case SolverEvent::Error: return "Error";
         case SolverEvent::CustomEvent: return "CustomEvent";
         default: return "Unknown";

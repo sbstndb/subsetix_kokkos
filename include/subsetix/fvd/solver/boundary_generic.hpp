@@ -45,8 +45,13 @@ struct AnyBc {
     KOKKOS_INLINE_FUNCTION
     void apply(Conserved& U_ghost,
                const Conserved& U_interior,
-               Real gamma) const
+               Real gamma,
+               Real t = Real(0)) const  // Time parameter for time-dependent BCs
     {
+        // Note: Time parameter is reserved for future time-dependent BC support
+        // For static BCs (Dirichlet, Neumann, Reflective), t is ignored
+        (void)t;  // Suppress unused parameter warning
+
         switch (type) {
             case Dirichlet:
                 U_ghost = value;

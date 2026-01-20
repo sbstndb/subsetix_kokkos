@@ -98,3 +98,21 @@ target_link_libraries(subsetix_test_mach2_validation PRIVATE subsetix::core GTes
 target_include_directories(subsetix_test_mach2_validation PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_include_directories(subsetix_test_mach2_validation PRIVATE ${CMAKE_SOURCE_DIR}/examples/mach2_cylinder)
 add_test(NAME Mach2ValidationTests COMMAND subsetix_test_mach2_validation)
+
+# 9. FVD Multi-System Tests: Phase 6 - Extensibility Validation
+# Tests that AdaptiveSolver works with ANY System (Euler2D, Advection2D, etc.)
+add_executable(subsetix_test_fvd_multi_system
+    fvd_multi_system_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_multi_system PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_multi_system PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdMultiSystemTests COMMAND subsetix_test_fvd_multi_system)
+
+# 10. FVD Accuracy Tests: Phase 6 - Accuracy and Validation
+# Tests for numerical accuracy, mass conservation, and stability
+add_executable(subsetix_test_fvd_accuracy
+    fvd_accuracy_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_accuracy PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_accuracy PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdAccuracyTests COMMAND subsetix_test_fvd_accuracy)

@@ -24,6 +24,7 @@
 // SYSTEM AND CONCEPTS
 // ============================================================================
 #include "system/euler2d.hpp"
+#include "system/advection2d.hpp"
 #include "system/concepts_v2.hpp"
 
 // ============================================================================

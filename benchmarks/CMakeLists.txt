@@ -57,3 +57,15 @@ target_link_libraries(multilevel_overhead_benchmark
         subsetix::core
         benchmark::benchmark
 )
+
+# Phase 6: FVD Layer Performance Benchmarks
+add_executable(fvd_benchmark
+    fvd_benchmark.cpp
+)
+
+target_link_libraries(fvd_benchmark
+    PRIVATE
+        subsetix::core
+        benchmark::benchmark
+)
+target_include_directories(fvd_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
