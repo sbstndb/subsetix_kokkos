@@ -2391,137 +2391,225 @@ public:
             // ====================================================================
             // Uses 5-point stencil to reconstruct left/right states at faces
             // This is the HIGH-ORDER path that was previously not activated
+            //
+            // PHASE 4 FIX: Compile-time dispatch for MUSCL vs WENO reconstruction
+            // - MUSCL: 4-point stencil per face (uses reconstruct_interface)
+            // - WENO: 5-point stencil per face (uses reconstruct_interface with 5 params)
             // ====================================================================
 
             if (nx < 5 || ny < 5) {
-                // Grid too small for 5-point stencil needed for MUSCL
+                // Grid too small for 5-point stencil needed for MUSCL/WENO
                 return;
             }
 
-            Kokkos::parallel_for(
-                "compute_rhs_muscl",
-                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>((ny - 4) * (nx - 4))),
-                KOKKOS_LAMBDA(const int linear_idx) {
-                    // Convert linear index to 2D coordinates (interior only, with 2-cell halo)
-                    const int j = 2 + linear_idx / static_cast<int>(nx - 4);
-                    const int i = 2 + linear_idx % static_cast<int>(nx - 4);
+            // ====================================================================
+            // DETECT WENO vs MUSCL at compile time using stencil_width
+            // ====================================================================
+            constexpr bool is_weno = (Reconstruction::stencil_width == 5);
 
-                    // Compute 1D indices for 5-point stencil in x-direction
-                    // U_ww, U_w, U_c, U_e, U_ee correspond to i-2, i-1, i, i+1, i+2
-                    const std::size_t idx_c  = j * nx + i;
-                    const std::size_t idx_w  = j * nx + (i - 1);
-                    const std::size_t idx_e  = j * nx + (i + 1);
-                    const std::size_t idx_ww = j * nx + (i - 2);
-                    const std::size_t idx_ee = j * nx + (i + 2);
+            if constexpr (is_weno) {
+                // ====================================================================
+                // WENO5 PATH: Uses 5-point symmetric stencil
+                // ====================================================================
+                Kokkos::parallel_for(
+                    "compute_rhs_weno",
+                    Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>((ny - 4) * (nx - 4))),
+                    KOKKOS_LAMBDA(const int linear_idx) {
+                        // Convert linear index to 2D coordinates (interior only, with 2-cell halo)
+                        const int j = 2 + linear_idx / static_cast<int>(nx - 4);
+                        const int i = 2 + linear_idx % static_cast<int>(nx - 4);
 
-                    // Compute 1D indices for 5-point stencil in y-direction
-                    const std::size_t idx_s  = (j - 1) * nx + i;
-                    const std::size_t idx_n  = (j + 1) * nx + i;
-                    const std::size_t idx_ss = (j - 2) * nx + i;
-                    const std::size_t idx_nn = (j + 2) * nx + i;
+                        // Compute 1D indices for 5-point stencil in x-direction
+                        const std::size_t idx_c  = j * nx + i;
+                        const std::size_t idx_w  = j * nx + (i - 1);
+                        const std::size_t idx_e  = j * nx + (i + 1);
+                        const std::size_t idx_ww = j * nx + (i - 2);
+                        const std::size_t idx_ee = j * nx + (i + 2);
 
-                    // =================================================================
-                    // STEP 1: Gather conserved variables from 5-point stencil
-                    // =================================================================
-                    const Conserved U_ww_x = U(idx_ww);
-                    const Conserved U_w_x  = U(idx_w);
-                    const Conserved U_c_x  = U(idx_c);
-                    const Conserved U_e_x  = U(idx_e);
-                    const Conserved U_ee_x = U(idx_ee);
+                        // Compute 1D indices for 5-point stencil in y-direction
+                        const std::size_t idx_s  = (j - 1) * nx + i;
+                        const std::size_t idx_n  = (j + 1) * nx + i;
+                        const std::size_t idx_ss = (j - 2) * nx + i;
+                        const std::size_t idx_nn = (j + 2) * nx + i;
 
-                    const Conserved U_ss_y = U(idx_ss);
-                    const Conserved U_s_y  = U(idx_s);
-                    const Conserved U_c_y  = U(idx_c);
-                    const Conserved U_n_y  = U(idx_n);
-                    const Conserved U_nn_y = U(idx_nn);
+                        // Gather conserved variables from 5-point stencil
+                        const Conserved U_ww_x = U(idx_ww);
+                        const Conserved U_w_x  = U(idx_w);
+                        const Conserved U_c_x  = U(idx_c);
+                        const Conserved U_e_x  = U(idx_e);
+                        const Conserved U_ee_x = U(idx_ee);
 
-                    // =================================================================
-                    // STEP 2: Convert to primitive variables for all stencil points
-                    // =================================================================
-                    const Primitive q_ww_x = System::to_primitive(U_ww_x, gamma);
-                    const Primitive q_w_x  = System::to_primitive(U_w_x, gamma);
-                    const Primitive q_c_x  = System::to_primitive(U_c_x, gamma);
-                    const Primitive q_e_x  = System::to_primitive(U_e_x, gamma);
-                    const Primitive q_ee_x = System::to_primitive(U_ee_x, gamma);
+                        const Conserved U_ss_y = U(idx_ss);
+                        const Conserved U_s_y  = U(idx_s);
+                        const Conserved U_c_y  = U(idx_c);
+                        const Conserved U_n_y  = U(idx_n);
+                        const Conserved U_nn_y = U(idx_nn);
 
-                    const Primitive q_ss_y = System::to_primitive(U_ss_y, gamma);
-                    const Primitive q_s_y  = System::to_primitive(U_s_y, gamma);
-                    const Primitive q_c_y  = System::to_primitive(U_c_y, gamma);
-                    const Primitive q_n_y  = System::to_primitive(U_n_y, gamma);
-                    const Primitive q_nn_y = System::to_primitive(U_nn_y, gamma);
+                        // Convert to primitive variables for all stencil points
+                        const Primitive q_ww_x = System::to_primitive(U_ww_x, gamma);
+                        const Primitive q_w_x  = System::to_primitive(U_w_x, gamma);
+                        const Primitive q_c_x  = System::to_primitive(U_c_x, gamma);
+                        const Primitive q_e_x  = System::to_primitive(U_e_x, gamma);
+                        const Primitive q_ee_x = System::to_primitive(U_ee_x, gamma);
 
-                    // =================================================================
-                    // STEP 3: MUSCL reconstruction at faces
-                    // =================================================================
-                    // For X-direction: reconstruct left/right states at west and east faces
-                    // - West face (i-1/2): uses stencil [i-2, i-1, i, i+1]
-                    // - East face (i+1/2): uses stencil [i-1, i, i+1, i+2]
-                    Primitive qL_west_face, qR_west_face;  // States at i-1/2
-                    Primitive qL_east_face, qR_east_face;  // States at i+1/2
+                        const Primitive q_ss_y = System::to_primitive(U_ss_y, gamma);
+                        const Primitive q_s_y  = System::to_primitive(U_s_y, gamma);
+                        const Primitive q_c_y  = System::to_primitive(U_c_y, gamma);
+                        const Primitive q_n_y  = System::to_primitive(U_n_y, gamma);
+                        const Primitive q_nn_y = System::to_primitive(U_nn_y, gamma);
 
-                    Reconstruction::reconstruct_interface(
-                        q_ww_x, q_w_x, q_c_x, q_e_x,  // [i-2, i-1, i, i+1]
-                        qL_west_face, qR_west_face   // Output: states at i-1/2
-                    );
+                        // WENO5 reconstruction at faces
+                        Primitive qL_west_face, qR_west_face;
+                        Primitive qL_east_face, qR_east_face;
+                        Primitive qL_south_face, qR_south_face;
+                        Primitive qL_north_face, qR_north_face;
 
-                    Reconstruction::reconstruct_interface(
-                        q_w_x, q_c_x, q_e_x, q_ee_x,  // [i-1, i, i+1, i+2]
-                        qL_east_face, qR_east_face   // Output: states at i+1/2
-                    );
+                        Reconstruction::reconstruct_interface(
+                            q_ww_x, q_w_x, q_c_x, q_e_x, q_ee_x,
+                            qL_west_face, qR_west_face
+                        );
+                        Reconstruction::reconstruct_interface(
+                            q_ww_x, q_w_x, q_c_x, q_e_x, q_ee_x,
+                            qL_east_face, qR_east_face
+                        );
 
-                    // For Y-direction: reconstruct left/right states at south and north faces
-                    // - South face (j-1/2): uses stencil [j-2, j-1, j, j+1]
-                    // - North face (j+1/2): uses stencil [j-1, j, j+1, j+2]
-                    Primitive qL_south_face, qR_south_face;  // States at j-1/2
-                    Primitive qL_north_face, qR_north_face;  // States at j+1/2
+                        Reconstruction::reconstruct_interface(
+                            q_ss_y, q_s_y, q_c_y, q_n_y, q_nn_y,
+                            qL_south_face, qR_south_face
+                        );
+                        Reconstruction::reconstruct_interface(
+                            q_ss_y, q_s_y, q_c_y, q_n_y, q_nn_y,
+                            qL_north_face, qR_north_face
+                        );
 
-                    Reconstruction::reconstruct_interface(
-                        q_ss_y, q_s_y, q_c_y, q_n_y,  // [j-2, j-1, j, j+1]
-                        qL_south_face, qR_south_face // Output: states at j-1/2
-                    );
+                        // Convert reconstructed primitives to conserved variables
+                        const Conserved UL_west = System::from_primitive(qL_west_face, gamma);
+                        const Conserved UR_west = System::from_primitive(qR_west_face, gamma);
+                        const Conserved UL_east = System::from_primitive(qL_east_face, gamma);
+                        const Conserved UR_east = System::from_primitive(qR_east_face, gamma);
 
-                    Reconstruction::reconstruct_interface(
-                        q_s_y, q_c_y, q_n_y, q_nn_y,  // [j-1, j, j+1, j+2]
-                        qL_north_face, qR_north_face // Output: states at j+1/2
-                    );
+                        const Conserved UL_south = System::from_primitive(qL_south_face, gamma);
+                        const Conserved UR_south = System::from_primitive(qR_south_face, gamma);
+                        const Conserved UL_north = System::from_primitive(qL_north_face, gamma);
+                        const Conserved UR_north = System::from_primitive(qR_north_face, gamma);
 
-                    // =================================================================
-                    // STEP 4: Convert reconstructed primitives to conserved variables
-                    // =================================================================
-                    const Conserved UL_west = System::from_primitive(qL_west_face, gamma);
-                    const Conserved UR_west = System::from_primitive(qR_west_face, gamma);
-                    const Conserved UL_east = System::from_primitive(qL_east_face, gamma);
-                    const Conserved UR_east = System::from_primitive(qR_east_face, gamma);
+                        // Compute numerical fluxes at faces
+                        const Conserved F_w = flux_scheme.flux_x(UL_west, UR_west, qL_west_face, qR_west_face);
+                        const Conserved F_e = flux_scheme.flux_x(UL_east, UR_east, qL_east_face, qR_east_face);
+                        const Conserved F_s = flux_scheme.flux_y(UL_south, UR_south, qL_south_face, qR_south_face);
+                        const Conserved F_n = flux_scheme.flux_y(UL_north, UR_north, qL_north_face, qR_north_face);
 
-                    const Conserved UL_south = System::from_primitive(qL_south_face, gamma);
-                    const Conserved UR_south = System::from_primitive(qR_south_face, gamma);
-                    const Conserved UL_north = System::from_primitive(qL_north_face, gamma);
-                    const Conserved UR_north = System::from_primitive(qR_north_face, gamma);
+                        // Compute flux divergence
+                        const Real inv_dx = Real(1) / dx;
+                        const Real inv_dy = Real(1) / dy;
+                        Conserved RHS = (F_w - F_e) * inv_dx + (F_s - F_n) * inv_dy;
 
-                    // =================================================================
-                    // STEP 5: Compute numerical fluxes at faces using RECONSTRUCTED states
-                    // =================================================================
-                    // X-direction: flux at west and east faces
-                    const Conserved F_w = flux_scheme.flux_x(UL_west, UR_west, qL_west_face, qR_west_face);
-                    const Conserved F_e = flux_scheme.flux_x(UL_east, UR_east, qL_east_face, qR_east_face);
+                        rhs(idx_c) = RHS;
+                    }
+                );
+            } else {
+                // ====================================================================
+                // MUSCL PATH: Uses shifted 3-point stencil per face
+                // ====================================================================
+                Kokkos::parallel_for(
+                    "compute_rhs_muscl",
+                    Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>((ny - 4) * (nx - 4))),
+                    KOKKOS_LAMBDA(const int linear_idx) {
+                        // Convert linear index to 2D coordinates (interior only, with 2-cell halo)
+                        const int j = 2 + linear_idx / static_cast<int>(nx - 4);
+                        const int i = 2 + linear_idx % static_cast<int>(nx - 4);
 
-                    // Y-direction: flux at south and north faces
-                    const Conserved F_s = flux_scheme.flux_y(UL_south, UR_south, qL_south_face, qR_south_face);
-                    const Conserved F_n = flux_scheme.flux_y(UL_north, UR_north, qL_north_face, qR_north_face);
+                        // Compute 1D indices for 5-point stencil in x-direction
+                        const std::size_t idx_c  = j * nx + i;
+                        const std::size_t idx_w  = j * nx + (i - 1);
+                        const std::size_t idx_e  = j * nx + (i + 1);
+                        const std::size_t idx_ww = j * nx + (i - 2);
+                        const std::size_t idx_ee = j * nx + (i + 2);
 
-                    // =================================================================
-                    // STEP 6: Compute flux divergence: dU/dt = -div(F)
-                    // =================================================================
-                    const Real inv_dx = Real(1) / dx;
-                    const Real inv_dy = Real(1) / dy;
+                        // Compute 1D indices for 5-point stencil in y-direction
+                        const std::size_t idx_s  = (j - 1) * nx + i;
+                        const std::size_t idx_n  = (j + 1) * nx + i;
+                        const std::size_t idx_ss = (j - 2) * nx + i;
+                        const std::size_t idx_nn = (j + 2) * nx + i;
 
-                    // RHS = -div(F) = -(dF/dx + dF/dy)
-                    // Using generic operators: (F_w - F_e) * inv_dx + (F_s - F_n) * inv_dy
-                    Conserved RHS = (F_w - F_e) * inv_dx + (F_s - F_n) * inv_dy;
+                        // Gather conserved variables from 5-point stencil
+                        const Conserved U_ww_x = U(idx_ww);
+                        const Conserved U_w_x  = U(idx_w);
+                        const Conserved U_c_x  = U(idx_c);
+                        const Conserved U_e_x  = U(idx_e);
+                        const Conserved U_ee_x = U(idx_ee);
 
-                    rhs(idx_c) = RHS;
-                }
-            );
+                        const Conserved U_ss_y = U(idx_ss);
+                        const Conserved U_s_y  = U(idx_s);
+                        const Conserved U_c_y  = U(idx_c);
+                        const Conserved U_n_y  = U(idx_n);
+                        const Conserved U_nn_y = U(idx_nn);
+
+                        // Convert to primitive variables for all stencil points
+                        const Primitive q_ww_x = System::to_primitive(U_ww_x, gamma);
+                        const Primitive q_w_x  = System::to_primitive(U_w_x, gamma);
+                        const Primitive q_c_x  = System::to_primitive(U_c_x, gamma);
+                        const Primitive q_e_x  = System::to_primitive(U_e_x, gamma);
+                        const Primitive q_ee_x = System::to_primitive(U_ee_x, gamma);
+
+                        const Primitive q_ss_y = System::to_primitive(U_ss_y, gamma);
+                        const Primitive q_s_y  = System::to_primitive(U_s_y, gamma);
+                        const Primitive q_c_y  = System::to_primitive(U_c_y, gamma);
+                        const Primitive q_n_y  = System::to_primitive(U_n_y, gamma);
+                        const Primitive q_nn_y = System::to_primitive(U_nn_y, gamma);
+
+                        // MUSCL reconstruction at faces
+                        Primitive qL_west_face, qR_west_face;
+                        Primitive qL_east_face, qR_east_face;
+                        Primitive qL_south_face, qR_south_face;
+                        Primitive qL_north_face, qR_north_face;
+
+                        // X-direction: west face (i-1/2) and east face (i+1/2)
+                        Reconstruction::reconstruct_interface(
+                            q_ww_x, q_w_x, q_c_x, q_e_x,
+                            qL_west_face, qR_west_face
+                        );
+                        Reconstruction::reconstruct_interface(
+                            q_w_x, q_c_x, q_e_x, q_ee_x,
+                            qL_east_face, qR_east_face
+                        );
+
+                        // Y-direction: south face (j-1/2) and north face (j+1/2)
+                        Reconstruction::reconstruct_interface(
+                            q_ss_y, q_s_y, q_c_y, q_n_y,
+                            qL_south_face, qR_south_face
+                        );
+                        Reconstruction::reconstruct_interface(
+                            q_s_y, q_c_y, q_n_y, q_nn_y,
+                            qL_north_face, qR_north_face
+                        );
+
+                        // Convert reconstructed primitives to conserved variables
+                        const Conserved UL_west = System::from_primitive(qL_west_face, gamma);
+                        const Conserved UR_west = System::from_primitive(qR_west_face, gamma);
+                        const Conserved UL_east = System::from_primitive(qL_east_face, gamma);
+                        const Conserved UR_east = System::from_primitive(qR_east_face, gamma);
+
+                        const Conserved UL_south = System::from_primitive(qL_south_face, gamma);
+                        const Conserved UR_south = System::from_primitive(qR_south_face, gamma);
+                        const Conserved UL_north = System::from_primitive(qL_north_face, gamma);
+                        const Conserved UR_north = System::from_primitive(qR_north_face, gamma);
+
+                        // Compute numerical fluxes at faces
+                        const Conserved F_w = flux_scheme.flux_x(UL_west, UR_west, qL_west_face, qR_west_face);
+                        const Conserved F_e = flux_scheme.flux_x(UL_east, UR_east, qL_east_face, qR_east_face);
+                        const Conserved F_s = flux_scheme.flux_y(UL_south, UR_south, qL_south_face, qR_south_face);
+                        const Conserved F_n = flux_scheme.flux_y(UL_north, UR_north, qL_north_face, qR_north_face);
+
+                        // Compute flux divergence
+                        const Real inv_dx = Real(1) / dx;
+                        const Real inv_dy = Real(1) / dy;
+                        Conserved RHS = (F_w - F_e) * inv_dx + (F_s - F_n) * inv_dy;
+
+                        rhs(idx_c) = RHS;
+                    }
+                );
+            }
         } else {
             // ====================================================================
             // 1ST ORDER PATH (NoReconstruction)

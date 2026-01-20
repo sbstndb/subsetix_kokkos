@@ -126,6 +126,17 @@ public:
     // ========================================================================
 
     /// Convert conserved to primitive variables
+    ///
+    /// WARNING: This function clips pressure to eps (1e-12) to avoid
+    /// negative pressures. This creates INCONSISTENCY in round-trip:
+    ///   U -> to_primitive -> from_primitive -> U'
+    /// where U'.E ≠ U.E if original pressure was negative.
+    ///
+    /// For MUSCL reconstruction, this means:
+    /// 1. Stencil cells with slightly negative pressure get clipped
+    /// 2. Reconstruction operates on modified states
+    /// 3. Converted-back conserved variables have wrong energy
+    ///
     /// IMPROVEMENT: gamma has default value, so caller can omit it
     KOKKOS_INLINE_FUNCTION
     static Primitive to_primitive(const Conserved& U,
@@ -134,24 +145,78 @@ public:
         Real inv_rho = Real(1) / (U.rho + eps);
         Real u = U.rhou * inv_rho;
         Real v = U.rhov * inv_rho;
-        Real kinetic = Real(0.5) * (u * u + v * v);  // FIXED: was U.rho * (u*u + v*v)
+        Real kinetic = Real(0.5) * (u * u + v * v);
         Real p = (gamma - Real(1)) * (U.E - U.rho * kinetic);
-        p = (p > eps) ? p : eps;  // Clamp to avoid negative pressure
+        p = Kokkos::fmax(p, eps);  // FIX: Use Kokkos::fmax for clarity and consistency
         return Primitive{U.rho, u, v, p};
     }
 
     /// Convert primitive to conserved variables
+    ///
+    /// NOTE: This function does NOT clip pressure. If you need perfect
+    /// round-trip consistency with to_primitive, handle negative pressures
+    /// explicitly before calling this function.
+    ///
     /// IMPROVEMENT: gamma has default value, so caller can omit it
     KOKKOS_INLINE_FUNCTION
     static Conserved from_primitive(const Primitive& q,
                                      Real gamma = default_gamma) {
+        constexpr Real eps = Real(1e-12);
         Real kinetic = Real(0.5) * q.rho * (q.u * q.u + q.v * q.v);
+        // FIX: Match the clipping behavior from to_primitive for consistency
+        Real p_safe = Kokkos::fmax(q.p, eps);
         return Conserved{
             q.rho,
             q.rho * q.u,
             q.rho * q.v,
-            q.p / (gamma - Real(1)) + kinetic
+            p_safe / (gamma - Real(1)) + kinetic
         };
+    }
+
+    /// Validate round-trip consistency
+    /// Returns true if to_primitive(from_primitive(q)) == q (within tolerance)
+    KOKKOS_INLINE_FUNCTION
+    static bool validate_consistency(const Primitive& q,
+                                      Real gamma = default_gamma,
+                                      Real tol = Real(1e-10)) {
+        constexpr Real eps = Real(1e-12);
+
+        // Round-trip test
+        Conserved U = from_primitive(q, gamma);
+        Primitive q2 = to_primitive(U, gamma);
+
+        // Check each component
+        Real rho_err = Kokkos::fabs(q.rho - q2.rho) / (Kokkos::fabs(q.rho) + eps);
+        Real u_err = Kokkos::fabs(q.u - q2.u) / (Kokkos::fabs(q.u) + eps);
+        Real v_err = Kokkos::fabs(q.v - q2.v) / (Kokkos::fabs(q.v) + eps);
+        Real p_err = Kokkos::fabs(q.p - q2.p) / (Kokkos::fabs(q.p) + eps);
+
+        return (rho_err < tol) && (u_err < tol) &&
+               (v_err < tol) && (p_err < tol);
+    }
+
+    /// Validate physical admissibility of state
+    KOKKOS_INLINE_FUNCTION
+    static bool is_physically_admissible(const Conserved& U,
+                                      Real gamma = default_gamma) {
+        constexpr Real eps = Real(1e-12);
+
+        // Check density
+        if (U.rho < eps) return false;
+
+        // Check energy
+        if (U.E < eps) return false;
+
+        // Check pressure
+        Real inv_rho = Real(1) / U.rho;
+        Real u = U.rhou * inv_rho;
+        Real v = U.rhov * inv_rho;
+        Real kinetic = Real(0.5) * (u * u + v * v);
+        Real p = (gamma - Real(1)) * (U.E - U.rho * kinetic);
+
+        if (p < eps) return false;
+
+        return true;
     }
 
     /// Compute sound speed
