@@ -6,13 +6,34 @@ Subsetix is a modern C++20 library for solving hyperbolic PDEs on sparse 2D doma
 
 ---
 
+## Mach 2 Flow Demo
+
+### Shock Capturing on Complex Geometry
+
+Mach 2 flow over a cylinder obstacle, showing density field with adaptive mesh refinement around shock waves.
+
+<img src="media/mach2_field.png" alt="Mach 2 flow - full domain density field" width="600">
+
+### Adaptive Mesh Refinement
+
+Close-up showing the 4-level AMR grid structure. Refinement automatically follows the shock front.
+
+<img src="media/mach2_zoom.png" alt="Mach 2 flow - AMR zoom" width="400">
+
+**Run this example:**
+```bash
+./build-serial/examples/fvd_mach2_cylinder_example
+```
+
+---
+
 ## Features
 
 - **Sparse-first design**: Memory-efficient representation of complex 2D geometries
 - **GPU-native**: Zero-copy data structures via Kokkos — same code runs on CPU and GPU
 - **Set algebra**: Compose geometries with boolean operations (union, intersection, difference)
 - **AMR-ready**: Block-structured adaptive mesh refinement built into the core representation
-- **High-level FVD API**: Solve Euler equations in ~10 lines of code
+- **High-level FVD API**: Solve hyperbolic PDEs in ~10 lines of code
 - **Header-only**: Easy integration with no build-time dependencies beyond Kokkos
 
 ---
@@ -69,7 +90,6 @@ ctest --preset serial
 
 using namespace subsetix::fvd;
 
-// Define solver: 2nd order MUSCL + HLLC flux
 using MySolver = EulerSolver2ndHLLC<float>;
 
 int main() {
@@ -119,14 +139,9 @@ vtk_export_device(result, "geometry.vtk");
 
 ### More Examples
 
-See the `examples/` directory for complete demos:
-
-| Example | Description |
-|---------|-------------|
-| `fvd_simulation_examples.cpp` | 16+ usage patterns (AMR, BCs, checkpoint, multi-physics) |
-| `fvd_mach2_cylinder_example.cpp` | Mach 2 flow over cylinder |
-| `smoke_plume/smoke_plume.cpp` | Full buoyancy-driven flow with Poisson solver |
-| `amr_advection/amr_advection_2d.cpp` | AMR on 8192×8192 sparse grid |
+See the `examples/` directory:
+- `fvd_mach2_cylinder_example.cpp` - Mach 2 flow over cylinder
+- `fvd_simulation_examples.cpp` - 16+ usage patterns (AMR, BCs, checkpoint)
 
 ---
 
@@ -165,49 +180,8 @@ include/subsetix/
 └── fvd/             # Finite Volume Discretization layer
     ├── geometry/    # Fluent geometry builder
     ├── system/      # PDE systems (Euler2D, Advection2D)
-    ├── flux/        # Numerical fluxes (Rusanov, HLLC, Roe)
-    ├── reconstruction/ # MUSCL with limiters
     ├── solver/      # Adaptive solver
     └── time/        # Runge-Kutta integrators
-```
-
-### Solver Configuration
-
-#### Available Solvers (Type Aliases)
-
-```cpp
-// 1st order schemes
-using EulerSolver1st = EulerSolver1stRusanov<float>;
-
-// 2nd order schemes
-using EulerSolver2ndHLLC = EulerSolver2ndHLLC<float>;
-using EulerSolver2ndRoe  = EulerSolver2ndRoe<float>;
-
-// High-order
-using EulerSolverRK3 = EulerSolverRK3<float>;  // SSPRK3 + HLLC
-```
-
-#### Flux Schemes
-
-| Scheme | Accuracy | Robustness | Use Case |
-|--------|----------|------------|----------|
-| Rusanov | 1st order | Very robust | Quick prototyping |
-| HLLC | 2nd order | Robust | Shocks, contacts |
-| Roe | 2nd order | Sensitive | Accurate smooth flows |
-
-#### Reconstruction
-
-```cpp
-// No reconstruction (1st order)
-reconstruction::NoReconstruction
-
-// MUSCL with limiters (2nd order)
-reconstruction::MUSCL_Reconstruction<
-    reconstruction::MinmodLimiter   // Most diffusive
-    // reconstruction::MCLimiter      // Moderate
-    // reconstruction::VanLeerLimiter  // Less diffusive
-    // reconstruction::SuperbeeLimiter // Least diffusive
->
 ```
 
 ### API Reference
@@ -309,7 +283,9 @@ See `AGENTS.md` for coding guidelines and `CLAUDE.md` for architecture details.
 
 ## License
 
-[Your License Here]
+Apache License 2.0
+
+See [LICENSE](LICENSE) file for details.
 
 ---
 
