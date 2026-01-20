@@ -16,7 +16,7 @@ Mach 2 flow over a cylinder obstacle, showing density field with adaptive mesh r
 
 ### Adaptive Mesh Refinement
 
-Close-up showing the 2-level AMR grid structure. Refinement automatically follows the shock front.
+Close-up showing the 4-level AMR grid structure. Refinement automatically follows the shock front.
 
 <img src="media/mach2_zoom.png" alt="Mach 2 flow - AMR zoom" width="400">
 
