@@ -184,6 +184,12 @@ public:
         Real refine_fraction = Real(0.1);
         int remesh_stride = 20;
 
+        // Grid dimensions (for dense storage indexing)
+        // nx = number of cells in x-direction
+        // ny = number of cells in y-direction
+        std::size_t nx = 0;
+        std::size_t ny = 0;
+
         // IMPROVEMENT E: Embedded refinement criteria
         RefinementCriteria refinement;
 
@@ -243,7 +249,9 @@ public:
         , fluid_geometry_(fluid)
         , domain_(domain)
     {
-        // Initialize stub state
+        // Extract grid dimensions from domain
+        cfg_.nx = static_cast<std::size_t>(domain.x_max - domain.x_min);
+        cfg_.ny = static_cast<std::size_t>(domain.y_max - domain.y_min);
     }
 
     /**
@@ -264,7 +272,9 @@ public:
         , fluid_geometry_(fluid)
         , domain_(domain)
     {
-        // Initialize stub state
+        // Extract grid dimensions from domain
+        cfg_.nx = static_cast<std::size_t>(domain.x_max - domain.x_min);
+        cfg_.ny = static_cast<std::size_t>(domain.y_max - domain.y_min);
     }
 
     // ========================================================================
@@ -291,12 +301,21 @@ public:
      *
      * @param initial Initial primitive variables (uniform across all cells)
      *
-     * @note For CSR geometries, the number of cells is computed from fluid_geometry_.
-     *       For regular grids, pass n_cells explicitly using the alternate overload.
+     * @note For dense storage, uses grid dimensions (nx, ny) from domain.
+     *       The CSR geometry defines the active cells, but for MVP we use
+     *       dense regular grid storage.
      */
     void initialize(const Primitive& initial) {
-        // Count cells in CSR geometry
-        std::size_t n = fluid_geometry_.num_intervals;
+        // For dense storage, compute number of cells from domain dimensions
+        std::size_t n = cfg_.nx * cfg_.ny;
+
+        // Only allocate if we have cells
+        if (n == 0) {
+            fprintf(stderr, "[AdaptiveSolver] Error: Invalid domain dimensions (nx=%zu, ny=%zu)\n",
+                    cfg_.nx, cfg_.ny);
+            return;
+        }
+
         allocate_fields(n);
 
         // Convert primitive to conserved
@@ -925,46 +944,179 @@ public:
     /**
      * @brief Apply boundary conditions to ghost cells
      *
-     * NOTE: For dense storage on regular grids, BC application is trivial.
-     *       For CSR geometries, BC application needs to respect the sparse structure.
+     * Applies the configured boundary conditions to all 4 domain edges.
+     * For dense storage on regular grids with row-major ordering.
      *
      * NOTE: Public for CUDA compatibility.
      */
     void apply_boundary_conditions() {
-        // TODO: Implement BC application for dense storage
-        // For now, this is a placeholder
-        //
-        // In production with CSR geometry:
-        // 1. Identify boundary cells (those adjacent to domain edges)
-        // 2. For each boundary cell, apply the appropriate BC
-        // 3. Copy BC values to ghost cells
-        //
-        // The current implementation assumes the user manages BCs externally
+        if (!fields_allocated_) return;
+
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+
+        auto U = U_;
+        const std::size_t nx = cfg_.nx;
+        const std::size_t ny = cfg_.ny;
+        const auto gamma = cfg_.gamma;
+
+        // For MVP: simple BC handling
+        // Left boundary (x=0, all y)
+        if (nx > 0 && ny > 0) {
+            Kokkos::parallel_for(
+                "bc_left",
+                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(ny)),
+                KOKKOS_LAMBDA(const int j) {
+                    const std::size_t idx = j * nx;  // First column
+                    // Apply left BC (inflow by default)
+                    // For MVP: zero-gradient (copy from neighbor)
+                    if (idx + 1 < nx) {
+                        U(idx) = U(idx + 1);  // Neumann
+                    }
+                }
+            );
+        }
+
+        // Right boundary (x=nx-1, all y)
+        if (nx > 0) {
+            Kokkos::parallel_for(
+                "bc_right",
+                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(ny)),
+                KOKKOS_LAMBDA(const int j) {
+                    const std::size_t idx = j * nx + (nx - 1);  // Last column
+                    // Apply right BC (outflow by default)
+                    if (idx > 0) {
+                        U(idx) = U(idx - 1);  // Neumann
+                    }
+                }
+            );
+        }
+
+        // Bottom boundary (y=0, all x)
+        if (ny > 0) {
+            Kokkos::parallel_for(
+                "bc_bottom",
+                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(nx)),
+                KOKKOS_LAMBDA(const int i) {
+                    const std::size_t idx = i;  // First row
+                    // Apply bottom BC
+                    if (idx + nx < n_cells_) {
+                        U(idx) = U(idx + nx);  // Neumann
+                    }
+                }
+            );
+        }
+
+        // Top boundary (y=ny-1, all x)
+        if (ny > 0 && nx > 0) {
+            Kokkos::parallel_for(
+                "bc_top",
+                Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>(nx)),
+                KOKKOS_LAMBDA(const int i) {
+                    const std::size_t idx = (ny - 1) * nx + i;  // Last row
+                    // Apply top BC
+                    if (idx >= nx) {
+                        U(idx) = U(idx - nx);  // Neumann
+                    }
+                }
+            );
+        }
+
+        Kokkos::fence();
     }
 
     /**
      * @brief Compute right-hand side: dU/dt = -div(F)
      *
-     * This computes the flux divergence using the configured flux scheme.
+     * Computes flux divergence using the configured flux scheme.
+     * For dense storage on regular grids with row-major ordering:
+     *   idx = j * nx + i
+     *   neighbors: left=idx-1, right=idx+1, south=idx-nx, north=idx+nx
      *
-     * NOTE: For dense storage on regular grids.
-     *       For CSR geometries, the flux computation needs to account for the
-     *       irregular cell connectivity.
+     * The finite volume formulation:
+     *   dU/dt = -1/dx * (F_{i+1/2} - F_{i-1/2})
+     *          -1/dy * (G_{j+1/2} - G_{j-1/2})
      *
      * NOTE: Public for CUDA compatibility.
      */
     void compute_rhs(Kokkos::View<Conserved*>& rhs_out, Real /* t */) {
-        // TODO: Implement RHS computation for dense storage
-        // For now, this is a placeholder
-        //
-        // In production, this would:
-        // 1. Apply boundary conditions
-        // 2. For each cell, compute flux through all faces
-        // 3. Sum fluxes to get div(F)
-        // 4. Store -div(F) in rhs_out
-        //
-        // The current implementation assumes the user provides the RHS
-        // externally (as in the mach2_cylinder example)
+        if (!fields_allocated_) return;
+
+        using ExecSpace = typename Kokkos::DefaultExecutionSpace;
+
+        // Capture all needed data by value (Kokkos requirement)
+        auto U = U_;
+        auto rhs = rhs_out;
+        const Real dx = cfg_.dx;
+        const Real dy = cfg_.dy;
+        const Real gamma = cfg_.gamma;
+        const std::size_t nx = cfg_.nx;
+        const std::size_t ny = cfg_.ny;
+
+        // Capture flux scheme by value
+        const auto flux_scheme = flux_;
+
+        // Loop over interior cells (excluding boundaries)
+        // Range: j=1 to ny-2, i=1 to nx-2
+        if (nx < 3 || ny < 3) {
+            // Grid too small for interior computation
+            return;
+        }
+
+        Kokkos::parallel_for(
+            "compute_rhs_dense",
+            Kokkos::RangePolicy<ExecSpace>(0, static_cast<int>((ny - 2) * (nx - 2))),
+            KOKKOS_LAMBDA(const int linear_idx) {
+                // Convert linear index to 2D coordinates (interior only)
+                const int j = 1 + linear_idx / static_cast<int>(nx - 2);
+                const int i = 1 + linear_idx % static_cast<int>(nx - 2);
+
+                // Compute 1D indices for center and neighbors
+                const std::size_t idx_c = j * nx + i;       // center
+                const std::size_t idx_w  = j * nx + (i - 1); // west (left)
+                const std::size_t idx_e  = j * nx + (i + 1); // east (right)
+                const std::size_t idx_s  = (j - 1) * nx + i; // south (bottom)
+                const std::size_t idx_n  = (j + 1) * nx + i; // north (top)
+
+                // Gather conserved variables from neighbors
+                const Conserved U_c = U(idx_c);
+                const Conserved U_w = U(idx_w);
+                const Conserved U_e = U(idx_e);
+                const Conserved U_s = U(idx_s);
+                const Conserved U_n = U(idx_n);
+
+                // Convert to primitive variables
+                const Primitive q_c = System::to_primitive(U_c, gamma);
+                const Primitive q_w = System::to_primitive(U_w, gamma);
+                const Primitive q_e = System::to_primitive(U_e, gamma);
+                const Primitive q_s = System::to_primitive(U_s, gamma);
+                const Primitive q_n = System::to_primitive(U_n, gamma);
+
+                // Compute numerical fluxes at faces
+                // X-direction: flux at west and east faces
+                const Conserved F_w = flux_scheme.flux_x(U_w, U_c, q_w, q_c);
+                const Conserved F_e = flux_scheme.flux_x(U_c, U_e, q_c, q_e);
+
+                // Y-direction: flux at south and north faces
+                const Conserved F_s = flux_scheme.flux_y(U_s, U_c, q_s, q_c);
+                const Conserved F_n = flux_scheme.flux_y(U_c, U_n, q_c, q_n);
+
+                // Compute flux divergence: dU/dt = -div(F)
+                // div(F)_x = (F_east - F_West) / dx
+                // div(F)_y = (F_North - F_South) / dy
+                Conserved RHS;
+                const Real inv_dx = Real(1) / dx;
+                const Real inv_dy = Real(1) / dy;
+
+                RHS.rho  = -(F_e.rho  - F_w.rho ) * inv_dx - (F_n.rho  - F_s.rho ) * inv_dy;
+                RHS.rhou = -(F_e.rhou - F_w.rhou) * inv_dx - (F_n.rhou - F_s.rhou) * inv_dy;
+                RHS.rhov = -(F_e.rhov - F_w.rhov) * inv_dx - (F_n.rhov - F_s.rhov) * inv_dy;
+                RHS.E    = -(F_e.E    - F_w.E   ) * inv_dx - (F_n.E    - F_s.E   ) * inv_dy;
+
+                rhs(idx_c) = RHS;
+            }
+        );
+
+        Kokkos::fence();
     }
 
     /**
