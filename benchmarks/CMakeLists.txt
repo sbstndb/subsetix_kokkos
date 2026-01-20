@@ -69,3 +69,15 @@ target_link_libraries(fvd_benchmark
         benchmark::benchmark
 )
 target_include_directories(fvd_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Phase 7: Productivity Comparison Benchmark (Old vs New API)
+add_executable(productivity_comparison
+    productivity_comparison.cpp
+)
+
+target_link_libraries(productivity_comparison
+    PRIVATE
+        subsetix::core
+        benchmark::benchmark
+)
+target_include_directories(productivity_comparison PRIVATE ${CMAKE_SOURCE_DIR}/include)

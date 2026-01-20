@@ -116,3 +116,32 @@ add_executable(subsetix_test_fvd_accuracy
 target_link_libraries(subsetix_test_fvd_accuracy PRIVATE subsetix::core GTest::gtest)
 target_include_directories(subsetix_test_fvd_accuracy PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME FvdAccuracyTests COMMAND subsetix_test_fvd_accuracy)
+
+# 10.5. FVD Numerical Accuracy Tests: Comprehensive numerical validation
+# Tests for analytical solution comparison, convergence rates, flux schemes, time integrators
+add_executable(subsetix_test_fvd_numerical_accuracy
+    fvd_numerical_accuracy_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_numerical_accuracy PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_numerical_accuracy PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdNumericalAccuracyTests COMMAND subsetix_test_fvd_numerical_accuracy)
+
+# 11. FVD Regression Suite: Comprehensive regression testing
+# Tests for all flux schemes, reconstruction methods, time integrators,
+# AMR operations, boundary conditions, and performance regression detection
+add_executable(subsetix_test_fvd_regression
+    fvd_regression_suite.cpp
+)
+target_link_libraries(subsetix_test_fvd_regression PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_regression PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdRegressionSuite COMMAND subsetix_test_fvd_regression)
+
+# 12. FVD Cross-Backend Tests: Validation across Serial, OpenMP, CUDA
+# Tests that verify bit-identical results across different Kokkos backends
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_cross_backend
+    fvd_cross_backend_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_cross_backend PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_cross_backend PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdCrossBackendTests COMMAND subsetix_test_fvd_cross_backend)
