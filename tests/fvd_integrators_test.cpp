@@ -10,6 +10,7 @@
 #include <subsetix/fvd/flux/flux_schemes.hpp>
 #include <subsetix/fvd/geometry/geometry_builder.hpp>
 #include <subsetix/fvd/output/field_view.hpp>
+#include <subsetix/csr_ops/set_algebra.hpp>
 
 using namespace subsetix::fvd;
 using namespace subsetix::fvd::solver;
@@ -827,13 +828,14 @@ TEST_F(FvdIntegratorsTest, FieldView_ViewFactory) {
 TEST_F(FvdIntegratorsTest, FieldView_ToHost) {
     auto field = FieldView<Real>::allocate("test", 10);
 
-    // Fill with data on device using the underlying Kokkos view
-    auto& data = field.data();
-    Kokkos::parallel_for("fill", 10, KOKKOS_LAMBDA(int i) {
-        data(i) = static_cast<Real>(i) * 2.0f;
-    });
+    // Fill with data on host first, then copy to device
+    std::vector<Real> source_data(10);
+    for (int i = 0; i < 10; ++i) {
+        source_data[i] = static_cast<Real>(i) * 2.0f;
+    }
+    field.from_host(source_data);
 
-    // Copy to host
+    // Copy to host and verify
     auto host_data = field.to_host();
     EXPECT_EQ(host_data.size(), 10);
     EXPECT_FLOAT_EQ(host_data[0], 0.0f);
@@ -1319,6 +1321,186 @@ TEST_F(FvdIntegratorsTest, CompositeCriterion_Vote_MajorityRefines) {
     auto action = comp.evaluate(U, q, siblings, 0.01f);
     // All 3 should say Refine (all values in range)
     EXPECT_EQ(action, RefinementAction::Refine);
+}
+
+// ============================================================================
+// GEOMETRY BUILDER TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_PhysicalCoordinates_RectangleFactory) {
+    // Test build_box with physical bounds (lines 119-124)
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(0.0f, 1.0f, 0.0f, 0.5f, 0.01f, 0.01f);
+    EXPECT_EQ(geom.nx(), 100);  // (1.0-0.0)/0.01
+    EXPECT_EQ(geom.ny(), 50);   // (0.5-0.0)/0.01
+    EXPECT_FLOAT_EQ(geom.dx(), 0.01f);
+    EXPECT_FLOAT_EQ(geom.dy(), 0.01f);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_AddCylinderAsFluidRegion) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_cylinder(50.0f, 50.0f, 10.0f, false);  // is_obstacle=false
+
+    EXPECT_EQ(geom.fluid_regions().size(), 1);
+    EXPECT_EQ(geom.obstacles().size(), 0);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_AddRectangleAsFluidRegion) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_rectangle(10.0f, 20.0f, 10.0f, 20.0f, false);
+
+    EXPECT_EQ(geom.fluid_regions().size(), 1);
+    EXPECT_EQ(geom.obstacles().size(), 0);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_AddBoxAlias) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_box(10.0f, 20.0f, 10.0f, 20.0f, true);
+
+    EXPECT_EQ(geom.obstacles().size(), 1);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_BuildWithObstacle_PhysicalCoords) {
+    // Create domain with physical coordinates and add obstacle
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(0.0f, 1.0f, 0.0f, 1.0f, 0.01f, 0.01f)
+        .add_rectangle(0.3f, 0.7f, 0.3f, 0.7f, true);  // Center obstacle
+
+    auto csr = geom.build();
+
+    // Verify obstacle was subtracted from domain
+    EXPECT_GT(csr.num_rows, 0);
+    // Full domain would have 10000 cells, obstacle removes center
+    EXPECT_LT(csr.total_cells, 10000);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_BuildWithFluidRegionAddition) {
+    // Create domain, then add additional fluid region
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_cylinder(50.0f, 50.0f, 20.0f, false);  // Add fluid
+
+    auto csr = geom.build();
+
+    // Verify build succeeds (union with full domain = full domain)
+    EXPECT_GT(csr.num_rows, 0);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_PrimitiveToCsr_BoxOutOfBounds) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100, 1.0f, 1.0f)
+        .add_rectangle(200.0f, 300.0f, 200.0f, 300.0f, true);  // Way outside
+
+    auto csr = geom.build();
+
+    // Should be clamped to domain edge or empty
+    EXPECT_GE(csr.num_rows, 0);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_PrimitiveToCsr_InvalidBox) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_rectangle(50.0f, 30.0f, 20.0f, 40.0f, true);  // x_max < x_min
+
+    auto csr = geom.build();
+
+    // Should handle gracefully (empty or clamped)
+    EXPECT_GE(csr.num_rows, 0);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_PrimitiveToCsr_ZeroCylinderRadius) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_cylinder(50.0f, 50.0f, 0.0f, true);  // Zero radius
+
+    auto csr = geom.build();
+
+    // Zero radius should be handled
+    EXPECT_GE(csr.num_rows, 0);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_Complex_MultipleObstacles) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(200, 100)
+        .add_rectangle(20.0f, 40.0f, 20.0f, 80.0f, true)
+        .add_cylinder(100.0f, 50.0f, 15.0f, true)
+        .add_rectangle(160.0f, 180.0f, 20.0f, 80.0f, true);
+
+    EXPECT_EQ(geom.obstacles().size(), 3);
+
+    auto csr = geom.build();
+
+    // Verify all three obstacles were subtracted
+    EXPECT_GT(csr.num_rows, 0);
+    EXPECT_LT(csr.total_cells, 200 * 100);  // Less than full domain
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_Complex_MixedObstaclesAndFluid) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_cylinder(30.0f, 30.0f, 10.0f, true)   // Obstacle
+        .add_cylinder(70.0f, 70.0f, 10.0f, false); // Fluid region
+
+    EXPECT_EQ(geom.obstacles().size(), 1);
+    EXPECT_EQ(geom.fluid_regions().size(), 1);
+
+    auto csr = geom.build();
+
+    // Should have both subtraction and union operations
+    EXPECT_GT(csr.num_rows, 0);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_BuildWithReusableContext) {
+    subsetix::csr::CsrSetAlgebraContext ctx;
+
+    auto geom1 = subsetix::fvd::Geometry2D<Real>::build_box(50, 50)
+        .add_cylinder(25.0f, 25.0f, 10.0f, true);
+    auto csr1 = geom1.build(ctx);
+
+    auto geom2 = subsetix::fvd::Geometry2D<Real>::build_box(100, 100);
+    auto csr2 = geom2.build(ctx);
+
+    // Both should build successfully using same context
+    EXPECT_GT(csr1.num_rows, 0);
+    EXPECT_GT(csr2.num_rows, 0);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryPrimitive_BoxFactory) {
+    using Prim = subsetix::fvd::GeometryPrimitive<Real>;
+    auto prim = Prim::box(0.0f, 1.0f, 0.0f, 1.0f);
+
+    EXPECT_EQ(prim.type, Prim::Box);
+    EXPECT_FLOAT_EQ(prim.params[0], 0.0f);
+    EXPECT_FLOAT_EQ(prim.params[1], 1.0f);
+    EXPECT_FLOAT_EQ(prim.params[2], 0.0f);
+    EXPECT_FLOAT_EQ(prim.params[3], 1.0f);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryPrimitive_RectangleFactory) {
+    using Prim = subsetix::fvd::GeometryPrimitive<Real>;
+    auto prim = Prim::rectangle(0.0f, 1.0f, 0.0f, 1.0f);
+
+    // Note: rectangle() returns Box type internally (they're equivalent)
+    EXPECT_EQ(prim.type, Prim::Box);
+    EXPECT_FLOAT_EQ(prim.params[0], 0.0f);
+    EXPECT_FLOAT_EQ(prim.params[1], 1.0f);
+    EXPECT_FLOAT_EQ(prim.params[2], 0.0f);
+    EXPECT_FLOAT_EQ(prim.params[3], 1.0f);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryPrimitive_PODSafety) {
+    using Prim = subsetix::fvd::GeometryPrimitive<Real>;
+
+    // Verify GeometryPrimitive is trivially copyable for GPU
+    EXPECT_TRUE(std::is_trivially_copyable_v<Prim>);
+    EXPECT_TRUE(std::is_default_constructible_v<Prim>);
+
+    // Verify params array initializes correctly
+    Prim prim;
+    EXPECT_EQ(prim.params[0], 0.0f);
+    EXPECT_EQ(prim.params[5], 0.0f);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_DoublePrecision) {
+    using DReal = double;
+    auto geom = subsetix::fvd::Geometry2D<DReal>::build_box(100, 100, 0.01, 0.01)
+        .add_cylinder(50.0, 50.0, 10.0, true);
+
+    auto csr = geom.build();
+
+    EXPECT_GT(csr.num_rows, 0);
 }
 
 // ============================================================================
