@@ -13,7 +13,6 @@ add_executable(experimental_v1_benchmark
 
 target_link_libraries(experimental_v1_benchmark
   PRIVATE
-    subsetix::core
     experimental_subsetix_csr
     benchmark::benchmark
     benchmark::benchmark_main
@@ -26,7 +25,6 @@ add_executable(experimental_v2_benchmark
 
 target_link_libraries(experimental_v2_benchmark
   PRIVATE
-    subsetix::core
     experimental_subsetix_csr
     benchmark::benchmark
     benchmark::benchmark_main
@@ -39,7 +37,6 @@ add_executable(experimental_comparison_benchmark
 
 target_link_libraries(experimental_comparison_benchmark
   PRIVATE
-    subsetix::core
     experimental_subsetix_csr
     benchmark::benchmark
     benchmark::benchmark_main

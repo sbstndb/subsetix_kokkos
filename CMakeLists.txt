@@ -186,7 +186,11 @@ FetchContent_MakeAvailable(googlebenchmark)
 
 enable_testing()
 
-add_subdirectory(src)
+# Stable libraries can be disabled to only build experimental
+option(SUBSETIX_BUILD_STABLE_LIBS "Build stable (non-experimental) libraries" ON)
+if(SUBSETIX_BUILD_STABLE_LIBS)
+  add_subdirectory(src)
+endif()
 
 # Stable tests can be disabled to only build experimental
 option(SUBSETIX_BUILD_STABLE_TESTS "Build stable (non-experimental) tests" ON)

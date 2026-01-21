@@ -13,7 +13,6 @@ add_executable(experimental_v1_test
 
 target_link_libraries(experimental_v1_test
   PRIVATE
-    subsetix::core
     experimental_subsetix_csr
     gtest_main
     gmock_main
@@ -29,7 +28,6 @@ add_executable(experimental_v2_test
 
 target_link_libraries(experimental_v2_test
   PRIVATE
-    subsetix::core
     experimental_subsetix_csr
     gtest
     gmock
@@ -46,7 +44,6 @@ add_executable(experimental_v3_test
 
 target_link_libraries(experimental_v3_test
   PRIVATE
-    subsetix::core
     experimental_subsetix_csr
     gtest
     gmock
