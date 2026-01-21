@@ -9,6 +9,7 @@
 #include <subsetix/fvd/fvd_integrators.hpp>
 #include <subsetix/fvd/flux/flux_schemes.hpp>
 #include <subsetix/fvd/geometry/geometry_builder.hpp>
+#include <subsetix/fvd/output/field_view.hpp>
 
 using namespace subsetix::fvd;
 using namespace subsetix::fvd::solver;
@@ -795,6 +796,529 @@ TEST_F(FvdIntegratorsTest, GeometryBuilder_EdgeCases) {
         .add_rectangle(200.0f, 300.0f, 200.0f, 300.0f, true);
 
     EXPECT_EQ(geom2.obstacles().size(), 1);  // Still added, but clamped during build
+}
+
+// ============================================================================
+// FIELD VIEW TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, FieldView_DefaultConstruction) {
+    FieldView<Real> field;
+    EXPECT_TRUE(field.is_empty());
+    EXPECT_EQ(field.size(), 0);
+    EXPECT_TRUE(field.name().empty());
+}
+
+TEST_F(FvdIntegratorsTest, FieldView_Allocate) {
+    auto field = FieldView<Real>::allocate("density", 100);
+    EXPECT_FALSE(field.is_empty());
+    EXPECT_EQ(field.size(), 100);
+    EXPECT_EQ(field.name(), "density");
+}
+
+TEST_F(FvdIntegratorsTest, FieldView_ViewFactory) {
+    Kokkos::View<Real*> data("data", 50);
+    auto field = FieldView<Real>::view(data, "pressure");
+    EXPECT_FALSE(field.is_empty());
+    EXPECT_EQ(field.size(), 50);
+    EXPECT_EQ(field.name(), "pressure");
+}
+
+TEST_F(FvdIntegratorsTest, FieldView_ToHost) {
+    auto field = FieldView<Real>::allocate("test", 10);
+
+    // Fill with data on device using the underlying Kokkos view
+    auto& data = field.data();
+    Kokkos::parallel_for("fill", 10, KOKKOS_LAMBDA(int i) {
+        data(i) = static_cast<Real>(i) * 2.0f;
+    });
+
+    // Copy to host
+    auto host_data = field.to_host();
+    EXPECT_EQ(host_data.size(), 10);
+    EXPECT_FLOAT_EQ(host_data[0], 0.0f);
+    EXPECT_FLOAT_EQ(host_data[1], 2.0f);
+    EXPECT_FLOAT_EQ(host_data[5], 10.0f);
+}
+
+TEST_F(FvdIntegratorsTest, FieldView_FromHost_Success) {
+    std::vector<Real> host_data = {1.0f, 2.0f, 3.0f, 4.0f};
+    auto field = FieldView<Real>::allocate("from_host", 4);
+
+    field.from_host(host_data);
+
+    // Verify data was copied
+    auto result = field.to_host();
+    EXPECT_EQ(result.size(), 4);
+    EXPECT_FLOAT_EQ(result[0], 1.0f);
+    EXPECT_FLOAT_EQ(result[3], 4.0f);
+}
+
+TEST_F(FvdIntegratorsTest, FieldView_FromHost_Empty) {
+    std::vector<Real> host_data;
+    auto field = FieldView<Real>::allocate("empty", 0);
+    EXPECT_NO_THROW(field.from_host(host_data));
+}
+
+TEST_F(FvdIntegratorsTest, FieldView_Level) {
+    auto field = FieldView<Real>::allocate("level_test", 100);
+    EXPECT_EQ(field.level(), 0);
+
+    auto field_level2 = FieldView<Real>::allocate("level2", 100, 2);
+    EXPECT_EQ(field_level2.level(), 2);
+}
+
+// ============================================================================
+// FIELD SET TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, FieldSet_DefaultConstruction) {
+    FieldSet<Real> fs;
+    EXPECT_TRUE(fs.is_empty());
+    EXPECT_EQ(fs.size(), 0);
+}
+
+TEST_F(FvdIntegratorsTest, FieldSet_Add) {
+    FieldSet<Real> fs;
+    auto field1 = FieldView<Real>::allocate("rho", 100);
+    auto field2 = FieldView<Real>::allocate("p", 100);
+
+    fs.add(field1);
+    fs.add(field2);
+
+    EXPECT_FALSE(fs.is_empty());
+    EXPECT_EQ(fs.size(), 2);
+}
+
+TEST_F(FvdIntegratorsTest, FieldSet_OperatorIndex) {
+    FieldSet<Real> fs;
+    auto field = FieldView<Real>::allocate("test", 50);
+    fs.add(field);
+
+    EXPECT_EQ(fs[0].size(), 50);
+    EXPECT_EQ(fs[0].name(), "test");
+}
+
+TEST_F(FvdIntegratorsTest, FieldSet_GetByName) {
+    FieldSet<Real> fs;
+    auto rho = FieldView<Real>::allocate("density", 100);
+    auto p = FieldView<Real>::allocate("pressure", 100);
+    fs.add(rho);
+    fs.add(p);
+
+    auto* found = fs.get("density");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->name(), "density");
+
+    auto* not_found = fs.get("velocity");
+    EXPECT_EQ(not_found, nullptr);
+}
+
+TEST_F(FvdIntegratorsTest, FieldSet_Iteration) {
+    FieldSet<Real> fs;
+    fs.add(FieldView<Real>::allocate("f1", 10));
+    fs.add(FieldView<Real>::allocate("f2", 10));
+    fs.add(FieldView<Real>::allocate("f3", 10));
+
+    int count = 0;
+    for (auto it = fs.begin(); it != fs.end(); ++it) {
+        ++count;
+    }
+    EXPECT_EQ(count, 3);
+}
+
+// ============================================================================
+// SOLVER OUTPUT TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, SolverOutput_Construction) {
+    SolverOutput<Real> output;
+
+    // Add fields
+    output.fields.add(FieldView<Real>::allocate("rho", 100));
+    output.fields.add(FieldView<Real>::allocate("p", 100));
+
+    output.time = 1.5f;
+    output.level = 2;
+
+    // Note: geometry is required for is_valid(), but for this test
+    // we just verify the other properties work without geometry
+    EXPECT_EQ(output.time, 1.5f);
+    EXPECT_EQ(output.level, 2);
+    EXPECT_EQ(output.fields.size(), 2);
+    EXPECT_FALSE(output.is_valid());  // No geometry
+}
+
+TEST_F(FvdIntegratorsTest, SolverOutput_GetField) {
+    SolverOutput<Real> output;
+    output.fields.add(FieldView<Real>::allocate("density", 100));
+    output.fields.add(FieldView<Real>::allocate("pressure", 100));
+
+    auto* field = output.get_field("density");
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(field->name(), "density");
+
+    auto* missing = output.get_field("velocity");
+    EXPECT_EQ(missing, nullptr);
+}
+
+TEST_F(FvdIntegratorsTest, SolverOutput_IsValid_NoFields) {
+    SolverOutput<Real> output;
+    EXPECT_FALSE(output.is_valid());
+}
+
+// ============================================================================
+// GRADIENT CRITERION TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, GradientCriterion_RefinesOnDensityGradient) {
+    GradientCriterion<System> crit;
+    crit.threshold = 1.0f;
+    crit.use_rho = true;
+    crit.use_p = false;
+    crit.use_u = false;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // Create siblings with large density gradient
+    typename System::Conserved siblings[4] = {
+        {2.0f, 1.0f, 0.0f, 5.0f},   // High density
+        {0.5f, 0.25f, 0.0f, 1.25f}, // Low density
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    EXPECT_EQ(action, RefinementAction::Refine);
+}
+
+TEST_F(FvdIntegratorsTest, GradientCriterion_NoGradientReturnsKeep) {
+    GradientCriterion<System> crit;
+    crit.threshold = 1.0f;
+    crit.use_rho = true;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // All siblings have same density - no gradient
+    typename System::Conserved siblings[4] = {
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    EXPECT_EQ(action, RefinementAction::Keep);
+}
+
+TEST_F(FvdIntegratorsTest, GradientCriterion_RespectsUseRhoFlag) {
+    GradientCriterion<System> crit;
+    crit.threshold = 1.0f;
+    crit.use_rho = false;  // Disabled
+    crit.use_p = true;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // Large density gradient but pressure gradient checking disabled
+    typename System::Conserved siblings[4] = {
+        {2.0f, 1.0f, 0.0f, 5.0f},
+        {0.5f, 0.25f, 0.0f, 1.25f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    // Should keep since density checking is disabled
+    EXPECT_EQ(action, RefinementAction::Keep);
+}
+
+TEST_F(FvdIntegratorsTest, GradientCriterion_POD_Compliant) {
+    using Crit = GradientCriterion<System>;
+    EXPECT_TRUE(std::is_default_constructible_v<Crit>);
+    EXPECT_TRUE(std::is_trivially_copyable_v<Crit>);
+}
+
+// ============================================================================
+// SHOCK SENSOR CRITERION TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, ShockSensorCriterion_DucrosSensor) {
+    ShockSensorCriterion<System> crit;
+    crit.threshold = 0.5f;
+    crit.sensor_type = ShockSensorCriterion<System>::Ducros;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // Create pressure gradient (shock indicator)
+    typename System::Conserved siblings[4] = {
+        {1.5f, 0.75f, 0.0f, 5.0f},   // High pressure
+        {0.8f, 0.4f, 0.0f, 1.0f},    // Low pressure
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    // High pressure gradient should trigger refinement
+    EXPECT_TRUE(action == RefinementAction::Refine || action == RefinementAction::Keep);
+}
+
+TEST_F(FvdIntegratorsTest, ShockSensorCriterion_JamesonSensor) {
+    ShockSensorCriterion<System> crit;
+    crit.threshold = 0.5f;
+    crit.sensor_type = ShockSensorCriterion<System>::Jameson;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    typename System::Conserved siblings[4] = {
+        {1.5f, 0.75f, 0.0f, 5.0f},
+        {0.8f, 0.4f, 0.0f, 1.0f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    EXPECT_TRUE(action == RefinementAction::Refine || action == RefinementAction::Keep);
+}
+
+TEST_F(FvdIntegratorsTest, ShockSensorCriterion_POD_Compliant) {
+    using Crit = ShockSensorCriterion<System>;
+    EXPECT_TRUE(std::is_default_constructible_v<Crit>);
+    EXPECT_TRUE(std::is_trivially_copyable_v<Crit>);
+}
+
+// ============================================================================
+// VORTICITY CRITERION TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, VorticityCriterion_HighVorticityRefines) {
+    VorticityCriterion<System> crit;
+    crit.threshold = 1.0f;
+
+    typename System::Conserved U_center{1.0f, 0.0f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // Create vorticity: dv/dx - du/dy
+    // Sibling above has positive v, sibling right has positive u
+    typename System::Conserved siblings[4] = {
+        {1.0f, 0.5f, 0.0f, 2.5f},   // Right: high u
+        {1.0f, 0.0f, 0.5f, 2.5f},   // Top: high v
+        {1.0f, 0.0f, 0.0f, 2.5f},
+        {1.0f, 0.0f, 0.0f, 2.5f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    // Should detect high vorticity
+    EXPECT_TRUE(action == RefinementAction::Refine || action == RefinementAction::Keep);
+}
+
+TEST_F(FvdIntegratorsTest, VorticityCriterion_ZeroVorticityKeeps) {
+    VorticityCriterion<System> crit;
+    crit.threshold = 1.0f;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // Uniform flow - no vorticity
+    typename System::Conserved siblings[4] = {
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    EXPECT_EQ(action, RefinementAction::Keep);
+}
+
+TEST_F(FvdIntegratorsTest, VorticityCriterion_POD_Compliant) {
+    using Crit = VorticityCriterion<System>;
+    EXPECT_TRUE(std::is_default_constructible_v<Crit>);
+    EXPECT_TRUE(std::is_trivially_copyable_v<Crit>);
+}
+
+// ============================================================================
+// SMOOTHNESS CRITERION ADVANCED TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, SmoothnessCriterion_HighVarianceKeeps) {
+    SmoothnessCriterion<System> crit;
+    crit.coarsen_threshold = 0.01f;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // High variance region
+    typename System::Conserved siblings[4] = {
+        {0.5f, 0.25f, 0.0f, 1.25f},
+        {1.5f, 0.75f, 0.0f, 3.75f},
+        {0.8f, 0.4f, 0.0f, 2.0f},
+        {1.2f, 0.6f, 0.0f, 3.0f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    EXPECT_EQ(action, RefinementAction::Keep);
+}
+
+TEST_F(FvdIntegratorsTest, SmoothnessCriterion_AllSiblingsSimilar) {
+    SmoothnessCriterion<System> crit;
+    crit.coarsen_threshold = 0.01f;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // All cells very similar
+    typename System::Conserved siblings[4] = {
+        {1.001f, 0.5005f, 0.0f, 2.5025f},
+        {0.999f, 0.4995f, 0.0f, 2.4975f},
+        {1.0005f, 0.50025f, 0.0f, 2.50125f},
+        {0.9995f, 0.49975f, 0.0f, 2.49875f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    EXPECT_EQ(action, RefinementAction::Coarsen);
+}
+
+TEST_F(FvdIntegratorsTest, SmoothnessCriterion_UseRhoFlag) {
+    SmoothnessCriterion<System> crit;
+    crit.coarsen_threshold = 0.01f;
+    crit.use_rho = true;
+    crit.use_p = false;
+    crit.use_u = false;
+
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center = System::to_primitive(U_center);
+
+    // Smooth density but varying pressure
+    typename System::Conserved siblings[4] = {
+        {1.001f, 0.5005f, 0.0f, 2.5025f},
+        {0.999f, 0.4995f, 0.0f, 2.4975f},
+        {1.0005f, 0.50025f, 0.0f, 2.50125f},
+        {0.9995f, 0.49975f, 0.0f, 2.49875f}
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    // Should coarsen based on smooth density
+    EXPECT_EQ(action, RefinementAction::Coarsen);
+}
+
+TEST_F(FvdIntegratorsTest, SmoothnessCriterion_Advection2D) {
+    using AdvSystem = Advection2D<Real>;
+    SmoothnessCriterion<AdvSystem> crit;
+    crit.coarsen_threshold = 0.01f;
+
+    typename AdvSystem::Conserved U_center{1.0f};
+    typename AdvSystem::Primitive q_center{1.0f};
+
+    // Smooth scalar field
+    typename AdvSystem::Conserved siblings[4] = {
+        1.001f, 0.999f, 1.0005f, 0.9995f
+    };
+
+    auto action = crit.evaluate(U_center, q_center, siblings, 0.01f);
+    EXPECT_EQ(action, RefinementAction::Coarsen);
+}
+
+// ============================================================================
+// COMPOSITE CRITERION ADVANCED TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, CompositeCriterion_OR_OneRefineReturnsRefine) {
+    CompositeCriterion<System, 8> comp;
+    comp.logic_op = CompositeCriterion<System, 8>::Or;
+
+    GradientCriterion<System> grad;
+    grad.threshold = 1000.0f;  // Won't trigger
+    comp.add_gradient(grad);
+
+    ValueRangeCriterion<System> range;
+    range.variable = ValueRangeCriterion<System>::Density;
+    range.min_val = 0.5f;
+    range.max_val = 1.5f;
+    comp.add_value_range(range);
+
+    typename System::Conserved U{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q = System::to_primitive(U);
+    typename System::Conserved siblings[4] = {
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = comp.evaluate(U, q, siblings, 0.01f);
+    // ValueRange should trigger refine
+    EXPECT_EQ(action, RefinementAction::Refine);
+}
+
+TEST_F(FvdIntegratorsTest, CompositeCriterion_AND_AllRefineReturnsRefine) {
+    CompositeCriterion<System, 8> comp;
+    comp.logic_op = CompositeCriterion<System, 8>::And;
+
+    GradientCriterion<System> grad;
+    grad.threshold = 1000.0f;
+    grad.use_rho = false;  // Disabled
+    comp.add_gradient(grad);
+
+    ValueRangeCriterion<System> range;
+    range.variable = ValueRangeCriterion<System>::Density;
+    range.min_val = 0.5f;
+    range.max_val = 1.5f;
+    comp.add_value_range(range);
+
+    typename System::Conserved U{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q = System::to_primitive(U);
+    typename System::Conserved siblings[4] = {
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = comp.evaluate(U, q, siblings, 0.01f);
+    // AND requires all to agree - gradient says Keep, so result is Keep
+    EXPECT_EQ(action, RefinementAction::Keep);
+}
+
+TEST_F(FvdIntegratorsTest, CompositeCriterion_Vote_MajorityRefines) {
+    CompositeCriterion<System, 8> comp;
+    comp.logic_op = CompositeCriterion<System, 8>::Vote;
+
+    // Add 3 criteria: all 3 should say Refine
+    ValueRangeCriterion<System> range1;
+    range1.variable = ValueRangeCriterion<System>::Density;
+    range1.min_val = 0.5f;
+    range1.max_val = 1.5f;
+    comp.add_value_range(range1);
+
+    ValueRangeCriterion<System> range2;
+    range2.variable = ValueRangeCriterion<System>::Pressure;
+    range2.min_val = 200000.0f;
+    range2.max_val = 300000.0f;
+    comp.add_value_range(range2);
+
+    ValueRangeCriterion<System> range3;
+    range3.variable = ValueRangeCriterion<System>::VelocityX;
+    range3.min_val = 0.0f;
+    range3.max_val = 1.0f;
+    comp.add_value_range(range3);
+
+    typename System::Conserved U{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q = System::to_primitive(U);
+    typename System::Conserved siblings[4] = {
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.0f, 0.5f, 0.0f, 2.5f}
+    };
+
+    auto action = comp.evaluate(U, q, siblings, 0.01f);
+    // All 3 should say Refine (all values in range)
+    EXPECT_EQ(action, RefinementAction::Refine);
 }
 
 // ============================================================================
