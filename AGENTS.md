@@ -45,6 +45,47 @@
 - When adding device code, exercise it at least in the serial preset.
 - For set‑algebra primitives (e.g. `set_union_device`), add both high‑level tests and focused tests for low‑level building blocks to simplify debugging.
 
+## Experimental Module Guidelines
+
+The `experimental/` directory provides an isolated research space for alternative algorithm implementations:
+
+### Architecture
+
+- **Isolation**: Completely separate from stable codebase
+  - Separate namespace: `experimental::subsetix::csr` (not `subsetix::csr`)
+  - Separate library target: `experimental::csr` (depends only on Kokkos)
+  - Only built when `SUBSETIX_ENABLE_EXPERIMENTAL=ON` (default: OFF)
+
+- **Versioned framework**: v1, v2, v3 for algorithm comparison
+  - v1: Baseline algorithm (port of subsetix_kokkos_2)
+  - v2, v3: Research slots for experimentation
+  - Cross-version tests ensure all versions produce identical results
+
+### Development Workflow
+
+```bash
+# Enable experimental module
+cmake -DSUBSETIX_ENABLE_EXPERIMENTAL=ON --preset serial
+cmake --build --preset serial
+
+# Run experimental tests
+ctest --preset serial
+
+# Run experimental benchmarks
+./build-serial/experimental/benchmarks/experimental_comparison_benchmark
+```
+
+### Contribution Rules
+
+- Experimental code has **no stability guarantees** - APIs may change without notice
+- When adding new algorithm versions (v4, v5, etc.):
+  1. Create new header in `experimental/include/experimental/subsetix/csr/set_algebra/vN.hpp`
+  2. Add corresponding test in `experimental/tests/set_algebra/test_vN_unitary.cpp`
+  3. Update `set_algebra.hpp` to include the new version
+  4. Add benchmarks to `experimental/benchmarks/set_algebra/unified_comparison_benchmark.cpp`
+- **Do not** import experimental code into stable modules
+- To promote experimental code to stable: copy and adapt, do not move
+
 ## Commit & Pull Request Guidelines
 
 - Commit messages: short, imperative, and scoped (e.g. `Add CSR fields`, `Fix cuda-clang preset`).

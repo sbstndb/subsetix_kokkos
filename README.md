@@ -79,13 +79,24 @@ ctest --preset serial
 
 ### Experimental Algorithms
 
-An experimental module (`experimental/`) provides alternative set algebra implementations for algorithm research. Disabled by default, enable with:
+An experimental module (`experimental/`) provides alternative set algebra implementations for algorithm research and comparison. This module is **completely isolated** from the stable codebase and uses a separate namespace (`experimental::subsetix::csr`).
 
+**Key features:**
+- Versioned algorithm framework (v1, v2, v3) for performance comparison
+- Dedicated tests and benchmarks
+- No stability guarantees - APIs may change
+
+Enable with:
 ```bash
 cmake -DSUBSETIX_ENABLE_EXPERIMENTAL=ON --preset serial
-```
+cmake --build --preset serial
 
-See `experimental/README.md` for details.
+# Run experimental tests
+ctest --preset serial
+
+# Run experimental benchmarks
+./build-serial/experimental/benchmarks/experimental_comparison_benchmark
+```
 
 ---
 

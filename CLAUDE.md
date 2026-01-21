@@ -115,6 +115,42 @@ The `experimental/` directory provides alternative implementations of set algebr
 
 Enable with: `cmake -DSUBSETIX_ENABLE_EXPERIMENTAL=ON --preset serial`
 
+### Running Experimental Tests
+
+Experimental tests are separate executables from stable tests:
+
+```bash
+# After enabling experimental module and building
+ctest --preset serial  # Runs all tests (stable + experimental)
+
+# Run specific experimental test executables
+./build-serial/experimental/tests/experimental_v1_unitary_test
+./build-serial/experimental/tests/experimental_v2_unitary_test
+./build-serial/experimental/tests/experimental_v3_unitary_test
+./build-serial/experimental/tests/experimental_cross_version_test  # Verifies v1/v2/v3 produce identical results
+./build-serial/experimental/tests/experimental_overlap_patterns_test
+./build-serial/experimental/tests/experimental_large_mesh_test
+./build-serial/experimental/tests/experimental_sorted_rows_test
+```
+
+### Running Experimental Benchmarks
+
+```bash
+# Run all experimental benchmarks
+./build-serial/experimental/benchmarks/experimental_comparison_benchmark
+
+# Run specific size configurations
+./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=SmallConfig
+./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=MediumConfig
+./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=LargeConfig
+
+# Run only 2D benchmarks
+./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="2D"
+
+# Run only 3D benchmarks
+./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="3D"
+```
+
 ### Execution Space Configuration
 
 Execution/memory spaces are compile-time configurable via CMake defines:
