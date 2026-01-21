@@ -40,5 +40,5 @@ jobs:
         working-directory: build-serial
         run: |
           ./experimental/benchmarks/experimental_comparison_benchmark \
-            --benchmark_min_time=0.001 \
-            --benchmark_iterations=10
+            --benchmark_min_time=0.01s \
+            --benchmark_repetitions=1
