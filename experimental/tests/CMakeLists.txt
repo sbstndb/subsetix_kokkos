@@ -66,13 +66,13 @@ message(STATUS "  - experimental_large_mesh_test")
 # New Architecture Tests with Common Format and Random Generation
 # ============================================================================
 
-# v1 tests with conversion - comprehensive v1-specific tests using common format
-add_executable(experimental_v1_with_conversion_test
+# v1 unitary tests - comprehensive v1-specific tests
+add_executable(experimental_v1_unitary_test
   test_main.cpp
-  set_algebra/test_v1_with_conversion.cpp
+  set_algebra/test_v1_unitary.cpp
 )
 
-target_link_libraries(experimental_v1_with_conversion_test
+target_link_libraries(experimental_v1_unitary_test
   PRIVATE
     experimental_subsetix_csr
     gtest
@@ -80,15 +80,15 @@ target_link_libraries(experimental_v1_with_conversion_test
     Kokkos::kokkos
 )
 
-add_test(NAME ExperimentalV1WithConversionTest COMMAND experimental_v1_with_conversion_test)
+add_test(NAME ExperimentalV1UnitaryTest COMMAND experimental_v1_unitary_test)
 
-# v2 tests with conversion - v2-specific tests using common format
-add_executable(experimental_v2_with_conversion_test
+# v2 unitary tests - v2-specific tests
+add_executable(experimental_v2_unitary_test
   test_main.cpp
-  set_algebra/test_v2_with_conversion.cpp
+  set_algebra/test_v2_unitary.cpp
 )
 
-target_link_libraries(experimental_v2_with_conversion_test
+target_link_libraries(experimental_v2_unitary_test
   PRIVATE
     experimental_subsetix_csr
     gtest
@@ -96,15 +96,15 @@ target_link_libraries(experimental_v2_with_conversion_test
     Kokkos::kokkos
 )
 
-add_test(NAME ExperimentalV2WithConversionTest COMMAND experimental_v2_with_conversion_test)
+add_test(NAME ExperimentalV2UnitaryTest COMMAND experimental_v2_unitary_test)
 
-# v3 tests with conversion - v3-specific tests using common format
-add_executable(experimental_v3_with_conversion_test
+# v3 unitary tests - v3-specific tests
+add_executable(experimental_v3_unitary_test
   test_main.cpp
-  set_algebra/test_v3_with_conversion.cpp
+  set_algebra/test_v3_unitary.cpp
 )
 
-target_link_libraries(experimental_v3_with_conversion_test
+target_link_libraries(experimental_v3_unitary_test
   PRIVATE
     experimental_subsetix_csr
     gtest
@@ -112,15 +112,15 @@ target_link_libraries(experimental_v3_with_conversion_test
     Kokkos::kokkos
 )
 
-add_test(NAME ExperimentalV3WithConversionTest COMMAND experimental_v3_with_conversion_test)
+add_test(NAME ExperimentalV3UnitaryTest COMMAND experimental_v3_unitary_test)
 
-# Random comparison test - compares v1/v2/v3 using random geometries ONLY
-add_executable(experimental_random_comparison_test
+# Cross-version test - compares v1/v2/v3 using random geometries
+add_executable(experimental_cross_version_test
   test_main.cpp
-  set_algebra/test_random_comparison.cpp
+  set_algebra/test_cross_version.cpp
 )
 
-target_link_libraries(experimental_random_comparison_test
+target_link_libraries(experimental_cross_version_test
   PRIVATE
     experimental_subsetix_csr
     gtest
@@ -128,9 +128,9 @@ target_link_libraries(experimental_random_comparison_test
     Kokkos::kokkos
 )
 
-add_test(NAME ExperimentalRandomComparisonTest COMMAND experimental_random_comparison_test)
+add_test(NAME ExperimentalCrossVersionTest COMMAND experimental_cross_version_test)
 
-message(STATUS "  - experimental_v1_with_conversion_test")
-message(STATUS "  - experimental_v2_with_conversion_test")
-message(STATUS "  - experimental_v3_with_conversion_test")
-message(STATUS "  - experimental_random_comparison_test")
+message(STATUS "  - experimental_v1_unitary_test")
+message(STATUS "  - experimental_v2_unitary_test")
+message(STATUS "  - experimental_v3_unitary_test")
+message(STATUS "  - experimental_cross_version_test")

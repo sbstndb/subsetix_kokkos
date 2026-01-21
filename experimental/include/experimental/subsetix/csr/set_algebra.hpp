@@ -16,6 +16,10 @@
  * - Extensible framework for comparing different algorithms
  * - Disabled by default (SUBSETIX_ENABLE_EXPERIMENTAL=OFF)
  *
+ * Current status:
+ * - v1, v2, v3 are currently identical (baseline algorithm)
+ * - Framework ready for algorithm experimentation
+ *
  * Usage:
  * @code
  *   #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
@@ -33,21 +37,24 @@
 // Utility functions
 #include <experimental/subsetix/csr/detail/utils.hpp>
 
-// v1: Port of subsetix_kokkos_2 intersection algorithm
+// v1: Baseline intersection algorithm (5-phase: map, count, scan, fill, compact)
 #include <experimental/subsetix/csr/set_algebra/v1.hpp>
 
-// v2: Optimized intersection with hash-based row mapping and workspace
+// v2: Research slot (currently identical to v1)
 #include <experimental/subsetix/csr/set_algebra/v2.hpp>
+
+// v3: Research slot (currently identical to v1)
+#include <experimental/subsetix/csr/set_algebra/v3.hpp>
 
 namespace experimental::subsetix::csr {
 
 /**
- * @brief Version 1 of set intersection algorithm.
+ * @brief Version 1 - Baseline intersection algorithm.
  *
- * This is the original subsetix_kokkos_2 algorithm:
- * - Row mapping via binary search
+ * Original subsetix_kokkos_2 algorithm:
+ * - Row mapping via binary search (O(log n))
  * - Two-pointer merge for interval intersection
- * - 5-phase: map, count, scan, fill, compact
+ * - 5-phase pipeline: map, count, scan, fill, compact
  *
  * Works for both 2D and 3D meshes via template parameter.
  *
@@ -58,20 +65,24 @@ namespace experimental::subsetix::csr {
  */
 
 /**
- * @brief Version 2 of set intersection algorithm.
+ * @brief Version 2 - Research slot for alternative algorithms.
  *
- * Optimized implementation addressing v1 bottlenecks:
- * - Hash-based row mapping (O(1) instead of O(log n))
- * - Single-pass intersection (no separate count+fill)
- * - Reusable workspace (eliminates allocations)
- * - No host synchronization
+ * Currently identical to v1 (baseline).
+ * Intended for algorithm experimentation and comparison.
  *
  * Usage:
  *   using namespace v2;
- *   MeshIntersectionWorkspace<MemorySpace> ws;
- *   auto result = intersect_meshes<2>(mesh_a, mesh_b, ws);
+ *   auto result = intersect_meshes<2>(mesh_a, mesh_b);
+ */
+
+/**
+ * @brief Version 3 - Research slot for alternative algorithms.
  *
- * For single operations, workspace is created automatically:
+ * Currently identical to v1 (baseline).
+ * Intended for algorithm experimentation and comparison.
+ *
+ * Usage:
+ *   using namespace v3;
  *   auto result = intersect_meshes<2>(mesh_a, mesh_b);
  */
 
