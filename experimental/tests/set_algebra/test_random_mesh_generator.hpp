@@ -38,6 +38,115 @@ struct RandomMeshConfig {
 };
 
 // ============================================================================
+// Predefined Mesh Configurations
+// ============================================================================
+
+/**
+ * @brief Small mesh configuration for quick unit tests
+ *
+ * Suitable for:
+ * - Fast unit tests
+ * - Debugging
+ * - CI/CD pipelines
+ *
+ * Parameters:
+ * - Y scope: [0, 64]
+ * - Z scope: [0, 64] (3D only)
+ * - Max intervals per row: 4
+ * - Row count: 400-1250
+ * - 3D sparsity: ~30% (1250 / (64×64) ≈ 30%)
+ */
+inline RandomMeshConfig SmallConfig() {
+  return RandomMeshConfig{
+    .seed = 42,
+    .num_rows_min = 400,
+    .num_rows_max = 1250,
+    .intervals_per_row_min = 1,
+    .intervals_per_row_max = 4,
+    .interval_length_min = 1,
+    .interval_length_max = 100,
+    .gap_min = 0,
+    .gap_max = 50,
+    .y_min = 0,
+    .y_max = 64,
+    .z_min = 0,
+    .z_max = 64,
+    .sorted_rows = true,
+    .overlap_probability = 0.5
+  };
+}
+
+/**
+ * @brief Medium mesh configuration for standard tests
+ *
+ * Suitable for:
+ * - Standard unit tests
+ * - Integration tests
+ * - Development testing
+ *
+ * Parameters:
+ * - Y scope: [0, 512]
+ * - Z scope: [0, 512] (3D only)
+ * - Max intervals per row: 4
+ * - Row count: 40000-78643
+ * - 3D sparsity: ~30% (78643 / (512×512) ≈ 30%)
+ */
+inline RandomMeshConfig MediumConfig() {
+  return RandomMeshConfig{
+    .seed = 42,
+    .num_rows_min = 40000,
+    .num_rows_max = 78643,
+    .intervals_per_row_min = 1,
+    .intervals_per_row_max = 4,
+    .interval_length_min = 1,
+    .interval_length_max = 100,
+    .gap_min = 0,
+    .gap_max = 50,
+    .y_min = 0,
+    .y_max = 512,
+    .z_min = 0,
+    .z_max = 512,
+    .sorted_rows = true,
+    .overlap_probability = 0.5
+  };
+}
+
+/**
+ * @brief Large mesh configuration for stress tests and benchmarks
+ *
+ * Suitable for:
+ * - Performance benchmarks
+ * - Stress tests
+ * - Large-scale validation
+ *
+ * Parameters:
+ * - Y scope: [0, 4096]
+ * - Z scope: [0, 4096] (3D only)
+ * - Max intervals per row: 4
+ * - Row count: 2.5M-5M
+ * - 3D sparsity: ~30% (5M / (4096×4096) ≈ 30%)
+ */
+inline RandomMeshConfig LargeConfig() {
+  return RandomMeshConfig{
+    .seed = 42,
+    .num_rows_min = 2500000,
+    .num_rows_max = 5000000,
+    .intervals_per_row_min = 1,
+    .intervals_per_row_max = 4,
+    .interval_length_min = 1,
+    .interval_length_max = 100,
+    .gap_min = 0,
+    .gap_max = 50,
+    .y_min = 0,
+    .y_max = 4096,
+    .z_min = 0,
+    .z_max = 4096,
+    .sorted_rows = true,
+    .overlap_probability = 0.5
+  };
+}
+
+// ============================================================================
 // Random Mesh Generators
 // ============================================================================
 

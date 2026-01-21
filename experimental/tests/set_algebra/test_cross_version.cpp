@@ -87,9 +87,6 @@ TEST_F(RandomComparisonTest, AllVersions2D_RandomBounds) {
   // Fixed seed for test reproducibility
   std::mt19937 seed_gen(42);
 
-  // KNOWN BUG: v3 produces different results than v1 on larger meshes
-  // v3 fails at rows >= ~150 (seeds: 1561, 4561, 4505, 1819, 467, 160)
-  // Issue is being investigated - keep test at 1024 to catch regressions
   std::uniform_int_distribution<int> rows_dist(1, 1024);
   std::uniform_int_distribution<int> intervals_dist(1, 10);
   std::uniform_int_distribution<int> seed_dist(1, 10000);
@@ -105,8 +102,8 @@ TEST_F(RandomComparisonTest, AllVersions2D_RandomBounds) {
     int seed = seed_dist(seed_gen);
     int max_length = length_dist(seed_gen);
 
-    // Build config
-    RandomMeshConfig config;
+    // Build config from MediumConfig baseline
+    RandomMeshConfig config = MediumConfig();
     config.seed = seed;
     config.num_rows_min = num_rows;
     config.num_rows_max = num_rows + 1;  // Exact row count
@@ -115,14 +112,14 @@ TEST_F(RandomComparisonTest, AllVersions2D_RandomBounds) {
     config.interval_length_max = max_length;
 
     // Generate two random meshes
-    auto a = RandomMeshGenerator::generate_2d(config);
+    auto mesh_a = RandomMeshGenerator::generate_2d(config);
     config.seed++;
-    auto b = RandomMeshGenerator::generate_2d(config);
+    auto mesh_b = RandomMeshGenerator::generate_2d(config);
 
     // Run all versions
-    auto result_v1 = intersect_v1_2d(a, b);
-    auto result_v2 = intersect_v2_2d(a, b);
-    auto result_v3 = intersect_v3_2d(a, b);
+    auto result_v1 = intersect_v1_2d(mesh_a, mesh_b);
+    auto result_v2 = intersect_v2_2d(mesh_a, mesh_b);
+    auto result_v3 = intersect_v3_2d(mesh_a, mesh_b);
 
     // All should be identical (bitwise comparison)
     EXPECT_TRUE(common_meshes_equal(result_v1, result_v2))
@@ -159,22 +156,22 @@ TEST_F(RandomComparisonTest, AllVersions3D_RandomBounds) {
     int seed = seed_dist(seed_gen);
     int max_length = length_dist(seed_gen);
 
-    RandomMeshConfig config;
+    // Build config from MediumConfig baseline (includes proper z_max=1024)
+    RandomMeshConfig config = MediumConfig();
     config.seed = seed;
     config.num_rows_min = num_rows;
     config.num_rows_max = num_rows + 1;
     config.intervals_per_row_min = min_intervals;
     config.intervals_per_row_max = max_intervals;
     config.interval_length_max = max_length;
-    config.z_max = 100;  // Keep Z range small
 
-    auto a = RandomMeshGenerator::generate_3d(config);
+    auto mesh_a = RandomMeshGenerator::generate_3d(config);
     config.seed++;
-    auto b = RandomMeshGenerator::generate_3d(config);
+    auto mesh_b = RandomMeshGenerator::generate_3d(config);
 
-    auto result_v1 = intersect_v1_3d(a, b);
-    auto result_v2 = intersect_v2_3d(a, b);
-    auto result_v3 = intersect_v3_3d(a, b);
+    auto result_v1 = intersect_v1_3d(mesh_a, mesh_b);
+    auto result_v2 = intersect_v2_3d(mesh_a, mesh_b);
+    auto result_v3 = intersect_v3_3d(mesh_a, mesh_b);
 
     EXPECT_TRUE(common_meshes_equal(result_v1, result_v2))
         << "v1 and v2 produced different 3D results (iteration=" << iter
@@ -206,7 +203,7 @@ TEST_F(RandomComparisonTest, AllVersions_MathProperties_Random) {
   const int num_iterations = 8;
 
   for (int iter = 0; iter < num_iterations; ++iter) {
-    // Generate random config
+    // Generate random config with high y_max to avoid duplicate row keys
     int num_rows = rows_dist(seed_gen);
     int min_intervals = intervals_dist(seed_gen);
     int max_intervals = std::min(min_intervals + intervals_dist(seed_gen), 10);
@@ -218,60 +215,61 @@ TEST_F(RandomComparisonTest, AllVersions_MathProperties_Random) {
     config.num_rows_max = num_rows + 1;
     config.intervals_per_row_min = min_intervals;
     config.intervals_per_row_max = max_intervals;
+    config.y_max = 10000;  // High y_max ensures unique row keys for math properties
 
     // Generate three random meshes
-    CommonMesh2D a = RandomMeshGenerator::generate_2d(config);
+    CommonMesh2D mesh_a = RandomMeshGenerator::generate_2d(config);
     config.seed++;
-    CommonMesh2D b = RandomMeshGenerator::generate_2d(config);
+    CommonMesh2D mesh_b = RandomMeshGenerator::generate_2d(config);
     config.seed++;
-    CommonMesh2D c = RandomMeshGenerator::generate_2d(config);
+    CommonMesh2D mesh_c = RandomMeshGenerator::generate_2d(config);
 
     // Test Commutativity: A ∩ B = B ∩ A
-    auto v1_ab = intersect_v1_2d(a, b);
-    auto v1_ba = intersect_v1_2d(b, a);
+    auto v1_ab = intersect_v1_2d(mesh_a, mesh_b);
+    auto v1_ba = intersect_v1_2d(mesh_b, mesh_a);
     EXPECT_TRUE(common_meshes_equal(v1_ab, v1_ba))
         << "v1 is not commutative (iteration=" << iter << ")";
 
-    auto v2_ab = intersect_v2_2d(a, b);
-    auto v2_ba = intersect_v2_2d(b, a);
+    auto v2_ab = intersect_v2_2d(mesh_a, mesh_b);
+    auto v2_ba = intersect_v2_2d(mesh_b, mesh_a);
     EXPECT_TRUE(common_meshes_equal(v2_ab, v2_ba))
         << "v2 is not commutative (iteration=" << iter << ")";
 
-    auto v3_ab = intersect_v3_2d(a, b);
-    auto v3_ba = intersect_v3_2d(b, a);
+    auto v3_ab = intersect_v3_2d(mesh_a, mesh_b);
+    auto v3_ba = intersect_v3_2d(mesh_b, mesh_a);
     EXPECT_TRUE(common_meshes_equal(v3_ab, v3_ba))
         << "v3 is not commutative (iteration=" << iter << ")";
 
     // Test Associativity: (A ∩ B) ∩ C = A ∩ (B ∩ C)
-    auto v1_ab_c = intersect_v1_2d(v1_ab, c);  // (A ∩ B) ∩ C
-    auto v1_bc = intersect_v1_2d(b, c);
-    auto v1_a_bc = intersect_v1_2d(a, v1_bc);   // A ∩ (B ∩ C)
+    auto v1_ab_c = intersect_v1_2d(v1_ab, mesh_c);  // (A ∩ B) ∩ C
+    auto v1_bc = intersect_v1_2d(mesh_b, mesh_c);
+    auto v1_a_bc = intersect_v1_2d(mesh_a, v1_bc);   // A ∩ (B ∩ C)
     EXPECT_TRUE(common_meshes_equal(v1_ab_c, v1_a_bc))
         << "v1 is not associative (iteration=" << iter << ")";
 
-    auto v2_ab_c = intersect_v2_2d(v2_ab, c);
-    auto v2_bc = intersect_v2_2d(b, c);
-    auto v2_a_bc = intersect_v2_2d(a, v2_bc);
+    auto v2_ab_c = intersect_v2_2d(v2_ab, mesh_c);
+    auto v2_bc = intersect_v2_2d(mesh_b, mesh_c);
+    auto v2_a_bc = intersect_v2_2d(mesh_a, v2_bc);
     EXPECT_TRUE(common_meshes_equal(v2_ab_c, v2_a_bc))
         << "v2 is not associative (iteration=" << iter << ")";
 
-    auto v3_ab_c = intersect_v3_2d(v3_ab, c);
-    auto v3_bc = intersect_v3_2d(b, c);
-    auto v3_a_bc = intersect_v3_2d(a, v3_bc);
+    auto v3_ab_c = intersect_v3_2d(v3_ab, mesh_c);
+    auto v3_bc = intersect_v3_2d(mesh_b, mesh_c);
+    auto v3_a_bc = intersect_v3_2d(mesh_a, v3_bc);
     EXPECT_TRUE(common_meshes_equal(v3_ab_c, v3_a_bc))
         << "v3 is not associative (iteration=" << iter << ")";
 
     // Test Idempotence: A ∩ A = A
-    auto v1_aa = intersect_v1_2d(a, a);
-    EXPECT_TRUE(common_meshes_equal(v1_aa, a))
+    auto v1_aa = intersect_v1_2d(mesh_a, mesh_a);
+    EXPECT_TRUE(common_meshes_equal(v1_aa, mesh_a))
         << "v1 is not idempotent (iteration=" << iter << ")";
 
-    auto v2_aa = intersect_v2_2d(a, a);
-    EXPECT_TRUE(common_meshes_equal(v2_aa, a))
+    auto v2_aa = intersect_v2_2d(mesh_a, mesh_a);
+    EXPECT_TRUE(common_meshes_equal(v2_aa, mesh_a))
         << "v2 is not idempotent (iteration=" << iter << ")";
 
-    auto v3_aa = intersect_v3_2d(a, a);
-    EXPECT_TRUE(common_meshes_equal(v3_aa, a))
+    auto v3_aa = intersect_v3_2d(mesh_a, mesh_a);
+    EXPECT_TRUE(common_meshes_equal(v3_aa, mesh_a))
         << "v3 is not idempotent (iteration=" << iter << ")";
   }
 }
