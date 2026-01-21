@@ -77,14 +77,12 @@ TEST(LargeMeshTest, PartialOverlap_n8192) {
   EXPECT_GT(result.num_rows, 0);
 }
 
-TEST(LargeMeshTest, PartialOverlap_n8192_v2_with_workspace) {
+TEST(LargeMeshTest, PartialOverlap_n8192_v2) {
   const int n = 8192;
   auto mesh_a = generate_mesh_2d_partial(n, 0);
   auto mesh_b = generate_mesh_2d_partial(n, 1);
 
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> workspace;
-
-  auto result = v2::intersect_meshes_2d(mesh_a, mesh_b, workspace);
+  auto result = v2::intersect_meshes_2d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 

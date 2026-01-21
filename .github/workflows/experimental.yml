@@ -47,3 +47,31 @@ jobs:
 
       # Note: Filter matches only benchmarks with explicit size suffixes to exclude
       # aggregate benchmarks (which trigger a Google Benchmark bug with fixtures using Range()).
+
+  # Debug build check with sanitizers
+  experimental-sanitizer:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Configure with experimental and sanitizers
+        run: |
+          cmake --preset serial-asan \
+            -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+            -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
+            -DSUBSETIX_BUILD_STABLE_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build-serial-asan --parallel $(nproc)
+
+      - name: Run experimental tests with sanitizers
+        working-directory: build-serial-asan
+        run: ctest --output-on-failure

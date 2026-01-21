@@ -26,10 +26,6 @@ using namespace experimental::subsetix::csr::test;
  */
 class RandomComparisonTest : public ::testing::Test {
 protected:
-  void SetUp() override {
-    v2_workspace_ = v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space>();
-  }
-
   // Run intersection with v1 (reference)
   CommonMesh2D intersect_v1_2d(const CommonMesh2D& a, const CommonMesh2D& b) {
     auto device_a = from_common_2d(a);
@@ -49,14 +45,14 @@ protected:
   CommonMesh2D intersect_v2_2d(const CommonMesh2D& a, const CommonMesh2D& b) {
     auto device_a = from_common_2d(a);
     auto device_b = from_common_2d(b);
-    auto result_device = v2::intersect_meshes_2d(device_a, device_b, v2_workspace_);
+    auto result_device = v2::intersect_meshes_2d(device_a, device_b);
     return to_common_2d(result_device);
   }
 
   CommonMesh3D intersect_v2_3d(const CommonMesh3D& a, const CommonMesh3D& b) {
     auto device_a = from_common_3d(a);
     auto device_b = from_common_3d(b);
-    auto result_device = v2::intersect_meshes_3d(device_a, device_b, v2_workspace_);
+    auto result_device = v2::intersect_meshes_3d(device_a, device_b);
     return to_common_3d(result_device);
   }
 
@@ -74,8 +70,6 @@ protected:
     auto result_device = v3::intersect_meshes_3d(device_a, device_b);
     return to_common_3d(result_device);
   }
-
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> v2_workspace_;
 };
 
 // ============================================================================

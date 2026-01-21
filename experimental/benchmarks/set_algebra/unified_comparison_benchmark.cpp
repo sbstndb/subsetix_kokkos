@@ -96,16 +96,12 @@ public:
     // Generate test data once (shared by all algorithms)
     mesh_a_ = generate_mesh_2d<Kokkos::DefaultExecutionSpace::memory_space>(n, Pattern, 0);
     mesh_b_ = generate_mesh_2d<Kokkos::DefaultExecutionSpace::memory_space>(n, Pattern, 1);
-
-    // Create v2 workspace (reused across iterations)
-    workspace_ = v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space>();
   }
 
   void TearDown(const benchmark::State&) override {}
 
 protected:
   Mesh2DDevice mesh_a_, mesh_b_;
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> workspace_;
 };
 
 // ========================================================================
@@ -135,7 +131,7 @@ BENCHMARK_REGISTER_F(UnifiedIntersectionBenchmark, V1)
 BENCHMARK_TEMPLATE_F(UnifiedIntersectionBenchmark, V2, OverlapPattern::FULL_OVERLAP)
 (benchmark::State& state) {
   for (auto _ : state) {
-    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_, workspace_);
+    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_);
     benchmark::DoNotOptimize(result.num_rows);
     benchmark::DoNotOptimize(result.num_intervals);
   }
@@ -184,7 +180,7 @@ BENCHMARK_F(PartialOverlapBench, V1)(benchmark::State& state) {
 
 BENCHMARK_F(PartialOverlapBench, V2)(benchmark::State& state) {
   for (auto _ : state) {
-    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_, workspace_);
+    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_);
     benchmark::DoNotOptimize(result.num_intervals);
   }
   state.SetItemsProcessed(state.iterations());
@@ -218,7 +214,7 @@ BENCHMARK_F(MinimalOverlapBench, V1)(benchmark::State& state) {
 
 BENCHMARK_F(MinimalOverlapBench, V2)(benchmark::State& state) {
   for (auto _ : state) {
-    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_, workspace_);
+    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_);
     benchmark::DoNotOptimize(result.num_intervals);
   }
   state.SetItemsProcessed(state.iterations());
@@ -333,10 +329,8 @@ static void BM_Intersection3D_V2_FullOverlap(benchmark::State& state) {
   Kokkos::deep_copy(B.row_ptr, B_ptr_h);
   Kokkos::deep_copy(B.intervals, B_int_h);
 
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> ws;
-
   for (auto _ : state) {
-    auto result = v2::intersect_meshes_3d(A, B, ws);
+    auto result = v2::intersect_meshes_3d(A, B);
     benchmark::DoNotOptimize(result.num_intervals);
   }
 
@@ -497,10 +491,8 @@ static void BM_Intersection2D_Large_V2(benchmark::State& state) {
   Kokkos::deep_copy(B.row_ptr, B_ptr_h);
   Kokkos::deep_copy(B.intervals, B_int_h);
 
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> ws;
-
   for (auto _ : state) {
-    auto result = v2::intersect_meshes_2d(A, B, ws);
+    auto result = v2::intersect_meshes_2d(A, B);
     benchmark::DoNotOptimize(result.num_intervals);
   }
 

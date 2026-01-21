@@ -90,9 +90,8 @@ BENCHMARK_TEMPLATE_DEFINE_F(MeshBenchmark, V1_2D_Small)(benchmark::State& state)
 }
 
 BENCHMARK_TEMPLATE_DEFINE_F(MeshBenchmark, V2_2D_Small)(benchmark::State& state) {
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> ws;
   for (auto _ : state) {
-    auto result = v2::intersect_meshes<2>(A, B, ws);
+    auto result = v2::intersect_meshes<2>(A, B);
     benchmark::DoNotOptimize(result.num_rows);
     benchmark::DoNotOptimize(result.num_intervals);
   }
@@ -119,9 +118,8 @@ BENCHMARK_TEMPLATE_DEFINE_F(MeshBenchmark, V1_3D_Small)(benchmark::State& state)
 }
 
 BENCHMARK_TEMPLATE_DEFINE_F(MeshBenchmark, V2_3D_Small)(benchmark::State& state) {
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> ws;
   for (auto _ : state) {
-    auto result = v2::intersect_meshes<3>(A, B, ws);
+    auto result = v2::intersect_meshes<3>(A, B);
     benchmark::DoNotOptimize(result.num_rows);
     benchmark::DoNotOptimize(result.num_intervals);
   }

@@ -56,11 +56,8 @@ static void BM_V2_Intersection2D_Overlapping(benchmark::State& state) {
   Kokkos::deep_copy(B.row_ptr, B_row_ptr_host);
   Kokkos::deep_copy(B.intervals, B_intervals_host);
 
-  // Create workspace (reused across iterations)
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> workspace;
-
   for (auto _ : state) {
-    auto result = v2::intersect_meshes_2d(A, B, workspace);
+    auto result = v2::intersect_meshes_2d(A, B);
     benchmark::DoNotOptimize(result.num_rows);
     benchmark::DoNotOptimize(result.num_intervals);
   }
@@ -118,11 +115,8 @@ static void BM_V2_Intersection3D_Overlapping(benchmark::State& state) {
   Kokkos::deep_copy(B.row_ptr, B_row_ptr_host);
   Kokkos::deep_copy(B.intervals, B_intervals_host);
 
-  // Create workspace (reused across iterations)
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> workspace;
-
   for (auto _ : state) {
-    auto result = v2::intersect_meshes_3d(A, B, workspace);
+    auto result = v2::intersect_meshes_3d(A, B);
     benchmark::DoNotOptimize(result.num_rows);
     benchmark::DoNotOptimize(result.num_intervals);
   }
