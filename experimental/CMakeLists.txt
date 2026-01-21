@@ -35,6 +35,7 @@ if(BUILD_TESTING)
 endif()
 
 # Benchmarks
+option(SUBSETIX_BUILD_BENCHMARKS "Build experimental benchmarks" ON)
 if(SUBSETIX_BUILD_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
