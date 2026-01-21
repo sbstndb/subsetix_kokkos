@@ -62,6 +62,11 @@ struct NoReconstruction {
  */
 template<template<typename> class Limiter>
 struct MUSCL_Reconstruction {
+    // Metadata for compile-time detection
+    static constexpr int stencil_width = 3;  // 3-point stencil per interface
+    static constexpr int order = 2;           // 2nd order accurate
+    static constexpr int ghost_layers = 1;    // 1 ghost layer needed
+
     // MUSCL reconstruction is stateless (limiter is compile-time policy)
     MUSCL_Reconstruction() = default;
 
@@ -289,5 +294,12 @@ struct VanLeerLimiter {
         return numerator / denominator;
     }
 };
+
+// ============================================================================
+// WENO RECONSTRUCTION (5th Order)
+// ============================================================================
+
+// Include WENO5-JS and WENO5-Z reconstruction schemes
+#include "weno_reconstruction.hpp"
 
 } // namespace subsetix::fvd::reconstruction

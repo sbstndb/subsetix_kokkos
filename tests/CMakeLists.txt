@@ -88,3 +88,92 @@ add_executable(subsetix_test_fvd_integrators
 target_link_libraries(subsetix_test_fvd_integrators PRIVATE subsetix::core GTest::gtest)
 target_include_directories(subsetix_test_fvd_integrators PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME FvdIntegratorsTests COMMAND subsetix_test_fvd_integrators)
+
+# 8. Mach2 Validation Tests: Type safety and validation framework
+# Tests for mach2_cylinder FVD migration validation
+add_executable(subsetix_test_mach2_validation
+    mach2_validation/type_safety_tests.cpp
+)
+target_link_libraries(subsetix_test_mach2_validation PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_mach2_validation PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(subsetix_test_mach2_validation PRIVATE ${CMAKE_SOURCE_DIR}/examples/mach2_cylinder)
+add_test(NAME Mach2ValidationTests COMMAND subsetix_test_mach2_validation)
+
+# 9. FVD Multi-System Tests: Phase 6 - Extensibility Validation
+# Tests that AdaptiveSolver works with ANY System (Euler2D, Advection2D, etc.)
+add_executable(subsetix_test_fvd_multi_system
+    fvd_multi_system_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_multi_system PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_multi_system PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdMultiSystemTests COMMAND subsetix_test_fvd_multi_system)
+
+# 10. FVD Accuracy Tests: Phase 6 - Accuracy and Validation
+# Tests for numerical accuracy, mass conservation, and stability
+add_executable(subsetix_test_fvd_accuracy
+    fvd_accuracy_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_accuracy PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_accuracy PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdAccuracyTests COMMAND subsetix_test_fvd_accuracy)
+
+# 10.5. FVD Numerical Accuracy Tests: Comprehensive numerical validation
+# Tests for analytical solution comparison, convergence rates, flux schemes, time integrators
+add_executable(subsetix_test_fvd_numerical_accuracy
+    fvd_numerical_accuracy_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_numerical_accuracy PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_numerical_accuracy PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdNumericalAccuracyTests COMMAND subsetix_test_fvd_numerical_accuracy)
+
+# 11. FVD Regression Suite: Comprehensive regression testing
+# Tests for all flux schemes, reconstruction methods, time integrators,
+# AMR operations, boundary conditions, and performance regression detection
+add_executable(subsetix_test_fvd_regression
+    fvd_regression_suite.cpp
+)
+target_link_libraries(subsetix_test_fvd_regression PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_regression PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdRegressionSuite COMMAND subsetix_test_fvd_regression)
+
+# 12. FVD Cross-Backend Tests: Validation across Serial, OpenMP, CUDA
+# Tests that verify bit-identical results across different Kokkos backends
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_cross_backend
+    fvd_cross_backend_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_cross_backend PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_cross_backend PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdCrossBackendTests COMMAND subsetix_test_fvd_cross_backend)
+
+# 13. FVD WENO Reconstruction Tests: High-Order Reconstruction Validation
+# Tests for WENO-JS and WENO-Z reconstruction methods
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_weno
+    fvd_weno_reconstruction_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_weno PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_weno PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdWenoTests COMMAND subsetix_test_fvd_weno)
+
+# 14. FVD Source Terms Tests: Gravity, Custom, Zone, Composite, etc.
+# Tests for all source term implementations (GravitySource, CustomSource, ZoneSource,
+# CircularZoneSource, CompositeSource, NullSource, PointHeatSource, DragSource)
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_source_terms
+    fvd_source_terms_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_source_terms PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_source_terms PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdSourceTermsTests COMMAND subsetix_test_fvd_source_terms)
+
+# 15. FVD Refinement Criteria Tests: SmoothnessCriterion, GradientCriterion, etc.
+# Tests for refinement criteria (SmoothnessCriterion, GradientCriterion, VorticityCriterion,
+# ValueRangeCriterion, CurlCriterion, CompositeCriterion)
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_refinement_criteria
+    fvd_refinement_criteria_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_refinement_criteria PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_refinement_criteria PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdRefinementCriteriaTests COMMAND subsetix_test_fvd_refinement_criteria)

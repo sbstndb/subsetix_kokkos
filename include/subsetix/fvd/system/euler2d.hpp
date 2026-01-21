@@ -50,6 +50,42 @@ public:
         KOKKOS_INLINE_FUNCTION
         Conserved(Real r_, Real rhox_, Real rhoy_, Real E_)
             : rho(r_), rhou(rhox_), rhov(rhoy_), E(E_) {}
+
+        // Phase 6: Generic operators for multi-system support
+        KOKKOS_INLINE_FUNCTION
+        Conserved& operator+=(const Conserved& other) {
+            rho  += other.rho;
+            rhou += other.rhou;
+            rhov += other.rhov;
+            E    += other.E;
+            return *this;
+        }
+
+        KOKKOS_INLINE_FUNCTION
+        Conserved& operator*=(Real s) {
+            rho  *= s;
+            rhou *= s;
+            rhov *= s;
+            E    *= s;
+            return *this;
+        }
+
+        KOKKOS_INLINE_FUNCTION
+        Conserved operator+(const Conserved& other) const {
+            return Conserved{rho + other.rho, rhou + other.rhou,
+                            rhov + other.rhov, E + other.E};
+        }
+
+        KOKKOS_INLINE_FUNCTION
+        Conserved operator*(Real s) const {
+            return Conserved{rho * s, rhou * s, rhov * s, E * s};
+        }
+
+        KOKKOS_INLINE_FUNCTION
+        Conserved operator-(const Conserved& other) const {
+            return Conserved{rho - other.rho, rhou - other.rhou,
+                            rhov - other.rhov, E - other.E};
+        }
     };
 
     /// Primitive variables Q = (rho, u, v, p)
@@ -90,6 +126,17 @@ public:
     // ========================================================================
 
     /// Convert conserved to primitive variables
+    ///
+    /// WARNING: This function clips pressure to eps (1e-12) to avoid
+    /// negative pressures. This creates INCONSISTENCY in round-trip:
+    ///   U -> to_primitive -> from_primitive -> U'
+    /// where U'.E ≠ U.E if original pressure was negative.
+    ///
+    /// For MUSCL reconstruction, this means:
+    /// 1. Stencil cells with slightly negative pressure get clipped
+    /// 2. Reconstruction operates on modified states
+    /// 3. Converted-back conserved variables have wrong energy
+    ///
     /// IMPROVEMENT: gamma has default value, so caller can omit it
     KOKKOS_INLINE_FUNCTION
     static Primitive to_primitive(const Conserved& U,
@@ -98,24 +145,78 @@ public:
         Real inv_rho = Real(1) / (U.rho + eps);
         Real u = U.rhou * inv_rho;
         Real v = U.rhov * inv_rho;
-        Real kinetic = Real(0.5) * U.rho * (u * u + v * v);
-        Real p = (gamma - Real(1)) * (U.E - kinetic);
-        p = (p > eps) ? p : eps;  // Clamp to avoid negative pressure
+        Real kinetic = Real(0.5) * (u * u + v * v);
+        Real p = (gamma - Real(1)) * (U.E - U.rho * kinetic);
+        p = Kokkos::fmax(p, eps);  // FIX: Use Kokkos::fmax for clarity and consistency
         return Primitive{U.rho, u, v, p};
     }
 
     /// Convert primitive to conserved variables
+    ///
+    /// NOTE: This function does NOT clip pressure. If you need perfect
+    /// round-trip consistency with to_primitive, handle negative pressures
+    /// explicitly before calling this function.
+    ///
     /// IMPROVEMENT: gamma has default value, so caller can omit it
     KOKKOS_INLINE_FUNCTION
     static Conserved from_primitive(const Primitive& q,
                                      Real gamma = default_gamma) {
+        constexpr Real eps = Real(1e-12);
         Real kinetic = Real(0.5) * q.rho * (q.u * q.u + q.v * q.v);
+        // FIX: Match the clipping behavior from to_primitive for consistency
+        Real p_safe = Kokkos::fmax(q.p, eps);
         return Conserved{
             q.rho,
             q.rho * q.u,
             q.rho * q.v,
-            q.p / (gamma - Real(1)) + kinetic
+            p_safe / (gamma - Real(1)) + kinetic
         };
+    }
+
+    /// Validate round-trip consistency
+    /// Returns true if to_primitive(from_primitive(q)) == q (within tolerance)
+    KOKKOS_INLINE_FUNCTION
+    static bool validate_consistency(const Primitive& q,
+                                      Real gamma = default_gamma,
+                                      Real tol = Real(1e-10)) {
+        constexpr Real eps = Real(1e-12);
+
+        // Round-trip test
+        Conserved U = from_primitive(q, gamma);
+        Primitive q2 = to_primitive(U, gamma);
+
+        // Check each component
+        Real rho_err = Kokkos::fabs(q.rho - q2.rho) / (Kokkos::fabs(q.rho) + eps);
+        Real u_err = Kokkos::fabs(q.u - q2.u) / (Kokkos::fabs(q.u) + eps);
+        Real v_err = Kokkos::fabs(q.v - q2.v) / (Kokkos::fabs(q.v) + eps);
+        Real p_err = Kokkos::fabs(q.p - q2.p) / (Kokkos::fabs(q.p) + eps);
+
+        return (rho_err < tol) && (u_err < tol) &&
+               (v_err < tol) && (p_err < tol);
+    }
+
+    /// Validate physical admissibility of state
+    KOKKOS_INLINE_FUNCTION
+    static bool is_physically_admissible(const Conserved& U,
+                                      Real gamma = default_gamma) {
+        constexpr Real eps = Real(1e-12);
+
+        // Check density
+        if (U.rho < eps) return false;
+
+        // Check energy
+        if (U.E < eps) return false;
+
+        // Check pressure
+        Real inv_rho = Real(1) / U.rho;
+        Real u = U.rhou * inv_rho;
+        Real v = U.rhov * inv_rho;
+        Real kinetic = Real(0.5) * (u * u + v * v);
+        Real p = (gamma - Real(1)) * (U.E - U.rho * kinetic);
+
+        if (p < eps) return false;
+
+        return true;
     }
 
     /// Compute sound speed
@@ -165,6 +266,12 @@ public:
         auto q = to_primitive(U, gamma);
         return q.p;
     }
+
+    // ========================================================================
+    // 6. System metadata
+    // ========================================================================
+
+    static constexpr int n_conserved = 4;  // Number of conserved variables
 };
 
 // ============================================================================
@@ -178,6 +285,34 @@ struct system_traits<Euler2D<Real>> {
     static constexpr const char* const names[n_conserved] = {
         "rho", "rhou", "rhov", "E"
     };
+
+    /// Get primitive field by index (0-based) - for refinement criteria compatibility
+    /// Maps: 0->rho, 1->u, 2->v, 3->p
+    KOKKOS_INLINE_FUNCTION
+    static Real get_primitive_field(const typename Euler2D<Real>::Primitive& q,
+                                    int field_idx) {
+        switch (field_idx) {
+            case 0: return q.rho;
+            case 1: return q.u;
+            case 2: return q.v;
+            case 3: return q.p;
+            default: return Real(0);
+        }
+    }
+
+    /// Get conserved field by index (0-based) - for refinement criteria compatibility
+    /// Maps: 0->rho, 1->rhou, 2->rhov, 3->E
+    KOKKOS_INLINE_FUNCTION
+    static Real get_conserved_field(const typename Euler2D<Real>::Conserved& U,
+                                     int field_idx) {
+        switch (field_idx) {
+            case 0: return U.rho;
+            case 1: return U.rhou;
+            case 2: return U.rhov;
+            case 3: return U.E;
+            default: return Real(0);
+        }
+    }
 };
 
 // ============================================================================

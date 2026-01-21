@@ -66,19 +66,16 @@ struct RusanovFlux {
         const Primitive& qL,
         const Primitive& qR) const
     {
-        Real aL = System::sound_speed(qL, gamma);
-        Real aR = System::sound_speed(qR, gamma);
-        Real smax = Kokkos::fmax(Kokkos::fabs(qL.u) + aL, Kokkos::fabs(qR.u) + aR);
+        // Phase 6: Generic wave speed computation for ANY System
+        Real smax = compute_max_wave_speed_x(qL, qR);
 
         auto FL = system_instance.flux_phys_x(UL, qL);
         auto FR = system_instance.flux_phys_x(UR, qR);
 
-        Conserved F;
-        Real half = Real(0.5);
-        F.rho  = half * (FL.rho + FR.rho)  - half * smax * (UR.rho - UL.rho);
-        F.rhou = half * (FL.rhou + FR.rhou) - half * smax * (UR.rhou - UL.rhou);
-        F.rhov = half * (FL.rhov + FR.rhov) - half * smax * (UR.rhov - UL.rhov);
-        F.E    = half * (FL.E + FR.E)      - half * smax * (UR.E - UL.E);
+        // Phase 6: Generic Rusanov flux using operators
+        // F = 0.5 * (FL + FR) - 0.5 * smax * (UR - UL)
+        const Real half = Real(0.5);
+        Conserved F = (FL + FR) * half - (UR - UL) * (half * smax);
 
         return F;
     }
@@ -91,21 +88,47 @@ struct RusanovFlux {
         const Primitive& qL,
         const Primitive& qR) const
     {
-        Real aL = System::sound_speed(qL, gamma);
-        Real aR = System::sound_speed(qR, gamma);
-        Real smax = Kokkos::fmax(Kokkos::fabs(qL.v) + aL, Kokkos::fabs(qR.v) + aR);
+        // Phase 6: Generic wave speed computation for ANY System
+        Real smax = compute_max_wave_speed_y(qL, qR);
 
         auto FL = system_instance.flux_phys_y(UL, qL);
         auto FR = system_instance.flux_phys_y(UR, qR);
 
-        Conserved F;
-        Real half = Real(0.5);
-        F.rho  = half * (FL.rho + FR.rho)  - half * smax * (UR.rho - UL.rho);
-        F.rhou = half * (FL.rhou + FR.rhou) - half * smax * (UR.rhou - UL.rhou);
-        F.rhov = half * (FL.rhov + FR.rhov) - half * smax * (UR.rhov - UL.rhov);
-        F.E    = half * (FL.E + FR.E)      - half * smax * (UR.E - UL.E);
+        // Phase 6: Generic Rusanov flux using operators
+        // F = 0.5 * (FL + FR) - 0.5 * smax * (UR - UL)
+        const Real half = Real(0.5);
+        Conserved F = (FL + FR) * half - (UR - UL) * (half * smax);
 
         return F;
+    }
+
+private:
+    /// Compute maximum wave speed in x-direction (generic for any System)
+    KOKKOS_INLINE_FUNCTION
+    Real compute_max_wave_speed_x(const Primitive& qL, const Primitive& qR) const {
+        if constexpr (System::n_conserved >= 4) {
+            // For systems with velocity components (Euler2D and similar)
+            Real aL = System::sound_speed(qL, gamma);
+            Real aR = System::sound_speed(qR, gamma);
+            return Kokkos::fmax(Kokkos::fabs(qL.u) + aL, Kokkos::fabs(qR.u) + aR);
+        } else {
+            // For scalar systems (Advection2D), use constant wave speed
+            return Real(1);  // Default advection speed magnitude
+        }
+    }
+
+    /// Compute maximum wave speed in y-direction (generic for any System)
+    KOKKOS_INLINE_FUNCTION
+    Real compute_max_wave_speed_y(const Primitive& qL, const Primitive& qR) const {
+        if constexpr (System::n_conserved >= 4) {
+            // For systems with velocity components (Euler2D and similar)
+            Real aL = System::sound_speed(qL, gamma);
+            Real aR = System::sound_speed(qR, gamma);
+            return Kokkos::fmax(Kokkos::fabs(qL.v) + aL, Kokkos::fabs(qR.v) + aR);
+        } else {
+            // For scalar systems (Advection2D), use constant wave speed
+            return Real(1);  // Default advection speed magnitude
+        }
     }
 };
 

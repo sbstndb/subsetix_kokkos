@@ -40,9 +40,9 @@ void example_1_simplest_advection() {
         .with_domain(0.0, 1.0, 0.0, 0.5)
         .with_initial_condition([](Real x, Real y) {
             // Condition initiale: gaussienne au centre
-            Real r2 = (x-0.5)*(x-0.5) + (y-0.25)*(y-0.25);
+            Real r2 = (x-Real(0.5))*(x-Real(0.5)) + (y-Real(0.25))*(y-Real(0.25));
             return typename Advection2D<Real>::Conserved{
-                std::exp(-10.0 * r2)  // u(x,y,0)
+                std::exp(Real(-10.0) * r2)  // u(x,y,0)
             };
         })
         .build();
@@ -988,15 +988,14 @@ void example_15_time_integrator_comparison() {
     printf("  - Kutta3 / SSPRK3 (3ème ordre, 3 stages)\n");
     printf("  - ClassicRK4 (4ème ordre, 4 stages)\n\n");
 
-    using Flux = flux::RusanovFlux;
     using Recon = reconstruction::NoReconstruction;
 
     // Create solvers with different time integrators
-    using SolverEuler = AdaptiveSolver<System, Recon, Flux, time::ForwardEuler<Real>>;
-    using SolverRK2 = AdaptiveSolver<System, Recon, Flux, time::Heun2<Real>>;
-    using SolverRK3 = AdaptiveSolver<System, Recon, Flux, time::Kutta3<Real>>;
-    using SolverSSPRK3 = AdaptiveSolver<System, Recon, Flux, time::SSPRK3<Real>>;
-    using SolverRK4 = AdaptiveSolver<System, Recon, Flux, time::ClassicRK4<Real>>;
+    using SolverEuler = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::ForwardEuler<Real>>;
+    using SolverRK2 = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::Heun2<Real>>;
+    using SolverRK3 = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::Kutta3<Real>>;
+    using SolverSSPRK3 = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::SSPRK3<Real>>;
+    using SolverRK4 = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::ClassicRK4<Real>>;
 
     auto solver_euler = SolverEuler::builder(100, 50)
         .with_domain(0.0, 2.0, 0.0, 0.5).with_initial_condition(gaussian_pulse).build();

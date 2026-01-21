@@ -146,3 +146,41 @@ target_link_libraries(fvd_mach2_cylinder_example
         subsetix::core
 )
 target_include_directories(fvd_mach2_cylinder_example PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Phase 6: FVD simulation examples (includes Advection2D example)
+add_executable(fvd_simulation_examples
+    fvd_simulation_examples.cpp
+)
+
+target_link_libraries(fvd_simulation_examples
+    PRIVATE
+        subsetix::core
+)
+target_include_directories(fvd_simulation_examples PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Simplified Mach 2 cylinder example using high-level FVD API
+add_executable(mach2_cylinder_simplified
+    mach2_cylinder_simplified.cpp
+)
+
+target_link_libraries(mach2_cylinder_simplified
+    PRIVATE
+        subsetix::core
+)
+target_include_directories(mach2_cylinder_simplified PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Mach 2 cylinder with obstacle using FVD high-level API
+add_executable(mach2_cylinder_fvd_api
+    mach2_cylinder_fvd_api.cpp
+)
+
+target_link_libraries(mach2_cylinder_fvd_api
+    PRIVATE
+        subsetix::core
+)
+target_include_directories(mach2_cylinder_fvd_api PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# ============================================================================
+# Geometry Gallery Examples (Documentation)
+# ============================================================================
+add_subdirectory(geometry_gallery)

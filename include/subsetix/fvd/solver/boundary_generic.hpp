@@ -45,8 +45,13 @@ struct AnyBc {
     KOKKOS_INLINE_FUNCTION
     void apply(Conserved& U_ghost,
                const Conserved& U_interior,
-               Real gamma) const
+               Real gamma,
+               Real t = Real(0)) const  // Time parameter for time-dependent BCs
     {
+        // Note: Time parameter is reserved for future time-dependent BC support
+        // For static BCs (Dirichlet, Neumann, Reflective), t is ignored
+        (void)t;  // Suppress unused parameter warning
+
         switch (type) {
             case Dirichlet:
                 U_ghost = value;
@@ -184,6 +189,28 @@ public:
         cfg.top = AnyBc<System>::dirichlet_from_primitive(q_top, gamma);
 
         return cfg;
+    }
+
+    /**
+     * @brief Reflective wall boundary condition
+     *
+     * Creates a reflective (slip) wall BC where normal velocity is reversed.
+     * Suitable for solid walls in inviscid flow.
+     */
+    static AnyBc<System> reflective_wall() {
+        // Reflective wall uses Reflective BC type
+        return AnyBc<System>{AnyBc<System>::Reflective, Conserved{}};
+    }
+
+    /**
+     * @brief Non-reflecting outflow boundary condition
+     *
+     * Creates a non-reflecting (Neumann) outflow BC where gradients are zero.
+     * Suitable for subsonic outflow where waves should exit without reflection.
+     */
+    static AnyBc<System> non_reflecting_outflow() {
+        // Non-reflecting outflow uses Neumann (zero gradient) BC type
+        return AnyBc<System>{AnyBc<System>::Neumann, Conserved{}};
     }
 };
 

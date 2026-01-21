@@ -347,9 +347,9 @@ auto circular_zone_source(typename System::RealType cx, typename System::RealTyp
 template<FiniteVolumeSystem System, typename... Sources>
 KOKKOS_INLINE_FUNCTION
 auto combine_sources(Sources&&... srcs) {
-    return CompositeSource<System, std::decay_t<Sources>...>{
-        std::make_tuple(std::forward<Sources>(srcs)...)
-    };
+    CompositeSource<System, std::decay_t<Sources>...> result;
+    result.sources = std::make_tuple(std::forward<Sources>(srcs)...);
+    return result;
 }
 
 // ============================================================================
@@ -396,9 +396,19 @@ struct DragSource {
     Conserved compute(const Conserved&, const Primitive& q,
                       Real, Real, Real) const {
         Real v_mag = Kokkos::sqrt(q.u * q.u + q.v * q.v);
-        Real drag = -drag_coefficient * q.rho * v_mag;
 
-        return Conserved{0, drag * q.u / v_mag, drag * q.v / v_mag, 0};
+        // Handle zero velocity case (avoid division by zero)
+        if (v_mag < Real(1e-12)) {
+            return Conserved{0, 0, 0, 0};
+        }
+
+        // Drag force: F = -Cd * rho * |v| * v
+        // In component form: F_x = -Cd * rho * v_mag * (v_x / v_mag) = -Cd * rho * v_x
+        // So we compute: drag_magnitude = -Cd * rho * v_mag, then F = drag_magnitude * v_unit_vector
+        Real drag_magnitude = -drag_coefficient * q.rho * v_mag;
+        Real inv_v_mag = Real(1) / v_mag;  // Safe since we checked v_mag >= 1e-12
+
+        return Conserved{0, drag_magnitude * q.u * inv_v_mag, drag_magnitude * q.v * inv_v_mag, 0};
     }
 };
 

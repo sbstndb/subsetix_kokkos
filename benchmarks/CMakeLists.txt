@@ -57,3 +57,27 @@ target_link_libraries(multilevel_overhead_benchmark
         subsetix::core
         benchmark::benchmark
 )
+
+# Phase 6: FVD Layer Performance Benchmarks
+add_executable(fvd_benchmark
+    fvd_benchmark.cpp
+)
+
+target_link_libraries(fvd_benchmark
+    PRIVATE
+        subsetix::core
+        benchmark::benchmark
+)
+target_include_directories(fvd_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Phase 7: Productivity Comparison Benchmark (Old vs New API)
+add_executable(productivity_comparison
+    productivity_comparison.cpp
+)
+
+target_link_libraries(productivity_comparison
+    PRIVATE
+        subsetix::core
+        benchmark::benchmark
+)
+target_include_directories(productivity_comparison PRIVATE ${CMAKE_SOURCE_DIR}/include)

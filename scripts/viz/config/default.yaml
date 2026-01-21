@@ -1,0 +1,33 @@
+# Default configuration for vtk_plot.py
+# This file can be overridden via CLI arguments
+
+# Data selection
+field: null           # null = auto-detect first scalar field
+mesh: true            # Show mesh edges
+
+# Visual style
+colormap: viridis     # Matplotlib colormap
+# Options: viridis, plasma, inferno, magma, cividis, rainbow, jet, coolwarm, RdYlBu, RdYlGn
+
+vmin: null            # Minimum value for colormap (null = auto)
+vmax: null            # Maximum value for colormap (null = auto)
+cbar: true            # Show colorbar
+
+# Dimension
+dim: null             # null = auto-detect, 2 = force 2D, 3 = force 3D
+
+# Output
+dpi: 150              # Output resolution in DPI
+output_dir: viz_output/png
+
+# Performance
+cache_size: 100       # VTK file cache size
+jobs: 4               # Number of parallel jobs
+
+# Animation
+fps: 30               # Frames per second for MP4
+
+# Figure size (width, height in inches)
+figsize:
+  - 10
+  - 8

@@ -299,17 +299,26 @@ struct BcDescriptor {
         if (type == StaticDirichlet || type == StaticNeumann || type == StaticReflective) {
             return static_value;
         } else if (type == TimeDependentDirichlet || type == TimeDependentInlet) {
-            // Compute from time policy
-            Real rho = time_policy.rho(t);
-            Real u = time_policy.u(t);
-            Real v = time_policy.v(t);
-            Real p = time_policy.p(t);
+            // Phase 6: Generic implementation for ANY System
+            if constexpr (System::n_conserved >= 4) {
+                // For systems with multiple primitive variables (Euler2D and similar)
+                Real rho = time_policy.rho(t);
+                Real u = time_policy.u(t);
+                Real v = time_policy.v(t);
+                Real p = time_policy.p(t);
 
-            // Convert primitive to conserved
-            typename System::Primitive q{rho, u, v, p};
-            return System::from_primitive(q, gamma);
+                // Convert primitive to conserved
+                typename System::Primitive q{rho, u, v, p};
+                return System::from_primitive(q, gamma);
+            } else {
+                // For scalar systems (Advection2D), use only the first value
+                Real val = time_policy.rho(t);  // For advection, rho() gives the scalar value
+                typename System::Primitive q{val};
+                return System::from_primitive(q, gamma);
+            }
         }
-        return Conserved{0, 0, 0, 0};
+        // Return zero conserved variables - generic approach
+        return Conserved{};
     }
 
     /**

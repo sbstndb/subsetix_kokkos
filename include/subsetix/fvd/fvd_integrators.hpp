@@ -24,6 +24,7 @@
 // SYSTEM AND CONCEPTS
 // ============================================================================
 #include "system/euler2d.hpp"
+#include "system/advection2d.hpp"
 #include "system/concepts_v2.hpp"
 
 // ============================================================================
@@ -90,7 +91,7 @@ template<
     typename TimeIntegrator = time::ForwardEuler<typename System::RealType>
 >
 auto create(int nx, int ny) {
-    return solver::AdaptiveSolver<System, Reconstruction, FluxScheme, TimeIntegrator>::builder(nx, ny);
+    return AdaptiveSolver<System, Reconstruction, FluxScheme, TimeIntegrator>::builder(nx, ny);
 }
 
 } // namespace builder
