@@ -13,12 +13,32 @@
 
 ## Build, Test, and Development Commands
 
-Use CMake presets - see **CLAUDE.md** for complete reference including experimental-only presets.
+Use CMake presets - see **CLAUDE.md** for complete reference.
 
-Quick start:
+### Common Presets
+
+| Category | Preset | Backend | Build dir |
+|----------|--------|---------|-----------|
+| **Stable builds** | `serial` | Serial CPU | `build-serial` |
+| | `openmp` | Multi-threaded CPU | `build-openmp` |
+| | `cuda-gcc12` | NVIDIA GPU | `build-cuda-gcc12` |
+| | `serial-asan` | Serial + sanitizers | `build-serial-asan` |
+| **Experimental-only** | `experimental-serial` | Serial | `build-experimental-serial` |
+| | `experimental-openmp` | OpenMP | `build-experimental-openmp` |
+| | `experimental-cuda-gcc12` | CUDA | `build-experimental-cuda-gcc12` |
+| | `experimental-asan` | Serial + sanitizers | `build-experimental-asan` |
+
+### Quick Start
+
 ```bash
+# Configure + build
 cmake --preset serial && cmake --build --preset serial
+
+# Run tests
 ctest --preset serial
+
+# Run specific test
+./build-serial/tests/subsetix_test_core
 ```
 
 Prefer presets over direct `make` calls.
@@ -33,33 +53,47 @@ Prefer presets over direct `make` calls.
 
 ## Testing Guidelines
 
+### Stable Tests
+
 - Tests use GoogleTest and live in `tests/`, organized into separate executables by domain: `subsetix_test_core`, `subsetix_test_ops`, `subsetix_test_advanced`, `subsetix_test_amr`, `subsetix_test_fvd_api`, `subsetix_test_fvd_execution`, `subsetix_test_fvd_integrators`.
 - Keep tests fast and deterministic; they must pass on serial, OpenMP, and CUDA (use preset `cuda-gcc12`).
 - Prefer focused `TEST()` cases over large monolithic tests; share common helpers in small headers or `.cpp` files.
 - When adding device code, exercise it at least in the serial preset.
 - For set‑algebra primitives (e.g. `set_union_device`), add both high‑level tests and focused tests for low‑level building blocks to simplify debugging.
 
+### Running Tests
+
+```bash
+# All tests (stable)
+ctest --preset serial
+ctest --preset openmp
+ctest --preset cuda-gcc12
+
+# Specific test executable
+./build-serial/tests/subsetix_test_core
+
+# Experimental tests
+ctest --preset experimental-serial
+./build-experimental-serial/experimental/tests/experimental_v1_unitary_test
+```
+
 ## Experimental Module Guidelines
 
-The `experimental/` directory provides an isolated research space for alternative algorithm implementations:
+The `experimental/` directory is a **playground** for algorithm research and experimentation:
 
-### Architecture
-
-- **Isolation**: Completely separate from stable codebase
-  - Separate namespace: `experimental::subsetix::csr` (not `subsetix::csr`)
-  - Separate library target: `experimental::csr` (depends only on Kokkos)
-  - Only built when `SUBSETIX_ENABLE_EXPERIMENTAL=ON` (default: OFF)
-
-- **Versioned framework**: v1, v2, v3 for algorithm comparison
-  - v1: Baseline algorithm (port of subsetix_kokkos_2)
-  - v2, v3: Research slots for experimentation
-  - Cross-version tests ensure all versions produce identical results
+- **No stability guarantees**: APIs may change without notice
+- **Isolated**: Completely separate from stable codebase (separate namespace: `experimental::subsetix::csr`)
+- **Tests must pass**: Even in the playground, all tests are expected to pass
+- **Versioned framework**: v1 (baseline), v2/v3 (research slots)
 
 ### Development Workflow
 
-**IMPORTANT**: Always use dedicated experimental presets (see CLAUDE.md for commands). Manual configuration requires 4 flags and is error-prone.
+Always use dedicated experimental presets. Manual configuration requires 4 flags and is error-prone.
 
-Presets available: `experimental-serial`, `experimental-openmp`, `experimental-cuda-gcc12`, `experimental-asan`.
+```bash
+cmake --preset experimental-serial && cmake --build --preset experimental-serial
+ctest --preset experimental-serial
+```
 
 ### Contribution Rules
 
