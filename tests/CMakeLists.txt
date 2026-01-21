@@ -145,3 +145,13 @@ add_executable(subsetix_test_fvd_cross_backend
 target_link_libraries(subsetix_test_fvd_cross_backend PRIVATE subsetix::core GTest::gtest)
 target_include_directories(subsetix_test_fvd_cross_backend PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME FvdCrossBackendTests COMMAND subsetix_test_fvd_cross_backend)
+
+# 13. FVD WENO Reconstruction Tests: High-Order Reconstruction Validation
+# Tests for WENO-JS and WENO-Z reconstruction methods
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_weno
+    fvd_weno_reconstruction_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_weno PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_weno PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdWenoTests COMMAND subsetix_test_fvd_weno)
