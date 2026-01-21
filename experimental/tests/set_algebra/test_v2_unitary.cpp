@@ -285,7 +285,11 @@ TEST_F(V2ConversionTest, Simple3DIntersection_KnownResult) {
 TEST_F(V2ConversionTest, Different3DZ_NoOverlap) {
   CommonMesh3D a, b;
   a.rows.push_back({0, 0, {{0, 10}}});
-  b.rows.push_back({0, 1, {{0, 10}}});
+  a.rows.push_back({0, 5, {{0, 10}}});
+  a.rows.push_back({0, 10, {{0, 10}}});
+  b.rows.push_back({0, 1, {{0, 10}}});  // Different Z, same Y
+  b.rows.push_back({0, 6, {{0, 10}}});
+  b.rows.push_back({0, 11, {{0, 10}}});
 
   auto result = intersect_3d(a, b);
 
@@ -295,16 +299,18 @@ TEST_F(V2ConversionTest, Different3DZ_NoOverlap) {
 
 TEST_F(V2ConversionTest, Multiple3DRowsWithDifferentZ) {
   CommonMesh3D a, b;
+  // Y scope: [0, 10], Z scope: [0, 10]
   a.rows.push_back({0, 0, {{0, 100}}});
-  a.rows.push_back({10, 0, {{0, 100}}});
-  a.rows.push_back({0, 5, {{0, 100}}});
+  a.rows.push_back({10, 5, {{0, 100}}});
+  a.rows.push_back({5, 10, {{0, 100}}});
 
   b.rows.push_back({0, 0, {{50, 150}}});
-  b.rows.push_back({10, 1, {{0, 100}}});
-  b.rows.push_back({5, 5, {{0, 100}}});
+  b.rows.push_back({10, 3, {{0, 100}}});  // Different Z, same Y - no overlap
+  b.rows.push_back({2, 10, {{0, 100}}});   // Different Y, same Z - no overlap
 
   auto result = intersect_3d(a, b);
 
+  // Only first row should overlap
   ASSERT_EQ(result.num_rows(), 1);
   EXPECT_EQ(result.rows[0].y, 0);
   EXPECT_EQ(result.rows[0].z, 0);
