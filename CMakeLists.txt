@@ -204,5 +204,9 @@ if(SUBSETIX_BUILD_STABLE_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
 
-add_subdirectory(examples)
+# Examples depend on stable libraries
+if(SUBSETIX_BUILD_STABLE_LIBS)
+  add_subdirectory(examples)
+endif()
+
 add_subdirectory(experimental)

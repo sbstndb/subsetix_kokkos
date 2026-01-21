@@ -25,7 +25,6 @@ jobs:
         run: |
           cmake --preset serial \
             -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
-            -DBUILD_EXAMPLES=OFF \
             -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
             -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
             -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
