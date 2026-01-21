@@ -53,7 +53,12 @@ Mesh<2, MemorySpace> generate_mesh_2d(
         row_offset = (i % 2 == 0) ? 0 : n/2;
         break;
       case OverlapPattern::MINIMAL_OVERLAP:
-        row_offset = (i % 10 == 0) ? 0 : n + offset_shift;
+        // Use disjoint ranges for non-overlapping rows to avoid coincidental matches
+        // - Overlapping rows (i%10==0): row_key = i for both A and B
+        // - Non-overlapping A rows: [LARGE, LARGE+n)
+        // - Non-overlapping B rows: [LARGE+n+shift, LARGE+2n+shift)
+        // where LARGE >> n, so the ranges don't overlap
+        row_offset = (i % 10 == 0) ? 0 : 1000000 + offset_shift * n;
         break;
       case OverlapPattern::NO_OVERLAP:
         row_offset = n + offset_shift;

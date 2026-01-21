@@ -5,32 +5,37 @@
 
 #include <experimental/subsetix/csr/mesh.hpp>
 #include <experimental/subsetix/csr/detail/utils.hpp>
-#include <experimental/subsetix/csr/set_algebra/v2_hash_map.hpp>
 #include <experimental/subsetix/csr/set_algebra/v3_helpers.hpp>
 #include <Kokkos_Core.hpp>
 
 namespace experimental::subsetix::csr::v3 {
 
 // ============================================================================
-// v3 Algorithm: Hash Map + Workqueue + Branchless Intersection
+// v3 Algorithm: Workqueue + Bounding Box + Optimized Intersection
 //
-// Key improvements over v2:
-// 1. Hash map row mapping (O(1) instead of O(log n) binary search)
-// 2. Workqueue compaction (eliminates warp divergence)
-// 3. Branchless intersection loop (reduces GPU divergence)
-// 4. Cached row ranges (eliminates redundant lookups)
-// 5. Early termination with bounding box check
+// Key improvements over v1:
+// 1. Bounding box early termination (quick reject for non-overlapping meshes)
+// 2. Workqueue compaction (eliminates warp divergence on GPU)
+// 3. Cached row ranges in registers (reduces memory loads)
+// 4. Semi-branchless intersection logic (boolean arithmetic instead of nested if/else)
+//
+// Implementation notes:
+// - Row mapping uses binary search O(log n) - hash map is not implemented due to CUDA complexity
+// - "Branchless" reduces but does not eliminate all branches (one if remains for intersection check)
+// - Workqueue filters matching rows upfront, allowing all threads in the kernel to do useful work
 //
 // Expected performance:
-// - 2D large meshes: 1.5-2x faster (hash map benefit)
-// - 3D all sizes: 1.5-2x faster (hash map on (y,z) pair)
-// - GPU: 2-3x faster (workqueue + branchless)
+// - 2D/3D: 1.2-1.5x faster on GPU (workqueue + cached ranges)
+// - CPU: Similar to v1 (workqueue overhead may not justify benefits)
+// - Best case: Non-overlapping meshes rejected immediately by bbox check
 // ============================================================================
 
 namespace detail {
 
 // ============================================================================
-// Branchless intersection loop (reduces GPU warp divergence)
+// Semi-branchless intersection loop
+// Uses boolean arithmetic for advance logic instead of nested if/else
+// Note: Still has one conditional branch for the intersection check (start < end)
 // ============================================================================
 
 template <class IntervalViewIn, class IntervalViewOut>
@@ -114,7 +119,7 @@ std::size_t row_intersection_count(
 } // namespace detail
 
 // ============================================================================
-// v3 Mesh intersection with hash map and workqueue
+// v3 Mesh intersection with workqueue and bounding box optimization
 // ============================================================================
 
 template <int DIM, class MemorySpace>
@@ -148,9 +153,7 @@ intersect_meshes(
   const std::size_t num_rows_b = B.num_rows;
 
   // ========================================================================
-  // Phase 1: Find matching rows using binary search
-  // Note: Hash map optimization disabled for CUDA compatibility
-  // Future work: Implement device-side hash map for true O(1) lookup
+  // Phase 1: Find matching rows using binary search O(log n)
   // ========================================================================
 
   Kokkos::View<int*, MemorySpace> tmp_idx_a("tmp_idx_a", num_rows_a);
@@ -158,16 +161,12 @@ intersect_meshes(
   Kokkos::View<int*, MemorySpace> flags("flags", num_rows_a);
 
   if constexpr (DIM == 2) {
-    // Hash map lookup will be captured from outer scope - need different approach
-    // For now, use binary search as fallback
     Kokkos::parallel_for(
         "v3_row_map",
         Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
         KOKKOS_LAMBDA(const std::size_t i) {
           const RowKey key = A.row_keys(i);
-          int idx_b = -1;
-          // Use binary search for now (hash map integration requires more work)
-          idx_b = csr::detail::find_row_by_y(B.row_keys, num_rows_b, key.y);
+          int idx_b = csr::detail::find_row_by_y(B.row_keys, num_rows_b, key.y);
           if (idx_b >= 0) {
             flags(i) = 1;
             tmp_idx_a(i) = static_cast<int>(i);

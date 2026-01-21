@@ -74,21 +74,27 @@ std::size_t row_intersection_single_pass(
 // ============================================================================
 
 /**
- * @brief v2 mesh intersection with workspace.
+ * @brief v2 mesh intersection (CUDA-compatible variant of v1).
  *
- * v2 improvements over v1:
- * - Single-pass interval intersection - no separate count+fill phases
- * - Reusable workspace - eliminates per-operation allocations
+ * v2 is essentially v1 with minor fixes for CUDA compatibility:
+ * - Uses Kokkos::fence() instead of ExecSpace().fence()
+ * - Fixed fence placement for proper device synchronization
  *
- * Algorithm:
- * 1. Find matching rows via binary search (same as v1)
- * 2. Single-pass intersection with workspace buffers
- * 3. Compact output
+ * Note: The workspace parameter is currently unused due to an unresolved issue.
+ * Memory allocation behavior is identical to v1.
+ *
+ * Algorithm (same as v1):
+ * 1. Row mapping - find common rows via binary search O(log n)
+ * 2. Count - count intersecting X-intervals per row
+ * 3. Scan - compute CSR offsets (row_ptr)
+ * 4. Fill - write intersected intervals
+ * 5. Compact - filter rows with no intersections
+ * 6. Copy row keys (separate pass)
  *
  * @tparam DIM Dimension (2 for 2D, 3 for 3D)
  * @param A First input mesh
  * @param B Second input mesh
- * @param workspace Reusable workspace (will grow as needed)
+ * @param workspace Unused (kept for API compatibility, may be used in future)
  * @return Intersection mesh
  */
 template <int DIM, class MemorySpace>
@@ -114,7 +120,7 @@ intersect_meshes(
   // Phase 1: Row mapping - find rows of A that exist in B (using binary search)
   // ========================================================================
 
-  // FIX: Allocate Views directly instead of using workspace to isolate the issue
+  // Allocate temporary buffers (workspace is unused due to unresolved issue)
   Kokkos::View<int*, MemorySpace> flags("flags", num_rows_a);
   Kokkos::View<int*, MemorySpace> tmp_idx_a("tmp_idx_a", num_rows_a);
   Kokkos::View<int*, MemorySpace> tmp_idx_b("tmp_idx_b", num_rows_a);
@@ -181,7 +187,7 @@ intersect_meshes(
         update += count;
       });
 
-  Kokkos::fence();  // FIX: Use Kokkos::fence() instead of ExecSpace().fence()
+  Kokkos::fence();
 
   std::size_t num_rows_out = 0;
   Kokkos::deep_copy(num_rows_out, num_rows_out_view);
@@ -200,7 +206,7 @@ intersect_meshes(
   out.intervals = typename MeshType::IntervalView("out_intervals", A.num_intervals + B.num_intervals);
   out.num_rows = num_rows_out;
 
-  // FIX: Allocate directly instead of using workspace
+  // Allocate row counts buffer (workspace is unused)
   Kokkos::View<std::size_t*, MemorySpace> row_counts("row_counts", num_rows_a);
 
   Kokkos::parallel_for(
@@ -254,7 +260,6 @@ intersect_meshes(
       "v2_scan",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
       KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        // FIX: Follow v1's pattern exactly - no early return, proper handling
         const std::size_t count = static_cast<std::size_t>(row_counts(i));
 
         // Only process matching rows
@@ -271,7 +276,7 @@ intersect_meshes(
         }
       });
 
-  Kokkos::fence();  // FIX: Use Kokkos::fence()
+  Kokkos::fence();
 
   std::size_t num_intervals = 0;
   Kokkos::deep_copy(num_intervals, total_view);
@@ -293,7 +298,7 @@ intersect_meshes(
 
         const std::size_t out_pos = positions(i);
         const int ia = tmp_idx_a(i);
-        const int ib = tmp_idx_b(i);  // FIX: No cast needed
+        const int ib = tmp_idx_b(i);
 
         out.row_keys(out_pos) = A.row_keys(i);
 
@@ -305,13 +310,13 @@ intersect_meshes(
             out.intervals, out.row_ptr(out_pos));
       });
 
-  Kokkos::fence();  // FIX: Use Kokkos::fence()
+  Kokkos::fence();
 
   // ========================================================================
   // Phase 6: Compact - remove rows with no intervals
   // ========================================================================
 
-  // FIX: Allocate directly instead of reusing workspace buffers
+  // Allocate compaction buffers (workspace is unused)
   Kokkos::View<int*, MemorySpace> has_intervals("has_intervals", num_rows_out);
   Kokkos::View<std::size_t*, MemorySpace> new_positions("new_positions", num_rows_out);
 
@@ -386,7 +391,7 @@ intersect_meshes(
         compacted.intervals(i) = out.intervals(i);
       });
 
-  Kokkos::fence();  // FIX: Use Kokkos::fence()
+  Kokkos::fence();
 
   return compacted;
 }

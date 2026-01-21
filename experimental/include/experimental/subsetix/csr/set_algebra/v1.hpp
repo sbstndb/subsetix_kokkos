@@ -65,7 +65,7 @@ std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
 } // namespace detail
 
 // ============================================================================
-// Mesh intersection (2D and 3D)
+// Mesh intersection (2D and 3D) - v1 Algorithm
 // ============================================================================
 
 /**
@@ -74,9 +74,9 @@ std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
  * Returns a new mesh containing only the cells that exist in BOTH input meshes.
  *
  * Algorithm:
- * 1. Row mapping - find common rows via binary search
+ * 1. Row mapping - find common rows via binary search O(log n)
  * 2. Count - count intersecting X-intervals per row
- * 3. Scan - compute CSR offsets
+ * 3. Scan - compute CSR offsets (row_ptr)
  * 4. Fill - write intersected intervals
  * 5. Compact - filter rows with no intersections
  *
