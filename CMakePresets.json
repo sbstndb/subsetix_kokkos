@@ -95,6 +95,67 @@
         "SUBSETIX_KOKKOS_OPENMP": "OFF",
         "SUBSETIX_USE_MPI": "OFF"
       }
+    },
+    {
+      "name": "experimental-serial",
+      "displayName": "Experimental module only (Serial)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-serial",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-asan",
+      "displayName": "Experimental module only (Serial + Sanitizers)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-g -O1 -fsanitize=address,undefined",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-openmp",
+      "displayName": "Experimental module only (OpenMP)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-openmp",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_OPENMP": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-cuda-gcc12",
+      "displayName": "Experimental module only (CUDA + GCC 12)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc12",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -129,6 +190,22 @@
     {
       "name": "coverage",
       "configurePreset": "coverage"
+    },
+    {
+      "name": "experimental-serial",
+      "configurePreset": "experimental-serial"
+    },
+    {
+      "name": "experimental-asan",
+      "configurePreset": "experimental-asan"
+    },
+    {
+      "name": "experimental-openmp",
+      "configurePreset": "experimental-openmp"
+    },
+    {
+      "name": "experimental-cuda-gcc12",
+      "configurePreset": "experimental-cuda-gcc12"
     }
   ],
   "testPresets": [
@@ -163,6 +240,22 @@
     {
       "name": "coverage",
       "configurePreset": "coverage"
+    },
+    {
+      "name": "experimental-serial",
+      "configurePreset": "experimental-serial"
+    },
+    {
+      "name": "experimental-asan",
+      "configurePreset": "experimental-asan"
+    },
+    {
+      "name": "experimental-openmp",
+      "configurePreset": "experimental-openmp"
+    },
+    {
+      "name": "experimental-cuda-gcc12",
+      "configurePreset": "experimental-cuda-gcc12"
     }
   ]
 }

@@ -22,6 +22,20 @@ option(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED "Force DeviceMemorySpace = Kokkos::
 
 option(SUBSETIX_ENABLE_COVERAGE "Enable code coverage analysis (GCC only)" OFF)
 
+# ========================================================================
+# Experimental Algorithms Configuration
+# ========================================================================
+
+option(SUBSETIX_ENABLE_EXPERIMENTAL "Enable experimental set algebra algorithms" OFF)
+
+if(SUBSETIX_ENABLE_EXPERIMENTAL)
+  message(STATUS "=== Experimental Algorithms Enabled ===")
+  add_compile_definitions(SUBSETIX_ENABLE_EXPERIMENTAL)
+  message(STATUS "Experimental algorithms will be compiled and tested")
+else()
+  message(STATUS "Experimental algorithms disabled (default)")
+endif()
+
 set(_SUBSETIX_EXECSPACE_FORCE_COUNT 0)
 if(SUBSETIX_EXECSPACE_FORCE_CUDA)
   math(EXPR _SUBSETIX_EXECSPACE_FORCE_COUNT "${_SUBSETIX_EXECSPACE_FORCE_COUNT} + 1")
@@ -172,7 +186,27 @@ FetchContent_MakeAvailable(googlebenchmark)
 
 enable_testing()
 
-add_subdirectory(src)
-add_subdirectory(tests)
-add_subdirectory(benchmarks)
-add_subdirectory(examples)
+# Stable libraries can be disabled to only build experimental
+option(SUBSETIX_BUILD_STABLE_LIBS "Build stable (non-experimental) libraries" ON)
+if(SUBSETIX_BUILD_STABLE_LIBS)
+  add_subdirectory(src)
+endif()
+
+# Stable tests can be disabled to only build experimental
+option(SUBSETIX_BUILD_STABLE_TESTS "Build stable (non-experimental) tests" ON)
+if(SUBSETIX_BUILD_STABLE_TESTS)
+  add_subdirectory(tests)
+endif()
+
+# Stable benchmarks can be disabled to only build experimental
+option(SUBSETIX_BUILD_STABLE_BENCHMARKS "Build stable (non-experimental) benchmarks" ON)
+if(SUBSETIX_BUILD_STABLE_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
+
+# Examples depend on stable libraries
+if(SUBSETIX_BUILD_STABLE_LIBS)
+  add_subdirectory(examples)
+endif()
+
+add_subdirectory(experimental)

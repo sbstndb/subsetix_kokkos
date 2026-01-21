@@ -27,6 +27,74 @@ cmake --preset mpi-cuda-gcc12      # MPI + CUDA (GCC 12)
 # Debug with sanitizers
 cmake --preset serial-asan         # Address + UB sanitizer
 cmake --build --preset serial-asan
+
+# Experimental-only builds (algorithm research)
+cmake --preset experimental-serial      # Serial, experimental module only
+cmake --build --preset experimental-serial
+cmake --preset experimental-openmp      # OpenMP, experimental module only
+cmake --build --preset experimental-openmp
+cmake --preset experimental-cuda-gcc12  # CUDA, experimental module only
+cmake --build --preset experimental-cuda-gcc12
+cmake --preset experimental-asan        # Serial + sanitizers, experimental only
+cmake --build --preset experimental-asan
+```
+
+## CMake Options Reference
+
+All available CMake options and their default values:
+
+### Backend Selection
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_KOKKOS_OPENMP` | `OFF` | Enable Kokkos OpenMP backend |
+| `SUBSETIX_KOKKOS_CUDA` | `OFF` | Enable Kokkos CUDA backend |
+| `SUBSETIX_USE_MPI` | `OFF` | Enable MPI support for FVD layer |
+
+### Execution Space Overrides
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_EXECSPACE_FORCE_CUDA` | `OFF` | Force ExecSpace = Kokkos::Cuda |
+| `SUBSETIX_EXECSPACE_FORCE_OPENMP` | `OFF` | Force ExecSpace = Kokkos::OpenMP |
+| `SUBSETIX_EXECSPACE_FORCE_SERIAL` | `OFF` | Force ExecSpace = Kokkos::Serial |
+
+**Important**: Only one of `SUBSETIX_EXECSPACE_FORCE_*` can be `ON` at a time (CMake will error if multiple are set).
+
+### Memory Space Overrides
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_MEMORYSPACE_FORCE_UVM` | `OFF` | Force DeviceMemorySpace = Kokkos::CudaUVMSpace |
+| `SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED` | `OFF` | Force DeviceMemorySpace = Kokkos::HostPinnedSpace |
+
+**Important**: Only one of `SUBSETIX_MEMORYSPACE_FORCE_*` can be `ON` at a time.
+
+### Experimental Module
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_ENABLE_EXPERIMENTAL` | `OFF` | Enable experimental set algebra algorithms |
+| `SUBSETIX_BUILD_STABLE_LIBS` | `ON` | Build stable (non-experimental) libraries |
+| `SUBSETIX_BUILD_STABLE_TESTS` | `ON` | Build stable (non-experimental) tests |
+| `SUBSETIX_BUILD_STABLE_BENCHMARKS` | `ON` | Build stable (non-experimental) benchmarks |
+
+**Critical**: When `SUBSETIX_ENABLE_EXPERIMENTAL=ON`, you typically want to disable all stable components:
+```bash
+# Wrong - will cause linking errors
+cmake --preset serial -DSUBSETIX_ENABLE_EXPERIMENTAL=ON
+
+# Correct - disables stable components
+cmake --preset serial \
+  -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+  -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
+  -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
+  -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
+
+# Best - use dedicated preset (sets all flags automatically)
+cmake --preset experimental-serial
+```
+
+### Code Coverage
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_ENABLE_COVERAGE` | `OFF` | Enable code coverage analysis (GCC only, forces Debug build) |
 ```
 
 ### Running Tests
@@ -99,6 +167,73 @@ include/subsetix/
     ├── solver/      # AdaptiveSolver, solver_aliases
     ├── time/        # RK1, RK2, RK3 integrators
     └── mpi/         # MPI support (optional, stub when disabled)
+
+experimental/        # Alternative algorithm implementations (disabled by default)
+├── include/experimental/subsetix/csr/
+│   ├── mesh.hpp     # Mesh<2>, Mesh<3> template specializations
+│   ├── detail/utils.hpp
+│   └── set_algebra/v1.hpp  # v1 intersection algorithm (subsetix_kokkos_2 port)
+├── tests/           # Experimental tests
+└── benchmarks/      # Experimental benchmarks
+```
+
+#### Experimental Module
+
+The `experimental/` directory provides alternative implementations of set algebra algorithms for research and comparison. It is **completely isolated** from the stable codebase and disabled by default.
+
+**Quick setup with dedicated presets:**
+```bash
+cmake --preset experimental-serial      # Serial backend
+cmake --preset experimental-openmp      # OpenMP backend
+cmake --preset experimental-cuda-gcc12  # CUDA backend
+cmake --preset experimental-asan        # Serial + sanitizers
+```
+
+**Manual setup (not recommended - use presets instead):**
+```bash
+cmake --preset serial \
+  -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+  -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
+  -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
+  -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
+```
+
+### Running Experimental Tests
+
+Experimental tests are separate executables from stable tests:
+
+```bash
+# After enabling experimental module and building
+ctest --preset experimental-serial  # Runs all experimental tests
+ctest --preset experimental-openmp  # Runs with OpenMP backend
+ctest --preset experimental-cuda-gcc12  # Runs with CUDA backend
+
+# Run specific experimental test executables (serial preset)
+./build-experimental-serial/experimental/tests/experimental_v1_unitary_test
+./build-experimental-serial/experimental/tests/experimental_v2_unitary_test
+./build-experimental-serial/experimental/tests/experimental_v3_unitary_test
+./build-experimental-serial/experimental/tests/experimental_cross_version_test  # Verifies v1/v2/v3 produce identical results
+./build-experimental-serial/experimental/tests/experimental_overlap_patterns_test
+./build-experimental-serial/experimental/tests/experimental_large_mesh_test
+./build-experimental-serial/experimental/tests/experimental_sorted_rows_test
+```
+
+### Running Experimental Benchmarks
+
+```bash
+# Run all experimental benchmarks (serial preset)
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark
+
+# Run specific size configurations
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=SmallConfig
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=MediumConfig
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=LargeConfig
+
+# Run only 2D benchmarks
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="2D"
+
+# Run only 3D benchmarks
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="3D"
 ```
 
 ### Execution Space Configuration

@@ -1,0 +1,86 @@
+name: Experimental CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+jobs:
+  experimental-test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Configure with experimental enabled
+        run: cmake --preset experimental-serial
+
+      - name: Build
+        run: cmake --build --preset experimental-serial --parallel $(nproc)
+
+      - name: Run experimental tests
+        run: ctest --preset experimental-serial --output-on-failure
+
+      - name: Run benchmarks (sanity check only)
+        run: |
+          ./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark \
+            --benchmark_min_time=0.01s \
+            --benchmark_repetitions=1 \
+            --benchmark_filter="SmallConfig"
+
+      # Note: Filter matches only SmallConfig benchmarks for fast CI execution.
+
+  # OpenMP backend check
+  experimental-openmp:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Configure with experimental and OpenMP
+        run: cmake --preset experimental-openmp
+
+      - name: Build
+        run: cmake --build --preset experimental-openmp --parallel $(nproc)
+
+      - name: Run experimental tests with OpenMP
+        run: ctest --preset experimental-openmp --output-on-failure
+
+  # Debug build check with sanitizers
+  experimental-sanitizer:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Configure with experimental and sanitizers
+        run: cmake --preset experimental-asan
+
+      - name: Build
+        run: cmake --build --preset experimental-asan --parallel $(nproc)
+
+      - name: Run experimental tests with sanitizers
+        run: ctest --preset experimental-asan --output-on-failure
