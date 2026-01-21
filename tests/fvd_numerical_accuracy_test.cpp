@@ -170,6 +170,183 @@ void rotating_velocity(Real x, Real y, Real x0, Real y0, Real& vx, Real& vy) {
 }
 
 // ============================================================================
+// CUDA-SAFE FUNCTORS (Replaces KOKKOS_LAMBDA in TEST() for NVCC compatibility)
+// ============================================================================
+
+/**
+ * @brief Functor to initialize Gaussian pulse in conserved variables
+ *
+ * NVCC doesn't support KOKKOS_LAMBDA in private/protected class methods
+ * (like GoogleTest's TestBody()). This functor provides a CUDA-safe alternative.
+ */
+template<typename System, typename UView, typename Real>
+struct InitGaussianPulseFunctor {
+    UView U;
+    int nx, ny;
+    Real dx, dy;
+    Real x0, y0, sigma, amplitude;
+
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int idx) const {
+        int i = idx % nx;
+        int j = idx / nx;
+        Real x = (static_cast<Real>(i) + Real(0.5)) * dx - Real(1);
+        Real y = (static_cast<Real>(j) + Real(0.5)) * dy - Real(1);
+        typename System::Conserved c;
+        c.value = gaussian_pulse(x, y, x0, y0, sigma, amplitude);
+        U(idx) = c;
+    }
+};
+
+/**
+ * @brief Functor to extract solution and compute reference
+ */
+template<typename UView, typename RealView, typename Real>
+struct ExtractSolutionWithReferenceFunctor {
+    UView U;
+    RealView U_numerical;
+    RealView U_reference;
+    int nx, ny;
+    Real dx, dy;
+    Real displacement;
+    Real x0, y0, sigma, amplitude;
+
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int idx) const {
+        int i = idx % nx;
+        int j = idx / nx;
+        Real x = (static_cast<Real>(i) + Real(0.5)) * dx - Real(1);
+        Real y = (static_cast<Real>(j) + Real(0.5)) * dy - Real(1);
+
+        // Numerical solution
+        U_numerical(idx) = U(idx).value;
+
+        // Reference: pulse shifted by displacement (with periodic wrapping)
+        Real x_ref = x - displacement;
+        // Wrap to domain [-1, 1]
+        while (x_ref < Real(-1)) x_ref += Real(2);
+        while (x_ref > Real(1)) x_ref -= Real(2);
+        U_reference(idx) = gaussian_pulse(x_ref, y, x0, y0, sigma, amplitude);
+    }
+};
+
+/**
+ * @brief Functor to compute error without wrapping
+ */
+template<typename UView, typename RealView, typename Real>
+struct ComputeErrorFunctor {
+    UView U;
+    RealView U_numerical;
+    RealView U_reference;
+    int nx, ny;
+    Real dx, dy;
+    Real displacement;
+    Real x0, y0, sigma, amplitude;
+
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int idx) const {
+        int i = idx % nx;
+        int j = idx / nx;
+        Real x = (static_cast<Real>(i) + Real(0.5)) * dx - Real(1);
+        Real y = (static_cast<Real>(j) + Real(0.5)) * dy - Real(1);
+
+        U_numerical(idx) = U(idx).value;
+        Real x_ref = x - displacement;
+        U_reference(idx) = gaussian_pulse(x_ref, y, x0, y0, sigma, amplitude);
+    }
+};
+
+/**
+ * @brief Functor to initialize Sod shock tube problem
+ */
+template<typename System, typename UView, typename Real>
+struct InitSodShockTubeFunctor {
+    UView U;
+    int nx, interface_idx;
+    Real rho_L, u_L, p_L;
+    Real rho_R, u_R, p_R;
+    Real gamma;
+
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int idx) const {
+        int i = idx % nx;
+        int j = idx / nx;
+
+        typename System::Primitive q;
+        if (i < interface_idx) {
+            q.rho = rho_L;
+            q.u = u_L;
+            q.v = u_L;
+            q.p = p_L;
+        } else {
+            q.rho = rho_R;
+            q.u = u_R;
+            q.v = u_R;
+            q.p = p_R;
+        }
+
+        U(idx) = System::from_primitive(q, gamma);
+    }
+};
+
+/**
+ * @brief Functor to compute total mass (sum of densities)
+ */
+template<typename UView, typename Real>
+struct ComputeMassFunctor {
+    UView U;
+
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int idx, Real& local_sum) const {
+        local_sum += U(idx).rho;
+    }
+};
+
+/**
+ * @brief Functor to extract centerline data (density and pressure)
+ */
+template<typename System, typename UView, typename RealView, typename Real>
+struct ExtractCenterlineFunctor {
+    UView U;
+    RealView rho_host;
+    RealView p_host;
+    int nx, j_center;
+    Real gamma;
+
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int i) const {
+        int idx = j_center * nx + i;
+        rho_host(i) = U(idx).rho;
+        auto q = System::to_primitive(U(idx), gamma);
+        p_host(i) = q.p;
+    }
+};
+
+/**
+ * @brief Functor to initialize sine wave perturbation
+ */
+template<typename System, typename UView, typename Real>
+struct InitSineWaveFunctor {
+    UView U;
+    int nx;
+    Real dx;
+    Real gamma;
+
+    KOKKOS_INLINE_FUNCTION
+    void operator()(const int idx) const {
+        int i = idx % nx;
+        Real x = static_cast<Real>(i) * dx;
+        Real rho = Real(1) + Real(0.1) * Kokkos::sin(Real(2 * M_PI) * x);
+        typename System::Primitive q;
+        q.rho = rho;
+        q.u = Real(0);
+        q.v = Real(0);
+        q.p = Real(1);
+        U(idx) = System::from_primitive(q, gamma);
+    }
+};
+
+// ============================================================================
 // TEST SUITE 1: ADVECTION2D - ROTATING GAUSSIAN PULSE
 // ============================================================================
 
@@ -235,15 +412,10 @@ TEST(FvdNumericalAccuracy, Advection2D_RotatingPulse_Rusanov_Euler) {
 
     // Set initial condition (Gaussian pulse at center)
     auto U = solver.get_solution_mutable();  // Use public accessor
-    Kokkos::parallel_for("init_pulse", nx * ny,
-        KOKKOS_LAMBDA(const int idx) {
-            int i = idx % nx;
-            int j = idx / nx;
-            Real x = (static_cast<Real>(i) + Real(0.5)) * dx - Real(1);
-            Real y = (static_cast<Real>(j) + Real(0.5)) * dy - Real(1);
-            U(idx) = System::Conserved{gaussian_pulse(x, y, x0, y0, sigma, amplitude)};
-        }
-    );
+    InitGaussianPulseFunctor<System, decltype(U), Real> init_functor{
+        U, nx, ny, dx, dy, x0, y0, sigma, amplitude
+    };
+    Kokkos::parallel_for("init_pulse", nx * ny, init_functor);
 
     // Store initial solution
     Kokkos::View<System::Conserved*> U_initial("U_initial", nx * ny);
@@ -270,24 +442,10 @@ TEST(FvdNumericalAccuracy, Advection2D_RotatingPulse_Rusanov_Euler) {
     Kokkos::View<Real*> U_numerical("U_num", nx * ny);
     Kokkos::View<Real*> U_reference("U_ref", nx * ny);
 
-    Kokkos::parallel_for("extract_solution", nx * ny,
-        KOKKOS_LAMBDA(const int idx) {
-            int i = idx % nx;
-            int j = idx / nx;
-            Real x = (static_cast<Real>(i) + Real(0.5)) * dx - Real(1);
-            Real y = (static_cast<Real>(j) + Real(0.5)) * dy - Real(1);
-
-            // Numerical solution
-            U_numerical(idx) = U(idx).value;
-
-            // Reference: pulse shifted by displacement (with periodic wrapping)
-            Real x_ref = x - displacement;
-            // Wrap to domain [-1, 1]
-            while (x_ref < Real(-1)) x_ref += Real(2);
-            while (x_ref > Real(1)) x_ref -= Real(2);
-            U_reference(idx) = gaussian_pulse(x_ref, y, x0, y0, sigma, amplitude);
-        }
-    );
+    ExtractSolutionWithReferenceFunctor<decltype(U), decltype(U_numerical), Real> extract_functor{
+        U, U_numerical, U_reference, nx, ny, dx, dy, displacement, x0, y0, sigma, amplitude
+    };
+    Kokkos::parallel_for("extract_solution", nx * ny, extract_functor);
 
     auto errors = compute_error_norms<Real>(U_numerical, U_reference, nx * ny, dx);
 
@@ -359,15 +517,10 @@ TEST(FvdNumericalAccuracy, Advection2D_Convergence_Rusanov_Euler) {
         solver.initialize(initial, static_cast<std::size_t>(nx * ny));
 
         auto U = solver.get_solution_mutable();
-        Kokkos::parallel_for("init_pulse", nx * ny,
-            KOKKOS_LAMBDA(const int idx) {
-                int i = idx % nx;
-                int j = idx / nx;
-                Real x = (static_cast<Real>(i) + Real(0.5)) * dx - Real(1);
-                Real y = (static_cast<Real>(j) + Real(0.5)) * dy - Real(1);
-                U(idx) = System::Conserved{gaussian_pulse(x, y, x0, y0, sigma, amplitude)};
-            }
-        );
+        InitGaussianPulseFunctor<System, decltype(U), Real> init_functor{
+            U, nx, ny, dx, dy, x0, y0, sigma, amplitude
+        };
+        Kokkos::parallel_for("init_pulse", nx * ny, init_functor);
 
         // Run simulation
         const int max_steps = 1000;
@@ -387,18 +540,10 @@ TEST(FvdNumericalAccuracy, Advection2D_Convergence_Rusanov_Euler) {
         Kokkos::View<Real*> U_reference("U_ref", nx * ny);
 
         Real displacement = t_final;  // Advection distance
-        Kokkos::parallel_for("compute_error", nx * ny,
-            KOKKOS_LAMBDA(const int idx) {
-                int i = idx % nx;
-                int j = idx / nx;
-                Real x = (static_cast<Real>(i) + Real(0.5)) * dx - Real(1);
-                Real y = (static_cast<Real>(j) + Real(0.5)) * dy - Real(1);
-
-                U_numerical(idx) = U(idx).value;
-                Real x_ref = x - displacement;
-                U_reference(idx) = gaussian_pulse(x_ref, y, x0, y0, sigma, amplitude);
-            }
-        );
+        ComputeErrorFunctor<decltype(U), decltype(U_numerical), Real> compute_error_functor{
+            U, U_numerical, U_reference, nx, ny, dx, dy, displacement, x0, y0, sigma, amplitude
+        };
+        Kokkos::parallel_for("compute_error", nx * ny, compute_error_functor);
 
         auto errors = compute_error_norms<Real>(U_numerical, U_reference, nx * ny, dx);
         l1_errors.push_back(errors.l1_error);
@@ -489,21 +634,10 @@ TEST(FvdNumericalAccuracy, Euler2D_SodShockTube_Rusanov_Euler) {
     auto U = solver.get_solution_mutable();
     int interface_idx = nx / 2;
 
-    Kokkos::parallel_for("init_sod", nx * ny,
-        KOKKOS_LAMBDA(const int idx) {
-            int i = idx % nx;
-            int j = idx / nx;
-
-            System::Primitive q;
-            if (i < interface_idx) {
-                q = System::Primitive{rho_L, u_L, u_L, p_L};
-            } else {
-                q = System::Primitive{rho_R, u_R, u_R, p_R};
-            }
-
-            U(idx) = System::from_primitive(q, Real(1.4));
-        }
-    );
+    InitSodShockTubeFunctor<System, decltype(U), Real> init_sod_functor{
+        U, nx, interface_idx, rho_L, u_L, p_L, rho_R, u_R, p_R, Real(1.4)
+    };
+    Kokkos::parallel_for("init_sod", nx * ny, init_sod_functor);
 
     // Run simulation
     const int max_steps = 5000;
@@ -525,12 +659,8 @@ TEST(FvdNumericalAccuracy, Euler2D_SodShockTube_Rusanov_Euler) {
     total_mass_initial *= ny;  // All y-rows
 
     Real total_mass_final = 0;
-    Kokkos::parallel_reduce("compute_mass", nx * ny,
-        KOKKOS_LAMBDA(const int idx, Real& local_sum) {
-            local_sum += U(idx).rho;
-        },
-        total_mass_final
-    );
+    ComputeMassFunctor<decltype(U), Real> compute_mass_functor{U};
+    Kokkos::parallel_reduce("compute_mass", nx * ny, compute_mass_functor, total_mass_final);
 
     Real mass_error = Kokkos::fabs(total_mass_final - total_mass_initial) / total_mass_initial;
     printf("  Mass conservation: initial=%.2f, final=%.2f, error=%.6e\n",
@@ -548,14 +678,10 @@ TEST(FvdNumericalAccuracy, Euler2D_SodShockTube_Rusanov_Euler) {
 
     // Extract centerline
     int j_center = ny / 2;
-    Kokkos::parallel_for("extract_centerline", nx,
-        KOKKOS_LAMBDA(const int i) {
-            int idx = j_center * nx + i;
-            rho_host(i) = U(idx).rho;
-            auto q = System::to_primitive(U(idx), Real(1.4));
-            p_host(i) = q.p;
-        }
-    );
+    ExtractCenterlineFunctor<System, decltype(U), decltype(rho_host), Real> extract_centerline_functor{
+        U, rho_host, p_host, nx, j_center, Real(1.4)
+    };
+    Kokkos::parallel_for("extract_centerline", nx, extract_centerline_functor);
 
     Kokkos::fence();
 
@@ -633,15 +759,8 @@ TEST(FvdNumericalAccuracy, Euler2D_FluxComparison_RusanovVsHLLC) {
         solver.initialize(initial);
 
         auto U = solver.get_solution_mutable();
-        Kokkos::parallel_for("_init_sine", nx * ny,
-            KOKKOS_LAMBDA(const int idx) {
-                int i = idx % nx;
-                Real x = static_cast<Real>(i) * dx;
-                Real rho = Real(1) + Real(0.1) * Kokkos::sin(Real(2 * M_PI) * x);
-                auto q = System::Primitive{rho, Real(0), Real(0), Real(1)};
-                U(idx) = System::from_primitive(q, Real(1.4));
-            }
-        );
+        InitSineWaveFunctor<System, decltype(U), Real> init_sine_functor{U, nx, dx, Real(1.4)};
+        Kokkos::parallel_for("_init_sine", nx * ny, init_sine_functor);
 
         // Run simulation
         const int max_steps = 1000;
@@ -680,15 +799,8 @@ TEST(FvdNumericalAccuracy, Euler2D_FluxComparison_RusanovVsHLLC) {
         solver.initialize(initial);
 
         auto U = solver.get_solution_mutable();
-        Kokkos::parallel_for("init_sine", nx * ny,
-            KOKKOS_LAMBDA(const int idx) {
-                int i = idx % nx;
-                Real x = static_cast<Real>(i) * dx;
-                Real rho = Real(1) + Real(0.1) * Kokkos::sin(Real(2 * M_PI) * x);
-                auto q = System::Primitive{rho, Real(0), Real(0), Real(1)};
-                U(idx) = System::from_primitive(q, Real(1.4));
-            }
-        );
+        InitSineWaveFunctor<System, decltype(U), Real> init_sine_functor{U, nx, dx, Real(1.4)};
+        Kokkos::parallel_for("init_sine", nx * ny, init_sine_functor);
 
         // Run simulation
         const int max_steps = 1000;
