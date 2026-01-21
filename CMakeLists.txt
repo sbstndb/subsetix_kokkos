@@ -194,6 +194,11 @@ if(SUBSETIX_BUILD_STABLE_TESTS)
   add_subdirectory(tests)
 endif()
 
-add_subdirectory(benchmarks)
+# Stable benchmarks can be disabled to only build experimental
+option(SUBSETIX_BUILD_STABLE_BENCHMARKS "Build stable (non-experimental) benchmarks" ON)
+if(SUBSETIX_BUILD_STABLE_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
+
 add_subdirectory(examples)
 add_subdirectory(experimental)
