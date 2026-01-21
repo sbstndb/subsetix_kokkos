@@ -5,10 +5,17 @@
 
 #include <gtest/gtest.h>
 #include <experimental/subsetix/csr/set_algebra/v1.hpp>
-#include <experimental/subsetix/csr/mesh.hpp>
+#include <experimental/subsetix/csr/types.hpp>
 #include <Kokkos_Core.hpp>
 
 using namespace experimental::subsetix::csr;
+using namespace experimental::subsetix::csr::v1;
+
+// Type aliases for convenience
+using Coord = int32_t;
+using IntervalType = Interval<Coord>;
+using RowKey2DType = RowKey2D<Coord>;
+using RowKey3DType = RowKey3D<Coord>;
 
 // ============================================================================
 // Test: Verify row_keys are sorted for all overlap patterns
@@ -30,9 +37,9 @@ TEST(SortedRowsTest, FullOverlapRowKeysAreSorted) {
 
   // FULL_OVERLAP pattern
   for (int i = 0; i < n; ++i) {
-    row_keys_host(i) = RowKey2D{i};
+    row_keys_host(i) = RowKey2DType{i};
     row_ptr_host(i) = i;
-    intervals_host(i) = Interval{0, 100};
+    intervals_host(i) = IntervalType{0, 100};
   }
   row_ptr_host(n) = n;
 
@@ -76,15 +83,15 @@ TEST(SortedRowsTest, FixedPartialOverlapPatternIsSorted) {
   // Overlap: rows 32, 34, 36, ..., 126 (50% of Mesh A)
   for (int i = 0; i < n; ++i) {
     // Mesh A: even rows in range [0, n)
-    row_keys_a(i) = RowKey2D{2 * i};
+    row_keys_a(i) = RowKey2DType{2 * i};
 
     // Mesh B: even rows in range [n/2, 3n/2)
-    row_keys_b(i) = RowKey2D{n/2 + 2 * i};
+    row_keys_b(i) = RowKey2DType{n/2 + 2 * i};
 
     row_ptr_a(i) = i;
     row_ptr_b(i) = i;
-    intervals_a(i) = Interval{0, 100};
-    intervals_b(i) = Interval{0, 100};
+    intervals_a(i) = IntervalType{0, 100};
+    intervals_b(i) = IntervalType{0, 100};
   }
   row_ptr_a(n) = n;
   row_ptr_b(n) = n;

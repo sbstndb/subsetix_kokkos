@@ -6,7 +6,7 @@
 #include <experimental/subsetix/csr/types.hpp>
 #include <experimental/subsetix/csr/detail/utils.hpp>
 
-namespace experimental::subsetix::csr::v1 {
+namespace experimental::subsetix::csr::v3 {
 
 // ============================================================================
 // v1 Mesh type (versioned, templated on coordinate and index types)
@@ -511,4 +511,4 @@ mesh_to(const Mesh<DIM, FromSpace, CoordType, IndexType>& src) {
   return dst;
 }
 
-} // namespace experimental::subsetix::csr::v1
+} // namespace experimental::subsetix::csr::v3

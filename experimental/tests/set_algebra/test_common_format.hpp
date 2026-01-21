@@ -6,6 +6,10 @@
 #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
 
 #include <experimental/subsetix/csr/types.hpp>
+#include <experimental/subsetix/csr/set_algebra/v1.hpp>
+#include <experimental/subsetix/csr/set_algebra/v2.hpp>
+#include <experimental/subsetix/csr/set_algebra/v3.hpp>
+#include <Kokkos_Core.hpp>
 #include <vector>
 #include <cstdint>
 

@@ -469,20 +469,20 @@ inline DefaultCommonMesh2D intersect_v1_2d(const DefaultCommonMesh2D& a, const D
  * @brief Wrapper for v2::intersect_meshes<2> (explicit version name)
  */
 inline DefaultCommonMesh2D intersect_v2_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
-  auto device_a = v2_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(a);
-  auto device_b = v2_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(b);
+  auto device_a = MeshConverter2D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter2D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
   auto result = v2::intersect_meshes<2>(device_a, device_b);
-  return v2_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(result);
+  return MeshConverter2D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
 }
 
 /**
  * @brief Wrapper for v3::intersect_meshes<2> (explicit version name)
  */
 inline DefaultCommonMesh2D intersect_v3_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
-  auto device_a = v3_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(a);
-  auto device_b = v3_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(b);
+  auto device_a = MeshConverter2D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter2D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
   auto result = v3::intersect_meshes<2>(device_a, device_b);
-  return v3_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(result);
+  return MeshConverter2D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
 }
 
 /**
@@ -496,20 +496,20 @@ inline DefaultCommonMesh3D intersect_v1_3d(const DefaultCommonMesh3D& a, const D
  * @brief Wrapper for v2::intersect_meshes<3> (explicit version name)
  */
 inline DefaultCommonMesh3D intersect_v2_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
-  auto device_a = v2_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(a);
-  auto device_b = v2_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(b);
+  auto device_a = MeshConverter3D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter3D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
   auto result = v2::intersect_meshes<3>(device_a, device_b);
-  return v2_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(result);
+  return MeshConverter3D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
 }
 
 /**
  * @brief Wrapper for v3::intersect_meshes<3> (explicit version name)
  */
 inline DefaultCommonMesh3D intersect_v3_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
-  auto device_a = v3_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(a);
-  auto device_b = v3_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(b);
+  auto device_a = MeshConverter3D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter3D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
   auto result = v3::intersect_meshes<3>(device_a, device_b);
-  return v3_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(result);
+  return MeshConverter3D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
 }
 
 } // namespace experimental::subsetix::csr::test

@@ -6,9 +6,16 @@
 #include <gtest/gtest.h>
 #include <experimental/subsetix/csr/set_algebra/v1.hpp>
 #include <experimental/subsetix/csr/set_algebra/v2.hpp>
+#include <experimental/subsetix/csr/types.hpp>
 #include <Kokkos_Core.hpp>
 
+using namespace experimental::subsetix::csr;
 using namespace experimental::subsetix::csr::v1;
+
+// Type aliases for convenience
+using Coord = int32_t;
+using IntervalType = Interval<Coord>;
+using RowKey2DType = RowKey2D<Coord>;
 
 // ============================================================================
 // Test each overlap pattern individually
@@ -18,9 +25,9 @@ v1::Mesh2DDevice generate_mesh_2d_pattern(int n, int pattern, int offset_shift) 
   v1::Mesh2DDevice mesh;
   mesh.num_rows = n;
   mesh.num_intervals = n;
-  mesh.row_keys = Kokkos::View<csr::RowKey2D<int32_t>*, Kokkos::DefaultExecutionSpace::memory_space>("gen_row_keys", n);
+  mesh.row_keys = Kokkos::View<RowKey2DType*, Kokkos::DefaultExecutionSpace::memory_space>("gen_row_keys", n);
   mesh.row_ptr = Kokkos::View<std::size_t*, Kokkos::DefaultExecutionSpace::memory_space>("gen_row_ptr", n + 1);
-  mesh.intervals = Kokkos::View<csr::Interval<int32_t>*, Kokkos::DefaultExecutionSpace::memory_space>("gen_intervals", n);
+  mesh.intervals = Kokkos::View<IntervalType*, Kokkos::DefaultExecutionSpace::memory_space>("gen_intervals", n);
 
   auto row_keys_host = Kokkos::create_mirror_view(mesh.row_keys);
   auto row_ptr_host = Kokkos::create_mirror_view(mesh.row_ptr);
@@ -46,9 +53,9 @@ v1::Mesh2DDevice generate_mesh_2d_pattern(int n, int pattern, int offset_shift) 
         break;
     }
 
-    row_keys_host(i) = csr::RowKey2D<int32_t>{row_key_value};
+    row_keys_host(i) = RowKey2DType{row_key_value};
     row_ptr_host(i) = i;
-    intervals_host(i) = csr::Interval<int32_t>{0, 100};
+    intervals_host(i) = IntervalType{0, 100};
   }
   row_ptr_host(n) = n;
 

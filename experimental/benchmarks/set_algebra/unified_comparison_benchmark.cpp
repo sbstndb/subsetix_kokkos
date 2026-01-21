@@ -11,8 +11,48 @@
 #include <Kokkos_Core.hpp>
 #include <vector>
 
+// Bring version namespaces into scope
 using namespace experimental::subsetix::csr;
+using namespace experimental::subsetix::csr::v1;
+using namespace experimental::subsetix::csr::v2;
+using namespace experimental::subsetix::csr::v3;
 using namespace experimental::subsetix::csr::test;
+
+// Type aliases for convenience
+using Coord = int32_t;
+using IntervalType = experimental::subsetix::csr::Interval<Coord>;
+
+// ============================================================================
+// Conversion helpers for different versions
+// ============================================================================
+
+namespace benchmark_helpers {
+
+// v1 conversion
+inline v1::Mesh2DDevice from_common_2d_v1(const DefaultCommonMesh2D& mesh) {
+  return MeshConverter2D<v1::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+inline v1::Mesh3DDevice from_common_3d_v1(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<v1::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+// v2 conversion
+inline v2::Mesh2DDevice from_common_2d_v2(const DefaultCommonMesh2D& mesh) {
+  return MeshConverter2D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+inline v2::Mesh3DDevice from_common_3d_v2(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+// v3 conversion
+inline v3::Mesh2DDevice from_common_2d_v3(const DefaultCommonMesh2D& mesh) {
+  return MeshConverter2D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+inline v3::Mesh3DDevice from_common_3d_v3(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+} // namespace benchmark_helpers
 
 // ============================================================================
 // Random Mesh Benchmark with Config-based Sizes
@@ -31,48 +71,116 @@ using namespace experimental::subsetix::csr::test;
  * - MediumConfig: 78643 rows, y_max=512, z_max=512
  * - LargeConfig: 5M rows, y_max=4096, z_max=4096
  */
+// ============================================================================
+// Version-specific benchmark fixtures
+// ============================================================================
+
+// v1 2D fixture
 template <typename GetConfigFunc>
-class RandomMeshBenchmark2D : public benchmark::Fixture {
-public:
-  void SetUp(const benchmark::State&) override {
-    auto cfg = GetConfigFunc()();
-    cfg.num_rows_min = cfg.num_rows_max;  // Exact row count
-
-    // Generate a single pair of meshes
-    auto common_a = RandomMeshGenerator::generate_2d(cfg);
-    cfg.seed++;
-    auto common_b = RandomMeshGenerator::generate_2d(cfg);
-
-    // Convert to device meshes
-    mesh_a_ = from_common_2d(common_a);
-    mesh_b_ = from_common_2d(common_b);
-  }
-
-  void TearDown(const benchmark::State&) override {}
-
-protected:
-  Mesh2DDevice mesh_a_, mesh_b_;
-};
-
-template <typename GetConfigFunc>
-class RandomMeshBenchmark3D : public benchmark::Fixture {
+class V1RandomMeshBenchmark2D : public benchmark::Fixture {
 public:
   void SetUp(const benchmark::State&) override {
     auto cfg = GetConfigFunc()();
     cfg.num_rows_min = cfg.num_rows_max;
+    auto common_a = RandomMeshGenerator::generate_2d(cfg);
+    cfg.seed++;
+    auto common_b = RandomMeshGenerator::generate_2d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_2d_v1(common_a);
+    mesh_b_ = benchmark_helpers::from_common_2d_v1(common_b);
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  v1::Mesh2DDevice mesh_a_, mesh_b_;
+};
 
+// v2 2D fixture
+template <typename GetConfigFunc>
+class V2RandomMeshBenchmark2D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    cfg.num_rows_min = cfg.num_rows_max;
+    auto common_a = RandomMeshGenerator::generate_2d(cfg);
+    cfg.seed++;
+    auto common_b = RandomMeshGenerator::generate_2d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_2d_v2(common_a);
+    mesh_b_ = benchmark_helpers::from_common_2d_v2(common_b);
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  v2::Mesh2DDevice mesh_a_, mesh_b_;
+};
+
+// v3 2D fixture
+template <typename GetConfigFunc>
+class V3RandomMeshBenchmark2D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    cfg.num_rows_min = cfg.num_rows_max;
+    auto common_a = RandomMeshGenerator::generate_2d(cfg);
+    cfg.seed++;
+    auto common_b = RandomMeshGenerator::generate_2d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_2d_v3(common_a);
+    mesh_b_ = benchmark_helpers::from_common_2d_v3(common_b);
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  v3::Mesh2DDevice mesh_a_, mesh_b_;
+};
+
+// v1 3D fixture
+template <typename GetConfigFunc>
+class V1RandomMeshBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    cfg.num_rows_min = cfg.num_rows_max;
     auto common_a = RandomMeshGenerator::generate_3d(cfg);
     cfg.seed++;
     auto common_b = RandomMeshGenerator::generate_3d(cfg);
-
-    mesh_a_ = from_common_3d(common_a);
-    mesh_b_ = from_common_3d(common_b);
+    mesh_a_ = benchmark_helpers::from_common_3d_v1(common_a);
+    mesh_b_ = benchmark_helpers::from_common_3d_v1(common_b);
   }
-
   void TearDown(const benchmark::State&) override {}
-
 protected:
-  Mesh3DDevice mesh_a_, mesh_b_;
+  v1::Mesh3DDevice mesh_a_, mesh_b_;
+};
+
+// v2 3D fixture
+template <typename GetConfigFunc>
+class V2RandomMeshBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    cfg.num_rows_min = cfg.num_rows_max;
+    auto common_a = RandomMeshGenerator::generate_3d(cfg);
+    cfg.seed++;
+    auto common_b = RandomMeshGenerator::generate_3d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_3d_v2(common_a);
+    mesh_b_ = benchmark_helpers::from_common_3d_v2(common_b);
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  v2::Mesh3DDevice mesh_a_, mesh_b_;
+};
+
+// v3 3D fixture
+template <typename GetConfigFunc>
+class V3RandomMeshBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    cfg.num_rows_min = cfg.num_rows_max;
+    auto common_a = RandomMeshGenerator::generate_3d(cfg);
+    cfg.seed++;
+    auto common_b = RandomMeshGenerator::generate_3d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_3d_v3(common_a);
+    mesh_b_ = benchmark_helpers::from_common_3d_v3(common_b);
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  v3::Mesh3DDevice mesh_a_, mesh_b_;
 };
 
 // ============================================================================
@@ -95,7 +203,7 @@ struct GetLargeConfig {
 // 2D Benchmarks
 // ============================================================================
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V1_SmallConfig, GetSmallConfig)
+BENCHMARK_TEMPLATE_F(V1RandomMeshBenchmark2D, V1_SmallConfig, GetSmallConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -107,13 +215,13 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V1_SmallConfig, GetSmallConfig)
   }
   // Set items processed to total intervals across all iterations
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // Google Benchmark now displays:
   // - items_per_second = intervals processed per second
   // - ns_per_interval can be computed as: 1e9 / items_per_second
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V2_SmallConfig, GetSmallConfig)
+BENCHMARK_TEMPLATE_F(V2RandomMeshBenchmark2D, V2_SmallConfig, GetSmallConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -124,11 +232,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V2_SmallConfig, GetSmallConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V3_SmallConfig, GetSmallConfig)
+BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark2D, V3_SmallConfig, GetSmallConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -139,11 +247,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V3_SmallConfig, GetSmallConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V1_MediumConfig, GetMediumConfig)
+BENCHMARK_TEMPLATE_F(V1RandomMeshBenchmark2D, V1_MediumConfig, GetMediumConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -154,11 +262,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V1_MediumConfig, GetMediumConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V2_MediumConfig, GetMediumConfig)
+BENCHMARK_TEMPLATE_F(V2RandomMeshBenchmark2D, V2_MediumConfig, GetMediumConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -169,11 +277,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V2_MediumConfig, GetMediumConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V3_MediumConfig, GetMediumConfig)
+BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark2D, V3_MediumConfig, GetMediumConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -184,11 +292,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V3_MediumConfig, GetMediumConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V1_LargeConfig, GetLargeConfig)
+BENCHMARK_TEMPLATE_F(V1RandomMeshBenchmark2D, V1_LargeConfig, GetLargeConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -199,11 +307,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V1_LargeConfig, GetLargeConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V2_LargeConfig, GetLargeConfig)
+BENCHMARK_TEMPLATE_F(V2RandomMeshBenchmark2D, V2_LargeConfig, GetLargeConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -214,11 +322,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V2_LargeConfig, GetLargeConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V3_LargeConfig, GetLargeConfig)
+BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark2D, V3_LargeConfig, GetLargeConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -229,7 +337,7 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V3_LargeConfig, GetLargeConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
@@ -237,7 +345,7 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark2D, V3_LargeConfig, GetLargeConfig)
 // 3D Benchmarks
 // ============================================================================
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V1_3D_SmallConfig, GetSmallConfig)
+BENCHMARK_TEMPLATE_F(V1RandomMeshBenchmark3D, V1_3D_SmallConfig, GetSmallConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -246,11 +354,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V1_3D_SmallConfig, GetSmallConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V2_3D_SmallConfig, GetSmallConfig)
+BENCHMARK_TEMPLATE_F(V2RandomMeshBenchmark3D, V2_3D_SmallConfig, GetSmallConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -259,11 +367,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V2_3D_SmallConfig, GetSmallConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V3_3D_SmallConfig, GetSmallConfig)
+BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark3D, V3_3D_SmallConfig, GetSmallConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -272,11 +380,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V3_3D_SmallConfig, GetSmallConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V1_3D_MediumConfig, GetMediumConfig)
+BENCHMARK_TEMPLATE_F(V1RandomMeshBenchmark3D, V1_3D_MediumConfig, GetMediumConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -285,11 +393,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V1_3D_MediumConfig, GetMediumConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V2_3D_MediumConfig, GetMediumConfig)
+BENCHMARK_TEMPLATE_F(V2RandomMeshBenchmark3D, V2_3D_MediumConfig, GetMediumConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -298,11 +406,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V2_3D_MediumConfig, GetMediumConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V3_3D_MediumConfig, GetMediumConfig)
+BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark3D, V3_3D_MediumConfig, GetMediumConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -311,11 +419,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V3_3D_MediumConfig, GetMediumConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V1_3D_LargeConfig, GetLargeConfig)
+BENCHMARK_TEMPLATE_F(V1RandomMeshBenchmark3D, V1_3D_LargeConfig, GetLargeConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -324,11 +432,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V1_3D_LargeConfig, GetLargeConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V2_3D_LargeConfig, GetLargeConfig)
+BENCHMARK_TEMPLATE_F(V2RandomMeshBenchmark3D, V2_3D_LargeConfig, GetLargeConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -337,11 +445,11 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V2_3D_LargeConfig, GetLargeConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
-BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V3_3D_LargeConfig, GetLargeConfig)
+BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark3D, V3_3D_LargeConfig, GetLargeConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
@@ -350,7 +458,7 @@ BENCHMARK_TEMPLATE_F(RandomMeshBenchmark3D, V3_3D_LargeConfig, GetLargeConfig)
     Kokkos::fence();
   }
   state.SetItemsProcessed(state.iterations() * total_intervals);
-  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(Interval));
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 

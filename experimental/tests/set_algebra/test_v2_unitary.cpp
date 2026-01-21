@@ -20,21 +20,7 @@ using namespace experimental::subsetix::csr::test;
  * @brief Test suite for v2 algorithm using common format conversion
  */
 class V2ConversionTest : public ::testing::Test {
-protected:
-  // Helper to run intersection with conversion
-  DefaultCommonMesh2D intersect_2d(const CommonMesh2D& a, const CommonMesh2D& b) {
-    auto device_a = from_common_2d(a);
-    auto device_b = from_common_2d(b);
-    auto result_device = v2::intersect_meshes_2d(device_a, device_b);
-    return to_common_2d(result_device);
-  }
-
-  DefaultCommonMesh3D intersect_3d(const CommonMesh3D& a, const CommonMesh3D& b) {
-    auto device_a = from_common_3d(a);
-    auto device_b = from_common_3d(b);
-    auto result_device = v2::intersect_meshes_3d(device_a, device_b);
-    return to_common_3d(result_device);
-  }
+  // The wrapper functions from test_random_mesh_generator.hpp are used directly
 };
 
 // ============================================================================

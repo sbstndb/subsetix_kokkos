@@ -9,8 +9,12 @@
 
 namespace experimental::subsetix::csr {
 
-// Basic coordinate type for cell indices
+// Basic coordinate type for cell indices (default for backward compatibility)
 using Coord = int32_t;
+
+// Use templated types from types.hpp when included, otherwise provide local definitions
+// Note: These are defined here for backward compatibility with code that doesn't include types.hpp
+// When types.hpp is included, it will provide the templated versions
 
 /**
  * @brief Half-open interval [begin, end) on the X axis.
@@ -37,10 +41,6 @@ struct Interval {
     return !(*this == other);
   }
 };
-
-// ============================================================================
-// Row key types (2D and 3D)
-// ============================================================================
 
 /**
  * @brief Row key for 2D sparse structure.
