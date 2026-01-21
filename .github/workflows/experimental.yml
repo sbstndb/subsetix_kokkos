@@ -40,7 +40,10 @@ jobs:
       - name: Run benchmarks (sanity check only)
         working-directory: build-serial
         run: |
-          ./experimental/benchmarks/experimental_comparison_benchmark --benchmark_dry_run
+          ./experimental/benchmarks/experimental_comparison_benchmark \
+            --benchmark_min_time=0.01s \
+            --benchmark_repetitions=1 \
+            --benchmark_filter=UnifiedIntersectionBenchmark_FULL_OVERLAP
 
-      # Note: Benchmarks run in dry-run mode (1 iteration) just to verify they
-      # don't segfault. Full benchmarks are skipped for CI performance.
+      # Note: Benchmarks run in minimal mode (1 repetition, small dataset)
+      # just to verify they don't segfault. Full benchmarks skipped for CI performance.
