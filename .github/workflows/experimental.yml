@@ -35,7 +35,7 @@ jobs:
 
       - name: Run experimental tests
         working-directory: build-serial
-        run: ctest --output-on-failure -R Experimental
+        run: ctest --output-on-failure
 
       # Note: Benchmarks are skipped in CI due to segfault issues in GitHub Actions environment
       # Benchmarks work locally but fail in CI environment - to be investigated later
