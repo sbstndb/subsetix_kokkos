@@ -21,6 +21,7 @@ option(SUBSETIX_MEMORYSPACE_FORCE_UVM "Force DeviceMemorySpace = Kokkos::CudaUVM
 option(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED "Force DeviceMemorySpace = Kokkos::HostPinnedSpace" OFF)
 
 option(SUBSETIX_ENABLE_COVERAGE "Enable code coverage analysis (GCC only)" OFF)
+option(SUBSETIX_ENABLE_PERF "Enable perf profiling support (adds debug symbols)" OFF)
 
 # ========================================================================
 # Experimental Algorithms Configuration
@@ -61,6 +62,26 @@ endif()
 
 if(_SUBSETIX_MEMORYSPACE_FORCE_COUNT GREATER 1)
   message(FATAL_ERROR "Only one of SUBSETIX_MEMORYSPACE_FORCE_{UVM,HOSTPINNED} can be ON.")
+endif()
+
+# ========================================================================
+# Perf Profiling Configuration
+# ========================================================================
+
+if(SUBSETIX_ENABLE_PERF)
+  message(STATUS "=== Perf Profiling Enabled ===")
+
+  # Add debug symbols for perf profiling
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-g>)
+  add_link_options(-g)
+
+  # Ensure we have optimization but with debug info
+  if(NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type for perf profiling" FORCE)
+    message(STATUS "Build type set to RelWithDebInfo for perf profiling")
+  endif()
+
+  message(STATUS "Perf profiling support enabled with debug symbols")
 endif()
 
 # ========================================================================
