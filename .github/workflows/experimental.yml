@@ -39,6 +39,6 @@ jobs:
       - name: Run benchmarks (quick sanity check)
         working-directory: build-serial
         run: |
-          ./benchmarks/experimental/set_algebra/unified_comparison_benchmark \
+          ./experimental/benchmarks/set_algebra/experimental_comparison_benchmark \
             --benchmark_min_time=0.001 \
             --benchmark_iterations=10
