@@ -3,31 +3,25 @@
 ## Project Structure & Module Organization
 
 - Root: `CMakeLists.txt`, `CMakePresets.json`, `AGENTS.md`.
-- Public headers live in modular folders: `include/subsetix/geometry/`, `field/`, `io/`, `multilevel/`. CSR types (`csr_*.hpp`) are organized within these modules (e.g. `geometry/csr_backend.hpp`).
-- Implementation headers: `include/subsetix/csr_ops/` (Parallel kernels) and `include/subsetix/detail/`.
-- Library targets: INTERFACE `subsetix::geometry`, `subsetix::field`, `subsetix::multilevel`, `subsetix::vtk`, and aggregate `subsetix::core` (legacy alias `subsetix_core` remains).
-- Tests: `tests/` (standalone executables registered via CTest).
-- Examples: `examples/` (VTK generation and usage demos).
-- Benchmarks: `benchmarks/` (lightweight performance checks).
-- Experimental: `experimental/` (alternative algorithm implementations, disabled by default).
-- Build trees: `build-*` directories created by CMake presets (do not hard‑code paths).
+- Public headers: `include/subsetix/` (modular folders: `geometry/`, `field/`, `io/`, `multilevel/`, `fvd/`)
+- Implementation: `include/subsetix/csr_ops/` and `include/subsetix/detail/`
+- Tests: `tests/` (standalone executables via CTest)
+- Examples: `examples/` (VTK generation and usage demos)
+- Benchmarks: `benchmarks/` (lightweight performance checks)
+- Experimental: `experimental/` (alternative algorithms, disabled by default)
+- Build trees: `build-*` directories from CMake presets (do not hard‑code paths)
 
 ## Build, Test, and Development Commands
 
-- Configure + build (serial):  
-  - `cmake --preset serial`  
-  - `cmake --build --preset serial`
-- Configure + build (OpenMP):
-  - `cmake --preset openmp`
-  - `cmake --build --preset openmp`
-- Configure + build (CUDA with GCC 12):  
-  - `cmake --preset cuda-gcc12`  
-  - `cmake --build --preset cuda-gcc12`
-- Configure + build (MPI variants):
-  - `cmake --preset mpi-serial` (or `mpi-openmp`, `mpi-cuda-gcc12`)
-  - `cmake --build --preset mpi-serial`
-- Run tests via CTest: `ctest --preset <serial|openmp|cuda-gcc12|serial-asan|mpi-serial|mpi-openmp|mpi-cuda-gcc12>`
-- Prefer presets (Ninja generator) over calling `make` directly.
+Use CMake presets - see **CLAUDE.md** for complete reference including experimental-only presets.
+
+Quick start:
+```bash
+cmake --preset serial && cmake --build --preset serial
+ctest --preset serial
+```
+
+Prefer presets over direct `make` calls.
 
 ## Coding Style & Naming Conventions
 
@@ -63,40 +57,9 @@ The `experimental/` directory provides an isolated research space for alternativ
 
 ### Development Workflow
 
-**IMPORTANT**: Always use dedicated experimental presets. Manual flag configuration is error-prone.
+**IMPORTANT**: Always use dedicated experimental presets (see CLAUDE.md for commands). Manual configuration requires 4 flags and is error-prone.
 
-```bash
-# Use dedicated presets for experimental-only development
-cmake --preset experimental-serial      # Serial backend
-cmake --build --preset experimental-serial
-
-cmake --preset experimental-openmp      # OpenMP backend
-cmake --build --preset experimental-openmp
-
-cmake --preset experimental-cuda-gcc12  # CUDA backend
-cmake --build --preset experimental-cuda-gcc12
-
-# Run experimental tests
-ctest --preset experimental-serial
-ctest --preset experimental-openmp
-ctest --preset experimental-cuda-gcc12
-
-# Run experimental benchmarks
-./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark
-```
-
-**Do NOT use manual configuration** (unless adding a new preset):
-```bash
-# ERROR PRONE - requires 4 flags, easy to miss one
-cmake --preset serial \
-  -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
-  -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
-  -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
-  -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF  # Easy to forget!
-
-# Use preset instead - one command, no errors
-cmake --preset experimental-serial
-```
+Presets available: `experimental-serial`, `experimental-openmp`, `experimental-cuda-gcc12`, `experimental-asan`.
 
 ### Contribution Rules
 
