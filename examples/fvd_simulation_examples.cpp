@@ -40,9 +40,9 @@ void example_1_simplest_advection() {
         .with_domain(0.0, 1.0, 0.0, 0.5)
         .with_initial_condition([](Real x, Real y) {
             // Condition initiale: gaussienne au centre
-            Real r2 = (x-0.5)*(x-0.5) + (y-0.25)*(y-0.25);
+            Real r2 = (x-Real(0.5))*(x-Real(0.5)) + (y-Real(0.25))*(y-Real(0.25));
             return typename Advection2D<Real>::Conserved{
-                std::exp(-10.0 * r2)  // u(x,y,0)
+                std::exp(Real(-10.0) * r2)  // u(x,y,0)
             };
         })
         .build();

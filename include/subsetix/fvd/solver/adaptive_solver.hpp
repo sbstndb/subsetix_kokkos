@@ -448,8 +448,13 @@ public:
          * @brief Build the solver
          */
         AdaptiveSolver build() {
-            // Create domain box
-            csr::Box2D domain{x_min_, x_max_, y_min_, y_max_};
+            // Create domain box (cast Real to int for Box2D)
+            csr::Box2D domain{
+                static_cast<int>(x_min_),
+                static_cast<int>(x_max_),
+                static_cast<int>(y_min_),
+                static_cast<int>(y_max_)
+            };
 
             // Create full rectangular domain CSR geometry
             csr::IntervalSet2DDevice fluid = subsetix::csr::make_box_device(domain);
