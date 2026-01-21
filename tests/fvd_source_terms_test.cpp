@@ -720,10 +720,8 @@ TEST(CompositeSource, TwoSources) {
         return Conserved{0.0f, 0.0f, 0.0f, 100.0f};  // Energy source
     });
 
-    // Use CompositeSource directly instead of combine_sources factory
-    // (the factory has a bug where it passes a tuple instead of unpacked args)
-    CompositeSource<System, GravitySource<System>, CustomSource<System, decltype(heating.func)>> composite;
-    composite.sources = std::make_tuple(gravity, heating);
+    // Now use combine_sources factory (bug is fixed)
+    auto composite = combine_sources<System>(gravity, heating);
 
     Conserved U{1.0f, 0.0f, 0.0f, 2.5e5f};
     Primitive q{1.0f, 0.0f, 0.0f, 101325.0f};
@@ -767,12 +765,8 @@ TEST(CompositeSource, ThreeSources) {
         return Conserved{0.0f, 0.0f, 0.0f, 3.0f};
     });
 
-    // Use CompositeSource directly
-    using Src1 = CustomSource<System, decltype(src1.func)>;
-    using Src2 = CustomSource<System, decltype(src2.func)>;
-    using Src3 = CustomSource<System, decltype(src3.func)>;
-    CompositeSource<System, Src1, Src2, Src3> composite;
-    composite.sources = std::make_tuple(src1, src2, src3);
+    // Now use combine_sources factory (bug is fixed)
+    auto composite = combine_sources<System>(src1, src2, src3);
 
     Conserved U{1.0f, 0.0f, 0.0f, 2.5e5f};
     Primitive q{1.0f, 0.0f, 0.0f, 101325.0f};
@@ -809,11 +803,8 @@ TEST(CompositeSource, OpposingSources) {
         return Conserved{0.0f, -3.0f, 0.0f, 0.0f};
     });
 
-    // Use CompositeSource directly
-    using Src1 = CustomSource<System, decltype(src1.func)>;
-    using Src2 = CustomSource<System, decltype(src2.func)>;
-    CompositeSource<System, Src1, Src2> composite;
-    composite.sources = std::make_tuple(src1, src2);
+    // Now use combine_sources factory (bug is fixed)
+    auto composite = combine_sources<System>(src1, src2);
 
     Conserved U{1.0f, 0.0f, 0.0f, 2.5e5f};
     Primitive q{1.0f, 0.0f, 0.0f, 101325.0f};
@@ -852,14 +843,10 @@ TEST(CompositeSource, TimeDependencePropagation) {
 
     TimeDependentSource time_dependent_src;
 
-    // Use CompositeSource directly
-    using Src1 = GravitySource<System>;
-    using Src2 = TimeDependentSource;
-    CompositeSource<System, Src1, Src2> composite;
-    composite.sources = std::make_tuple(time_independent_src, time_dependent_src);
+    // Now use combine_sources factory (bug is fixed)
+    auto composite = combine_sources<System>(time_independent_src, time_dependent_src);
 
     // Should be time-dependent if any source is time-dependent
-    // Note: is_time_dependent() is a member function, not constexpr
     bool has_time_dep = composite.is_time_dependent();
     EXPECT_TRUE(has_time_dep);
 }
@@ -1077,7 +1064,7 @@ TEST(DragSource, NormalVelocity) {
  *
  * Fix: Add branch: if (v_mag < eps) return Conserved{0,0,0,0};
  */
-TEST(DragSource, ZeroVelocity_BUG) {
+TEST(DragSource, ZeroVelocity) {
     using Real = float;
     using System = Euler2D<Real>;
     using Conserved = typename System::Conserved;
@@ -1091,16 +1078,11 @@ TEST(DragSource, ZeroVelocity_BUG) {
 
     Conserved S = drag.compute(U, q, 0.0f, 0.0f, 0.0f);
 
-    // BUG: Division by zero! v_mag = 0, so u / v_mag and v / v_mag are NaN
-    // This test documents the bug
-    EXPECT_TRUE(Kokkos::isnan(S.rhou) || Kokkos::isinf(S.rhou) || S.rhou == 0.0f);
-    EXPECT_TRUE(Kokkos::isnan(S.rhov) || Kokkos::isinf(S.rhov) || S.rhov == 0.0f);
-
-    // Expected (after fix):
-    // EXPECT_NEAR(S.rho, 0.0f, FLOAT_TOL);
-    // EXPECT_NEAR(S.rhou, 0.0f, FLOAT_TOL);
-    // EXPECT_NEAR(S.rhov, 0.0f, FLOAT_TOL);
-    // EXPECT_NEAR(S.E, 0.0f, FLOAT_TOL);
+    // After fix: No drag on stationary fluid (returns 0, not NaN)
+    EXPECT_NEAR(S.rho, 0.0f, FLOAT_TOL);
+    EXPECT_NEAR(S.rhou, 0.0f, FLOAT_TOL);
+    EXPECT_NEAR(S.rhov, 0.0f, FLOAT_TOL);
+    EXPECT_NEAR(S.E, 0.0f, FLOAT_TOL);
 }
 
 /**
@@ -1412,9 +1394,7 @@ TEST(FactoryFunctions, CircularZoneSource) {
 /**
  * @brief Test combine_sources factory function
  *
- * NOTE: This test documents a bug in source_terms.hpp - the combine_sources
- * factory creates a tuple but CompositeSource constructor expects unpacked args.
- * This test uses CompositeSource directly as a workaround.
+ * NOTE: Bug has been fixed - factory now works correctly.
  */
 TEST(FactoryFunctions, CombineSources) {
     using Real = float;
@@ -1436,11 +1416,8 @@ TEST(FactoryFunctions, CombineSources) {
         return Conserved{0.0f, 0.0f, 2.0f, 0.0f};
     });
 
-    // Use CompositeSource directly due to bug in combine_sources factory
-    using Src1 = CustomSource<System, decltype(src1.func)>;
-    using Src2 = CustomSource<System, decltype(src2.func)>;
-    CompositeSource<System, Src1, Src2> composite;
-    composite.sources = std::make_tuple(src1, src2);
+    // Use combine_sources factory (bug is now fixed)
+    auto composite = combine_sources<System>(src1, src2);
 
     Conserved U{1.0f, 0.0f, 0.0f, 2.5e5f};
     Primitive q{1.0f, 0.0f, 0.0f, 101325.0f};
