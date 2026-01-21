@@ -55,3 +55,21 @@ add_test(NAME ExperimentalV3Test COMMAND experimental_v3_test)
 message(STATUS "  - experimental_v1_test")
 message(STATUS "  - experimental_v2_test")
 message(STATUS "  - experimental_v3_test")
+message(STATUS "  - experimental_benchmark_smoke_test")
+
+# Benchmark smoke test - quick check that benchmark code doesn't segfault
+# Uses test_main.cpp to initialize Kokkos (same as v2/v3 tests)
+add_executable(experimental_benchmark_smoke_test
+  test_main.cpp
+  set_algebra/benchmark_smoke_test.cpp
+)
+
+target_link_libraries(experimental_benchmark_smoke_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalBenchmarkSmokeTest COMMAND experimental_benchmark_smoke_test)
