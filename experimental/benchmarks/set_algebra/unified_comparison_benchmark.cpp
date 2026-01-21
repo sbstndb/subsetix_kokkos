@@ -260,11 +260,12 @@ static void BM_Intersection3D_V1_V2_FullOverlap(benchmark::State& state) {
   auto B_int_h = Kokkos::create_mirror_view(B.intervals);
 
   for (int i = 0; i < n; ++i) {
-    A_keys_h(i) = RowKey3D{i, i % 10};
+    // Y and Z have equal scope: Z = Y = i
+    A_keys_h(i) = RowKey3D{i, i};
     A_ptr_h(i) = i;
     A_int_h(i) = Interval{0, 100};
 
-    B_keys_h(i) = RowKey3D{i, i % 10};
+    B_keys_h(i) = RowKey3D{i, i};
     B_ptr_h(i) = i;
     B_int_h(i) = Interval{50, 150};
   }
@@ -311,11 +312,12 @@ static void BM_Intersection3D_V2_FullOverlap(benchmark::State& state) {
   auto B_int_h = Kokkos::create_mirror_view(B.intervals);
 
   for (int i = 0; i < n; ++i) {
-    A_keys_h(i) = RowKey3D{i, i % 10};
+    // Y and Z have equal scope: Z = Y = i
+    A_keys_h(i) = RowKey3D{i, i};
     A_ptr_h(i) = i;
     A_int_h(i) = Interval{0, 100};
 
-    B_keys_h(i) = RowKey3D{i, i % 10};
+    B_keys_h(i) = RowKey3D{i, i};
     B_ptr_h(i) = i;
     B_int_h(i) = Interval{50, 150};
   }
@@ -365,11 +367,12 @@ static void BM_Intersection3D_V3_FullOverlap(benchmark::State& state) {
   auto B_int_h = Kokkos::create_mirror_view(B.intervals);
 
   for (int i = 0; i < n; ++i) {
-    A_keys_h(i) = RowKey3D{i, i % 10};
+    // Y and Z have equal scope: Z = Y = i
+    A_keys_h(i) = RowKey3D{i, i};
     A_ptr_h(i) = i;
     A_int_h(i) = Interval{0, 100};
 
-    B_keys_h(i) = RowKey3D{i, i % 10};
+    B_keys_h(i) = RowKey3D{i, i};
     B_ptr_h(i) = i;
     B_int_h(i) = Interval{50, 150};
   }
