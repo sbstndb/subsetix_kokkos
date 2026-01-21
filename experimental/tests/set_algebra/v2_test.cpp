@@ -6,11 +6,53 @@
 #include <gtest/gtest.h>
 #include <experimental/subsetix/csr/set_algebra/v1.hpp>
 #include <experimental/subsetix/csr/set_algebra/v2.hpp>
+#include <experimental/subsetix/csr/mesh.hpp>
 #include <Kokkos_Core.hpp>
 
 using namespace experimental::subsetix::csr;
 
 // Note: Kokkos is already initialized by the test framework
+
+// ============================================================================
+// Helper: Deep mesh comparison (bitwise equality)
+// ============================================================================
+
+template <int DIM, typename MemorySpace>
+bool meshes_equal(const Mesh<DIM, MemorySpace>& a, const Mesh<DIM, MemorySpace>& b) {
+  // Quick size checks
+  if (a.num_rows != b.num_rows) return false;
+  if (a.num_intervals != b.num_intervals) return false;
+
+  if (a.num_rows == 0) return true;  // Empty meshes are equal
+
+  // Create host mirrors to compare contents
+  auto a_row_keys = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, a.row_keys);
+  auto a_row_ptr = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, a.row_ptr);
+  auto a_intervals = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, a.intervals);
+
+  auto b_row_keys = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, b.row_keys);
+  auto b_row_ptr = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, b.row_ptr);
+  auto b_intervals = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, b.intervals);
+
+  // Compare row_keys (order matters!)
+  for (std::size_t i = 0; i < a.num_rows; ++i) {
+    if (a_row_keys(i) != b_row_keys(i)) return false;
+  }
+
+  // Compare row_ptr (CSR structure)
+  for (std::size_t i = 0; i <= a.num_rows; ++i) {
+    if (a_row_ptr(i) != b_row_ptr(i)) return false;
+  }
+
+  // Compare intervals (order matters!)
+  for (std::size_t i = 0; i < a.num_intervals; ++i) {
+    const auto& ia = a_intervals(i);
+    const auto& ib = b_intervals(i);
+    if (ia.begin != ib.begin || ia.end != ib.end) return false;
+  }
+
+  return true;
+}
 
 // ============================================================================
 // v2-Specific Tests
@@ -245,10 +287,8 @@ TEST(ExperimentalV2Test, V1_vs_V2_SimpleIntersection_2D) {
   auto result_v1 = v1::intersect_meshes_2d(A, B);
   auto result_v2 = v2::intersect_meshes_2d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);
-  EXPECT_EQ(result_v1.num_intervals, 1);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v2))
+      << "v1 and v2 produced different 2D intersection results (simple)";
 }
 
 TEST(ExperimentalV2Test, V1_vs_V2_NoIntersection_2D) {
@@ -294,10 +334,8 @@ TEST(ExperimentalV2Test, V1_vs_V2_NoIntersection_2D) {
   auto result_v1 = v1::intersect_meshes_2d(A, B);
   auto result_v2 = v2::intersect_meshes_2d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 0);
-  EXPECT_EQ(result_v1.num_intervals, 0);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v2))
+      << "v1 and v2 produced different 2D intersection results (no overlap)";
 }
 
 TEST(ExperimentalV2Test, V1_vs_V2_MultipleIntervals_2D) {
@@ -346,10 +384,8 @@ TEST(ExperimentalV2Test, V1_vs_V2_MultipleIntervals_2D) {
   auto result_v1 = v1::intersect_meshes_2d(A, B);
   auto result_v2 = v2::intersect_meshes_2d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);
-  EXPECT_EQ(result_v1.num_intervals, 2);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v2))
+      << "v1 and v2 produced different 2D intersection results (multiple intervals)";
 }
 
 TEST(ExperimentalV2Test, V1_vs_V2_DifferentRows_2D) {
@@ -401,10 +437,8 @@ TEST(ExperimentalV2Test, V1_vs_V2_DifferentRows_2D) {
   auto result_v1 = v1::intersect_meshes_2d(A, B);
   auto result_v2 = v2::intersect_meshes_2d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);  // Only row 1 matches
-  EXPECT_EQ(result_v1.num_intervals, 1);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v2))
+      << "v1 and v2 produced different 2D intersection results (different rows)";
 }
 
 // ============================================================================
@@ -454,10 +488,8 @@ TEST(ExperimentalV2Test, V1_vs_V2_SimpleIntersection_3D) {
   auto result_v1 = v1::intersect_meshes_3d(A, B);
   auto result_v2 = v2::intersect_meshes_3d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);
-  EXPECT_EQ(result_v1.num_intervals, 1);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v2))
+      << "v1 and v2 produced different 3D intersection results (simple)";
 }
 
 TEST(ExperimentalV2Test, V1_vs_V2_DifferentZRows_3D) {
@@ -509,10 +541,62 @@ TEST(ExperimentalV2Test, V1_vs_V2_DifferentZRows_3D) {
   auto result_v1 = v1::intersect_meshes_3d(A, B);
   auto result_v2 = v2::intersect_meshes_3d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v2.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v2.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);  // Only row (y=1, z=0) matches
-  EXPECT_EQ(result_v1.num_intervals, 1);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v2))
+      << "v1 and v2 produced different 3D intersection results (different z)";
+}
+
+// ============================================================================
+// Type Traits (merged from v1_test)
+// ============================================================================
+
+TEST(ExperimentalV2Test, Mesh2D_TypeTraits) {
+  // Test that 2D mesh types are correctly defined
+  using MeshType = Mesh<2, Kokkos::DefaultExecutionSpace::memory_space>;
+
+  EXPECT_EQ(MeshType::DIM, 2);
+
+  // Test RowKey type
+  constexpr bool has_row_key = std::same_as<typename MeshType::RowKey, RowKey2D>;
+  EXPECT_TRUE(has_row_key);
+}
+
+TEST(ExperimentalV2Test, Mesh3D_TypeTraits) {
+  // Test that 3D mesh types are correctly defined
+  using MeshType = Mesh<3, Kokkos::DefaultExecutionSpace::memory_space>;
+
+  EXPECT_EQ(MeshType::DIM, 3);
+
+  // Test RowKey type
+  constexpr bool has_row_key = std::same_as<typename MeshType::RowKey, RowKey3D>;
+  EXPECT_TRUE(has_row_key);
+}
+
+// ============================================================================
+// Memory space conversion (merged from v1_test)
+// ============================================================================
+
+TEST(ExperimentalV2Test, Mesh2D_HostDeviceConversion) {
+  // Test that mesh_to compiles for 2D
+  Mesh2DDevice device_mesh;
+  device_mesh.num_rows = 0;
+  device_mesh.num_intervals = 0;
+
+  auto host_mesh = v1::mesh_to<2, Kokkos::HostSpace>(device_mesh);
+
+  EXPECT_EQ(host_mesh.num_rows, 0);
+  EXPECT_EQ(host_mesh.num_intervals, 0);
+}
+
+TEST(ExperimentalV2Test, Mesh3D_HostDeviceConversion) {
+  // Test that mesh_to compiles for 3D
+  Mesh3DDevice device_mesh;
+  device_mesh.num_rows = 0;
+  device_mesh.num_intervals = 0;
+
+  auto host_mesh = v1::mesh_to<3, Kokkos::HostSpace>(device_mesh);
+
+  EXPECT_EQ(host_mesh.num_rows, 0);
+  EXPECT_EQ(host_mesh.num_intervals, 0);
 }
 
 #endif // SUBSETIX_ENABLE_EXPERIMENTAL

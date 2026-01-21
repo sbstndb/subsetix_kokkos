@@ -47,59 +47,6 @@ TEST(SortedRowsTest, FullOverlapRowKeysAreSorted) {
   }
 }
 
-TEST(SortedRowsTest, PartialOverlapPatternIsNOTSorted_Buggy) {
-  const int n = 64;
-
-  Mesh2DDevice mesh_a, mesh_b;
-  mesh_a.num_rows = n;
-  mesh_a.num_intervals = n;
-  mesh_a.row_keys = Mesh2DDevice::RowKeyView("row_keys_a", n);
-  mesh_a.row_ptr = Mesh2DDevice::IndexView("row_ptr_a", n + 1);
-  mesh_a.intervals = Mesh2DDevice::IntervalView("intervals_a", n);
-
-  mesh_b.num_rows = n;
-  mesh_b.num_intervals = n;
-  mesh_b.row_keys = Mesh2DDevice::RowKeyView("row_keys_b", n);
-  mesh_b.row_ptr = Mesh2DDevice::IndexView("row_ptr_b", n + 1);
-  mesh_b.intervals = Mesh2DDevice::IntervalView("intervals_b", n);
-
-  auto row_keys_a = Kokkos::create_mirror_view(mesh_a.row_keys);
-  auto row_keys_b = Kokkos::create_mirror_view(mesh_b.row_keys);
-  auto row_ptr_a = Kokkos::create_mirror_view(mesh_a.row_ptr);
-  auto row_ptr_b = Kokkos::create_mirror_view(mesh_b.row_ptr);
-  auto intervals_a = Kokkos::create_mirror_view(mesh_a.intervals);
-  auto intervals_b = Kokkos::create_mirror_view(mesh_b.intervals);
-
-  // PARTIAL_OVERLAP pattern (BUGGY - generates unsorted row_keys!)
-  for (int i = 0; i < n; ++i) {
-    const int offset_a = (i % 2 == 0) ? 0 : n/2;
-    const int offset_b = (i % 2 == 0) ? 0 : n/2 + n;
-
-    row_keys_a(i) = RowKey2D{i + offset_a};
-    row_keys_b(i) = RowKey2D{i + offset_b};
-
-    row_ptr_a(i) = i;
-    row_ptr_b(i) = i;
-    intervals_a(i) = Interval{0, 100};
-    intervals_b(i) = Interval{0, 100};
-  }
-  row_ptr_a(n) = n;
-  row_ptr_b(n) = n;
-
-  // Check if sorted - this should FAIL with the buggy implementation
-  bool a_sorted = true;
-  bool b_sorted = true;
-  for (int i = 1; i < n; ++i) {
-    if (row_keys_a(i).y < row_keys_a(i-1).y) a_sorted = false;
-    if (row_keys_b(i).y < row_keys_b(i-1).y) b_sorted = false;
-  }
-
-  EXPECT_FALSE(a_sorted) << "Mesh A row_keys should NOT be sorted with buggy pattern";
-  EXPECT_FALSE(b_sorted) << "Mesh B row_keys should NOT be sorted with buggy pattern";
-
-  // This demonstrates why the benchmark segfaults - binary search on unsorted data!
-}
-
 TEST(SortedRowsTest, FixedPartialOverlapPatternIsSorted) {
   const int n = 64;
 

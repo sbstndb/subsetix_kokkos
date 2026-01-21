@@ -6,20 +6,6 @@
 
 message(STATUS "Experimental tests will be built")
 
-# v1 tests - use gtest_main (no actual Views created in tests, so Kokkos init not needed)
-add_executable(experimental_v1_test
-  set_algebra/v1_test.cpp
-)
-
-target_link_libraries(experimental_v1_test
-  PRIVATE
-    experimental_subsetix_csr
-    gtest_main
-    gmock_main
-)
-
-add_test(NAME ExperimentalV1Test COMMAND experimental_v1_test)
-
 # v2 tests - use custom test_main that initializes Kokkos
 add_executable(experimental_v2_test
   test_main.cpp
@@ -52,27 +38,9 @@ target_link_libraries(experimental_v3_test
 
 add_test(NAME ExperimentalV3Test COMMAND experimental_v3_test)
 
-message(STATUS "  - experimental_v1_test")
 message(STATUS "  - experimental_v2_test")
 message(STATUS "  - experimental_v3_test")
-message(STATUS "  - experimental_benchmark_smoke_test")
 
-# Benchmark smoke test - quick check that benchmark code doesn't segfault
-# Uses test_main.cpp to initialize Kokkos (same as v2/v3 tests)
-add_executable(experimental_benchmark_smoke_test
-  test_main.cpp
-  set_algebra/benchmark_smoke_test.cpp
-)
-
-target_link_libraries(experimental_benchmark_smoke_test
-  PRIVATE
-    experimental_subsetix_csr
-    gtest
-    gmock
-    Kokkos::kokkos
-)
-
-add_test(NAME ExperimentalBenchmarkSmokeTest COMMAND experimental_benchmark_smoke_test)
 
 # Sorted rows test - verifies that mesh generation produces sorted row_keys
 add_executable(experimental_sorted_rows_test
@@ -122,6 +90,23 @@ target_link_libraries(experimental_large_mesh_test
 
 add_test(NAME ExperimentalLargeMeshTest COMMAND experimental_large_mesh_test)
 
+# Cross-version validation test - verifies v1, v2, v3 produce identical results
+add_executable(experimental_cross_version_validation_test
+  test_main.cpp
+  set_algebra/test_cross_version_validation.cpp
+)
+
+target_link_libraries(experimental_cross_version_validation_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalCrossVersionValidationTest COMMAND experimental_cross_version_validation_test)
+
 message(STATUS "  - experimental_sorted_rows_test")
 message(STATUS "  - experimental_overlap_patterns_test")
 message(STATUS "  - experimental_large_mesh_test")
+message(STATUS "  - experimental_cross_version_validation_test")

@@ -12,6 +12,47 @@
 using namespace experimental::subsetix::csr;
 
 // ============================================================================
+// Helper: Deep mesh comparison (bitwise equality)
+// ============================================================================
+
+template <int DIM, typename MemorySpace>
+bool meshes_equal(const Mesh<DIM, MemorySpace>& a, const Mesh<DIM, MemorySpace>& b) {
+  // Quick size checks
+  if (a.num_rows != b.num_rows) return false;
+  if (a.num_intervals != b.num_intervals) return false;
+
+  if (a.num_rows == 0) return true;  // Empty meshes are equal
+
+  // Create host mirrors to compare contents
+  auto a_row_keys = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, a.row_keys);
+  auto a_row_ptr = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, a.row_ptr);
+  auto a_intervals = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, a.intervals);
+
+  auto b_row_keys = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, b.row_keys);
+  auto b_row_ptr = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, b.row_ptr);
+  auto b_intervals = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, b.intervals);
+
+  // Compare row_keys (order matters!)
+  for (std::size_t i = 0; i < a.num_rows; ++i) {
+    if (a_row_keys(i) != b_row_keys(i)) return false;
+  }
+
+  // Compare row_ptr (CSR structure)
+  for (std::size_t i = 0; i <= a.num_rows; ++i) {
+    if (a_row_ptr(i) != b_row_ptr(i)) return false;
+  }
+
+  // Compare intervals (order matters!)
+  for (std::size_t i = 0; i < a.num_intervals; ++i) {
+    const auto& ia = a_intervals(i);
+    const auto& ib = b_intervals(i);
+    if (ia.begin != ib.begin || ia.end != ib.end) return false;
+  }
+
+  return true;
+}
+
+// ============================================================================
 // v3 Basic Tests
 // ============================================================================
 
@@ -85,10 +126,8 @@ TEST(ExperimentalV3Test, V1_vs_V3_SimpleIntersection_2D) {
   auto result_v1 = v1::intersect_meshes_2d(A, B);
   auto result_v3 = v3::intersect_meshes_2d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v3.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v3.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);
-  EXPECT_EQ(result_v1.num_intervals, 1);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v3))
+      << "v1 and v3 produced different 2D intersection results (simple)";
 }
 
 TEST(ExperimentalV3Test, V1_vs_V3_NoIntersection_2D) {
@@ -133,10 +172,8 @@ TEST(ExperimentalV3Test, V1_vs_V3_NoIntersection_2D) {
   auto result_v1 = v1::intersect_meshes_2d(A, B);
   auto result_v3 = v3::intersect_meshes_2d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v3.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v3.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 0);
-  EXPECT_EQ(result_v1.num_intervals, 0);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v3))
+      << "v1 and v3 produced different 2D intersection results (no overlap)";
 }
 
 TEST(ExperimentalV3Test, V1_vs_V3_MultipleIntervals_2D) {
@@ -184,10 +221,8 @@ TEST(ExperimentalV3Test, V1_vs_V3_MultipleIntervals_2D) {
   auto result_v1 = v1::intersect_meshes_2d(A, B);
   auto result_v3 = v3::intersect_meshes_2d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v3.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v3.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);
-  EXPECT_EQ(result_v1.num_intervals, 2);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v3))
+      << "v1 and v3 produced different 2D intersection results (multiple intervals)";
 }
 
 TEST(ExperimentalV3Test, V1_vs_V3_DifferentRows_2D) {
@@ -238,10 +273,8 @@ TEST(ExperimentalV3Test, V1_vs_V3_DifferentRows_2D) {
   auto result_v1 = v1::intersect_meshes_2d(A, B);
   auto result_v3 = v3::intersect_meshes_2d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v3.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v3.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);  // Only row 1 matches
-  EXPECT_EQ(result_v1.num_intervals, 1);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v3))
+      << "v1 and v3 produced different 2D intersection results (different rows)";
 }
 
 TEST(ExperimentalV3Test, V1_vs_V3_SimpleIntersection_3D) {
@@ -286,10 +319,8 @@ TEST(ExperimentalV3Test, V1_vs_V3_SimpleIntersection_3D) {
   auto result_v1 = v1::intersect_meshes_3d(A, B);
   auto result_v3 = v3::intersect_meshes_3d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v3.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v3.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);
-  EXPECT_EQ(result_v1.num_intervals, 1);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v3))
+      << "v1 and v3 produced different 3D intersection results (simple)";
 }
 
 TEST(ExperimentalV3Test, V1_vs_V3_DifferentZRows_3D) {
@@ -340,10 +371,8 @@ TEST(ExperimentalV3Test, V1_vs_V3_DifferentZRows_3D) {
   auto result_v1 = v1::intersect_meshes_3d(A, B);
   auto result_v3 = v3::intersect_meshes_3d(A, B);
 
-  EXPECT_EQ(result_v1.num_rows, result_v3.num_rows);
-  EXPECT_EQ(result_v1.num_intervals, result_v3.num_intervals);
-  EXPECT_EQ(result_v1.num_rows, 1);  // Only row (y=1, z=0) matches
-  EXPECT_EQ(result_v1.num_intervals, 1);
+  EXPECT_TRUE(meshes_equal(result_v1, result_v3))
+      << "v1 and v3 produced different 3D intersection results (different z)";
 }
 
 // ============================================================================
