@@ -106,6 +106,40 @@ ctest --preset experimental-serial
 - **Do not** import experimental code into stable modules
 - To promote experimental code to stable: copy and adapt, do not move
 
+## Development Best Practices
+
+### Before Committing
+
+**Always build and test completely** before committing:
+
+1. **Identify your scope**: Are you working in `stable/` or `experimental/`?
+2. **Full build for scope**:
+   - **Stable changes**: Build and test on `serial`, `openmp`, `cuda-gcc12`
+   - **Experimental changes**: Build and test on `experimental-serial`, `experimental-openmp`, `experimental-cuda-gcc12`
+3. **All tests must pass**: No exceptions, even in the playground
+
+```bash
+# Example: Working in stable/
+for preset in serial openmp cuda-gcc12; do
+  cmake --preset $preset || exit 1
+  cmake --build --preset $preset || exit 1
+  ctest --preset $preset --output-on-failure || exit 1
+done
+
+# Example: Working in experimental/
+for preset in experimental-serial experimental-openmp experimental-cuda-gcc12; do
+  cmake --preset $preset || exit 1
+  cmake --build --preset $preset || exit 1
+  ctest --preset $preset --output-on-failure || exit 1
+done
+```
+
+### Why This Matters
+
+- **Cross-platform compatibility**: Code that works on Serial may fail on CUDA
+- **Portability**: OpenMP threading can expose race conditions not visible in Serial
+- **Confidence**: Full testing prevents regressions across all execution spaces
+
 ## Commit & Pull Request Guidelines
 
 - Commit messages: short, imperative, and scoped (e.g. `Add CSR fields`, `Fix cuda-clang preset`).
