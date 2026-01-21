@@ -38,8 +38,42 @@ target_link_libraries(experimental_v3_test
 
 add_test(NAME ExperimentalV3Test COMMAND experimental_v3_test)
 
+# v1 correctness tests - comprehensive validation of v1 reference implementation
+add_executable(experimental_v1_correctness_test
+  test_main.cpp
+  set_algebra/test_v1_correctness.cpp
+)
+
+target_link_libraries(experimental_v1_correctness_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalV1CorrectnessTest COMMAND experimental_v1_correctness_test)
+
+# Version-correctness tests - parametrized tests for v1/v2/v3
+add_executable(experimental_version_correctness_test
+  test_main.cpp
+  set_algebra/test_version_correctness.cpp
+)
+
+target_link_libraries(experimental_version_correctness_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalVersionCorrectnessTest COMMAND experimental_version_correctness_test)
+
 message(STATUS "  - experimental_v2_test")
 message(STATUS "  - experimental_v3_test")
+message(STATUS "  - experimental_v1_correctness_test")
+message(STATUS "  - experimental_version_correctness_test")
 
 
 # Sorted rows test - verifies that mesh generation produces sorted row_keys
