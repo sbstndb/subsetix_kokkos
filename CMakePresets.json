@@ -52,6 +52,19 @@
       }
     },
     {
+      "name": "coverage",
+      "displayName": "Code coverage (Debug with gcov)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-g -O0 --coverage",
+        "CMAKE_EXE_LINKER_FLAGS": "--coverage",
+        "SUBSETIX_ENABLE_COVERAGE": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
       "name": "mpi-serial",
       "displayName": "MPI + Kokkos SERIAL",
       "generator": "Ninja",
@@ -103,6 +116,10 @@
       "configurePreset": "serial-asan"
     },
     {
+      "name": "coverage",
+      "configurePreset": "coverage"
+    },
+    {
       "name": "mpi-serial",
       "configurePreset": "mpi-serial"
     },
@@ -131,6 +148,10 @@
     {
       "name": "serial-asan",
       "configurePreset": "serial-asan"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
     },
     {
       "name": "mpi-serial",

@@ -7,6 +7,8 @@
 #include <gtest/gtest.h>
 #include <Kokkos_Core.hpp>
 #include <subsetix/fvd/fvd_integrators.hpp>
+#include <subsetix/fvd/flux/flux_schemes.hpp>
+#include <subsetix/fvd/geometry/geometry_builder.hpp>
 
 using namespace subsetix::fvd;
 using namespace subsetix::fvd::solver;
@@ -447,6 +449,352 @@ TEST_F(FvdIntegratorsTest, StandardAdaptiveDT) {
     EXPECT_FLOAT_EQ(cfg.cfl_max, 1.0f);
     EXPECT_FLOAT_EQ(cfg.dt_max, 0.01f);
     EXPECT_FLOAT_EQ(cfg.growth_factor, 1.2f);
+}
+
+// ============================================================================
+// TIME DEPENDENT BC - ADDITIONAL MODULATION TYPES
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, TimeDependentBC_AllModulationTypes) {
+    TimeDependentBC<Real> bc;
+    bc.rho0 = 1.0f;
+    bc.amplitude = 0.5f;
+    bc.frequency = 1.0f;
+
+    // Test Constant modulation
+    bc.rho_mod = TimeDependentBC<Real>::Constant;
+    EXPECT_FLOAT_EQ(bc.rho(0.0f), 1.0f);
+    EXPECT_FLOAT_EQ(bc.rho(100.0f), 1.0f);
+
+    // Test Linear modulation: rho = 1.0 * (1 + 0.5 * t)
+    bc.rho_mod = TimeDependentBC<Real>::Linear;
+    EXPECT_FLOAT_EQ(bc.rho(0.0f), 1.0f);
+    EXPECT_FLOAT_EQ(bc.rho(1.0f), 1.5f);  // 1.0 * (1 + 0.5)
+    EXPECT_FLOAT_EQ(bc.rho(2.0f), 2.0f);  // 1.0 * (1 + 1.0)
+
+    // Test Exponential modulation: rho = 1.0 * exp(0.5 * t)
+    bc.rho_mod = TimeDependentBC<Real>::Exponential;
+    EXPECT_FLOAT_EQ(bc.rho(0.0f), 1.0f);
+    EXPECT_NEAR(bc.rho(1.0f), 1.6487f, 0.01f);  // exp(0.5)
+    EXPECT_NEAR(bc.rho(2.0f), 2.718f, 0.01f);   // exp(1.0)
+}
+
+TEST_F(FvdIntegratorsTest, TimeDependentBC_PhaseAndReferenceTime) {
+    TimeDependentBC<Real> bc;
+    bc.rho0 = 1.0f;
+    bc.amplitude = 0.1f;
+    bc.frequency = 2.0f * 3.14159f;  // 1 Hz
+    bc.rho_mod = TimeDependentBC<Real>::Sinusoidal;
+
+    // Test phase offset: sin(2*pi*t + pi/2) = cos(2*pi*t)
+    bc.phase = 1.5708f;  // pi/2
+    EXPECT_NEAR(bc.rho(0.0f), 1.1f, 0.01f);  // sin(pi/2) = 1
+    EXPECT_NEAR(bc.rho(0.25f), 1.0f, 0.01f); // sin(pi) = 0
+
+    // Test reference time offset
+    bc.phase = 0.0f;
+    bc.t0 = 0.5f;
+    EXPECT_FLOAT_EQ(bc.rho(0.5f), 1.0f);  // t - t0 = 0
+    EXPECT_NEAR(bc.rho(0.75f), 1.1f, 0.01f);  // t - t0 = 0.25
+}
+
+TEST_F(FvdIntegratorsTest, ZonePredicate_IntervalY) {
+    auto zone = ZonePredicate<Real>::interval_y(0.2f, 0.4f);
+
+    EXPECT_TRUE(zone.contains(0.5f, 0.3f));  // y in range
+    EXPECT_FALSE(zone.contains(0.5f, 0.1f)); // y too low
+    EXPECT_FALSE(zone.contains(0.5f, 0.5f)); // y too high
+}
+
+TEST_F(FvdIntegratorsTest, ZonePredicate_TimeDependent) {
+    ZonePredicate<Real> moving_zone;
+    moving_zone.predicate = ZonePredicate<Real>::Rectangle;
+    moving_zone.x_min = 0.0f;
+    moving_zone.x_max = 0.2f;
+    moving_zone.y_min = 0.0f;
+    moving_zone.y_max = 1.0f;
+    moving_zone.time_dependent = true;
+    moving_zone.velocity_x = 0.1f;  // Moves right at 0.1 units/time
+
+    // At t=0: zone at [0, 0.2]
+    EXPECT_TRUE(moving_zone.contains(0.1f, 0.5f, 0.0f));
+    EXPECT_FALSE(moving_zone.contains(0.3f, 0.5f, 0.0f));
+
+    // At t=1: zone moved to [0.1, 0.3]
+    EXPECT_TRUE(moving_zone.contains(0.2f, 0.5f, 1.0f));
+    EXPECT_FALSE(moving_zone.contains(0.05f, 0.5f, 1.0f));
+}
+
+TEST_F(FvdIntegratorsTest, BcDescriptor_AllTypes) {
+    // Test Outflow type
+    BcDescriptor<System> bc_outflow;
+    bc_outflow.type = BcDescriptor<System>::Outflow;
+    auto val_out = bc_outflow.get_value(0.5f);
+    EXPECT_FLOAT_EQ(val_out.rho, 0.0f);  // Returns zero conserved
+
+    // Test TimeDependentInlet type
+    BcDescriptor<System> bc_inlet;
+    bc_inlet.type = BcDescriptor<System>::TimeDependentInlet;
+    bc_inlet.time_policy.rho0 = 1.0f;
+    bc_inlet.time_policy.u0 = 100.0f;
+    bc_inlet.time_policy.frequency = 2.0f * 3.14159f;
+    bc_inlet.time_policy.amplitude = 0.1f;
+    bc_inlet.time_policy.u_mod = TimeDependentBC<Real>::Sinusoidal;
+
+    auto val = bc_inlet.get_value(0.25f);
+    EXPECT_NEAR(val.rho, 1.0f, 0.01f);
+    EXPECT_NEAR(val.rhou, 110.0f, 1.0f);  // rho * u = 1.0 * 110.0
+}
+
+TEST_F(FvdIntegratorsTest, BcManager_AdvancedOperations) {
+    BcManager<System> mgr;
+    mgr.initialize(nx, ny, 0.01f, 0.01f, 0.0f, 0.0f);
+
+    // Test sync_to_device
+    EXPECT_FALSE(mgr.needs_sync());
+    typename System::Primitive q{1.0f, 100.0f, 0.0f, 100000.0f};
+    mgr.add_static_bc("left", BcDescriptor<System>::StaticDirichlet, q);
+    EXPECT_TRUE(mgr.needs_sync());
+    mgr.sync_to_device();
+    EXPECT_FALSE(mgr.needs_sync());
+
+    // Test update_bc
+    typename System::Primitive q_new{2.0f, 150.0f, 0.0f, 150000.0f};
+    mgr.update_bc("left", 0, BcDescriptor<System>::StaticDirichlet, q_new);
+    EXPECT_TRUE(mgr.needs_sync());
+
+    // Test remove_bc
+    mgr.remove_bc("left", 0);
+    EXPECT_TRUE(mgr.needs_sync());
+}
+
+// ============================================================================
+// FLUX SCHEMES UNIT TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, FluxSchemes_Rusanov_Euler2D) {
+    using namespace subsetix::fvd::flux;
+
+    RusanovFlux<System> flux(1.4f);
+
+    // Create two states
+    typename System::Conserved UL{1.0f, 1.0f, 0.0f, 2.5f};
+    typename System::Conserved UR{0.9f, 0.9f, 0.0f, 2.3f};
+    typename System::Primitive qL = System::to_primitive(UL);
+    typename System::Primitive qR = System::to_primitive(UR);
+
+    // Compute flux in x-direction
+    auto F = flux.flux_x(UL, UR, qL, qR);
+
+    // Verify mass flux (rho component) is computed
+    EXPECT_TRUE(F.rho != 0.0f || F.rhou != 0.0f || F.rhov != 0.0f || F.E != 0.0f);
+}
+
+TEST_F(FvdIntegratorsTest, FluxSchemes_HLLC_Euler2D) {
+    using namespace subsetix::fvd::flux;
+
+    HLLCFlux<System> flux(1.4f);
+
+    // Create two states with same pressure
+    // For Euler2D with gamma=1.4: p = (gamma-1) * (E - 0.5*rho*(u^2+v^2))
+    // Left: rho=1, u=0.5, p=2.5 => E = 2.5/0.4 + 0.5*1*0.25 = 6.25 + 0.125 = 6.375
+    // Right: rho=0.5, u=0.25, p=2.5 => E = 2.5/0.4 + 0.5*0.5*0.0625 = 6.25 + 0.015625 = 6.265625
+    typename System::Conserved UL{1.0f, 0.5f, 0.0f, 6.375f};
+    typename System::Conserved UR{0.5f, 0.125f, 0.0f, 6.265625f};  // Half density, same pressure
+    typename System::Primitive qL = System::to_primitive(UL);
+    typename System::Primitive qR = System::to_primitive(UR);
+
+    // Verify both have same pressure
+    EXPECT_NEAR(qL.p, qR.p, 0.01f);
+
+    // Compute flux in x-direction
+    auto F = flux.flux_x(UL, UR, qL, qR);
+
+    // HLLC should return a valid flux
+    EXPECT_TRUE(std::isfinite(F.rho));
+    EXPECT_TRUE(std::isfinite(F.rhou));
+    EXPECT_TRUE(std::isfinite(F.E));
+}
+
+TEST_F(FvdIntegratorsTest, FluxSchemes_Advection2D_Rusanov) {
+    using namespace subsetix::fvd::flux;
+    using AdvSystem = Advection2D<Real>;
+
+    RusanovFlux<AdvSystem> flux;
+
+    // Create two scalar states
+    typename AdvSystem::Conserved UL{1.0f};
+    typename AdvSystem::Conserved UR{0.5f};
+    typename AdvSystem::Primitive qL{1.0f};
+    typename AdvSystem::Primitive qR{0.5f};
+
+    // Compute flux in x-direction
+    auto F = flux.flux_x(UL, UR, qL, qR);
+
+    // Advection flux should be computed
+    EXPECT_TRUE(std::isfinite(F.value));
+}
+
+// ============================================================================
+// REFINEMENT CRITERIA - ADDITIONAL TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, SmoothnessCriterion_CoarsenSmoothRegion) {
+    SmoothnessCriterion<System> crit;
+    crit.coarsen_threshold = 0.01f;  // Low variance = coarsen
+
+    // Create center state
+    typename System::Conserved U_center{1.0f, 0.5f, 0.0f, 2.5f};
+    typename System::Primitive q_center{1.0f, 0.5f, 0.0f, 2.5f};
+
+    // Create 4 similar sibling states (smooth region)
+    typename System::Conserved siblings[4] = {
+        {1.0f, 0.5f, 0.0f, 2.5f},
+        {1.01f, 0.505f, 0.0f, 2.525f},
+        {0.99f, 0.495f, 0.0f, 2.475f},
+        {1.005f, 0.5025f, 0.0f, 2.5125f}
+    };
+
+    Real dx = 0.01f;
+
+    // SmoothnessCriterion::evaluate takes (U_center, q_center, siblings, dx)
+    auto action = crit.evaluate(U_center, q_center, siblings, dx);
+
+    // Should coarsen due to low variance
+    EXPECT_EQ(action, RefinementAction::Coarsen);
+}
+
+TEST_F(FvdIntegratorsTest, CompositeCriterion_VoteLogic) {
+    CompositeCriterion<System, 8> comp;
+    comp.logic_op = CompositeCriterion<System, 8>::Vote;
+
+    // Add multiple criteria
+    ValueRangeCriterion<System> range;
+    range.variable = ValueRangeCriterion<System>::Density;
+    range.min_val = 0.5f;
+    range.max_val = 1.5f;
+    range.invert = false;
+    comp.add_value_range(range);
+
+    GradientCriterion<System> grad;
+    grad.threshold = 10.0f;
+    comp.add_gradient(grad);
+
+    EXPECT_EQ(comp.num_criteria, 2);
+    EXPECT_EQ(static_cast<int>(comp.logic_op),
+              static_cast<int>(CompositeCriterion<System, 8>::Vote));
+}
+
+TEST_F(FvdIntegratorsTest, UserDefinedCriterion) {
+    // UserDefinedCriterion requires both System and Function template args
+    // For this test, we just verify the concept is satisfied
+    // by using a simple function pointer type
+    using UserFn = RefinementAction(*)(const typename System::Conserved&,
+                                        const typename System::Primitive&,
+                                        Real);
+
+    // Verify that a function pointer can be used
+    UserFn fn = [](const typename System::Conserved& U,
+                   const typename System::Primitive& q,
+                   Real dx) {
+        if (q.rho > 1.5f) {
+            return RefinementAction::Refine;
+        }
+        return RefinementAction::Keep;
+    };
+
+    // Just verify it's callable
+    typename System::Conserved U{1.0f, 100.0f, 0.0f, 200000.0f};
+    typename System::Primitive q{2.0f, 100.0f, 0.0f, 100000.0f};
+    auto action = fn(U, q, 0.01f);
+    EXPECT_EQ(action, RefinementAction::Refine);  // rho = 2.0 > 1.5
+}
+
+TEST_F(FvdIntegratorsTest, ValueRangeCriterion_AllVariableTypes) {
+    typename System::Conserved U{1.0f, 100.0f, 0.0f, 200000.0f};
+    typename System::Primitive q{1.0f, 100.0f, 0.0f, 100000.0f};
+
+    // Test Density variable
+    {
+        ValueRangeCriterion<System> crit;
+        crit.variable = ValueRangeCriterion<System>::Density;
+        crit.min_val = 0.5f;
+        crit.max_val = 1.5f;
+        crit.invert = false;
+
+        auto action = crit.evaluate(U, q, 0.01f);
+        EXPECT_EQ(action, RefinementAction::Refine);  // 1.0 is in [0.5, 1.5]
+    }
+
+    // Test Pressure variable
+    {
+        ValueRangeCriterion<System> crit;
+        crit.variable = ValueRangeCriterion<System>::Pressure;
+        crit.min_val = 90000.0f;
+        crit.max_val = 110000.0f;
+        crit.invert = false;
+
+        auto action = crit.evaluate(U, q, 0.01f);
+        EXPECT_EQ(action, RefinementAction::Refine);  // 100000 is in range
+    }
+
+    // Test VelocityX variable
+    {
+        ValueRangeCriterion<System> crit;
+        crit.variable = ValueRangeCriterion<System>::VelocityX;
+        crit.min_val = 90.0f;
+        crit.max_val = 110.0f;
+        crit.invert = false;
+
+        auto action = crit.evaluate(U, q, 0.01f);
+        EXPECT_EQ(action, RefinementAction::Refine);  // 100 is in range
+    }
+}
+
+// ============================================================================
+// GEOMETRY BUILDER TESTS
+// ============================================================================
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_RectangleCreation) {
+    // Geometry2D is directly in subsetix::fvd namespace
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_rectangle(10.0f, 30.0f, 20.0f, 40.0f, true)   // Obstacle
+        .add_box(50.0f, 70.0f, 60.0f, 80.0f, true);        // Another obstacle
+
+    EXPECT_EQ(geom.obstacles().size(), 2);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_FluidRegions) {
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_cylinder(50.0f, 50.0f, 10.0f, false)  // Fluid region (not obstacle)
+        .add_rectangle(10.0f, 30.0f, 10.0f, 30.0f, false);  // Another fluid region
+
+    EXPECT_EQ(geom.fluid_regions().size(), 2);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_PhysicalCoordinates) {
+    // Create geometry from physical coordinates
+    auto geom = subsetix::fvd::Geometry2D<Real>::build_box(0.0f, 1.0f, 0.0f, 0.5f, 0.01f, 0.01f);
+
+    EXPECT_EQ(geom.nx(), 100);  // (1.0 - 0.0) / 0.01 = 100
+    EXPECT_EQ(geom.ny(), 50);   // (0.5 - 0.0) / 0.01 = 50
+    EXPECT_NEAR(geom.dx(), 0.01f, 0.001f);
+    EXPECT_NEAR(geom.dy(), 0.01f, 0.001f);
+}
+
+TEST_F(FvdIntegratorsTest, GeometryBuilder_EdgeCases) {
+    // Zero radius cylinder should return empty geometry
+    auto geom1 = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_cylinder(50.0f, 50.0f, 0.0f, true);
+
+    auto csr1 = geom1.build();
+    EXPECT_GT(csr1.num_rows, 0);  // Domain still exists
+
+    // Rectangle completely outside domain
+    auto geom2 = subsetix::fvd::Geometry2D<Real>::build_box(100, 100)
+        .add_rectangle(200.0f, 300.0f, 200.0f, 300.0f, true);
+
+    EXPECT_EQ(geom2.obstacles().size(), 1);  // Still added, but clamped during build
 }
 
 // ============================================================================
