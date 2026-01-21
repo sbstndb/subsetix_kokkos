@@ -14,6 +14,11 @@ message(STATUS "=== Configuring Experimental Module ===")
 # Create alias library for experimental headers (interface library)
 add_library(experimental_subsetix_csr INTERFACE)
 
+target_link_libraries(experimental_subsetix_csr
+  INTERFACE
+    Kokkos::kokkos
+)
+
 target_include_directories(experimental_subsetix_csr
   INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
