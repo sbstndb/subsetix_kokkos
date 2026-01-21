@@ -2,6 +2,8 @@
 
 Minimalist VTK visualization tool for subsetix - generates PNG images and MP4 animations from VTK legacy binary files.
 
+> **Note**: Pour une vue d'ensemble des outils de visualisation et documentation, voir [`docs/VISUALIZATION.md`](../../../docs/VISUALIZATION.md).
+
 ## Features
 
 - **Zero external VTK dependencies** - Custom VTK parser (no meshio/VTK required)
