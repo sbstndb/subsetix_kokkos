@@ -632,7 +632,7 @@ public:
     void set_time_dependent_bc(const std::string& side, const TimeBCPolicy& time_bc) {
         // Initialize bc_manager_ if not already initialized
         if (!use_bc_manager_) {
-            bc_manager_.initialize(cfg_.nx, cfg_.ny, cfg_.dx, cfg_.dy, cfg_.x_min, cfg_.y_min);
+            bc_manager_.initialize(cfg_.nx, cfg_.ny, cfg_.dx, cfg_.dy, domain_.x_min, domain_.y_min);
             use_bc_manager_ = true;
         }
 
@@ -934,8 +934,23 @@ public:
      *
      * @param dt_config Time step controller configuration
      */
-    template<typename RealType>
-    void set_adaptive_time_stepping(const typename time::TimeStepController<RealType>::Config& dt_config) {
+    void set_adaptive_time_stepping(const typename Config::TimeStepConfig& dt_config) {
+        cfg_.time_step.cfl_target = dt_config.cfl_target;
+        cfg_.time_step.cfl_max = dt_config.cfl_max;
+        cfg_.time_step.cfl_min = dt_config.cfl_min;
+        cfg_.time_step.dt_max = dt_config.dt_max;
+        cfg_.time_step.dt_min = dt_config.dt_min;
+        cfg_.time_step.growth_factor = dt_config.growth_factor;
+        cfg_.time_step.shrink_factor = dt_config.shrink_factor;
+        cfg_.time_step.adjust_interval = dt_config.adjust_interval;
+    }
+
+    /**
+     * @brief Set adaptive time stepping configuration (from TimeStepController)
+     *
+     * Convenience overload for time::TimeStepController<Real>::Config type.
+     */
+    void set_adaptive_time_stepping(const typename time::TimeStepController<Real>::Config& dt_config) {
         cfg_.time_step.cfl_target = Real(dt_config.cfl_target);
         cfg_.time_step.cfl_max = Real(dt_config.cfl_max);
         cfg_.time_step.cfl_min = Real(dt_config.cfl_min);
@@ -2312,7 +2327,7 @@ public:
     void enable_profiling(bool enable = true) {
         profiling_enabled_ = enable;
         if (enable) {
-            profile_data_.clear();
+            profile_data_ = ProfileData{};
         }
     }
 

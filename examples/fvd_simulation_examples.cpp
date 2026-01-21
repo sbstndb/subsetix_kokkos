@@ -988,15 +988,14 @@ void example_15_time_integrator_comparison() {
     printf("  - Kutta3 / SSPRK3 (3ème ordre, 3 stages)\n");
     printf("  - ClassicRK4 (4ème ordre, 4 stages)\n\n");
 
-    using Flux = flux::RusanovFlux;
     using Recon = reconstruction::NoReconstruction;
 
     // Create solvers with different time integrators
-    using SolverEuler = AdaptiveSolver<System, Recon, Flux, time::ForwardEuler<Real>>;
-    using SolverRK2 = AdaptiveSolver<System, Recon, Flux, time::Heun2<Real>>;
-    using SolverRK3 = AdaptiveSolver<System, Recon, Flux, time::Kutta3<Real>>;
-    using SolverSSPRK3 = AdaptiveSolver<System, Recon, Flux, time::SSPRK3<Real>>;
-    using SolverRK4 = AdaptiveSolver<System, Recon, Flux, time::ClassicRK4<Real>>;
+    using SolverEuler = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::ForwardEuler<Real>>;
+    using SolverRK2 = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::Heun2<Real>>;
+    using SolverRK3 = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::Kutta3<Real>>;
+    using SolverSSPRK3 = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::SSPRK3<Real>>;
+    using SolverRK4 = AdaptiveSolver<System, Recon, flux::RusanovFlux, time::ClassicRK4<Real>>;
 
     auto solver_euler = SolverEuler::builder(100, 50)
         .with_domain(0.0, 2.0, 0.0, 0.5).with_initial_condition(gaussian_pulse).build();
