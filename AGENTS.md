@@ -64,15 +64,23 @@ The `experimental/` directory provides an isolated research space for alternativ
 ### Development Workflow
 
 ```bash
-# Enable experimental module
-cmake -DSUBSETIX_ENABLE_EXPERIMENTAL=ON --preset serial
-cmake --build --preset serial
+# Use dedicated presets for experimental-only development
+cmake --preset experimental-serial      # Serial backend
+cmake --build --preset experimental-serial
+
+cmake --preset experimental-openmp      # OpenMP backend
+cmake --build --preset experimental-openmp
+
+cmake --preset experimental-cuda-gcc12  # CUDA backend
+cmake --build --preset experimental-cuda-gcc12
 
 # Run experimental tests
-ctest --preset serial
+ctest --preset experimental-serial
+ctest --preset experimental-openmp
+ctest --preset experimental-cuda-gcc12
 
 # Run experimental benchmarks
-./build-serial/experimental/benchmarks/experimental_comparison_benchmark
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark
 ```
 
 ### Contribution Rules

@@ -27,6 +27,16 @@ cmake --preset mpi-cuda-gcc12      # MPI + CUDA (GCC 12)
 # Debug with sanitizers
 cmake --preset serial-asan         # Address + UB sanitizer
 cmake --build --preset serial-asan
+
+# Experimental-only builds (algorithm research)
+cmake --preset experimental-serial      # Serial, experimental module only
+cmake --build --preset experimental-serial
+cmake --preset experimental-openmp      # OpenMP, experimental module only
+cmake --build --preset experimental-openmp
+cmake --preset experimental-cuda-gcc12  # CUDA, experimental module only
+cmake --build --preset experimental-cuda-gcc12
+cmake --preset experimental-asan        # Serial + sanitizers, experimental only
+cmake --build --preset experimental-asan
 ```
 
 ### Running Tests
@@ -113,7 +123,22 @@ experimental/        # Alternative algorithm implementations (disabled by defaul
 
 The `experimental/` directory provides alternative implementations of set algebra algorithms for research and comparison. It is **completely isolated** from the stable codebase and disabled by default.
 
-Enable with: `cmake -DSUBSETIX_ENABLE_EXPERIMENTAL=ON --preset serial`
+**Quick setup with dedicated presets:**
+```bash
+cmake --preset experimental-serial      # Serial backend
+cmake --preset experimental-openmp      # OpenMP backend
+cmake --preset experimental-cuda-gcc12  # CUDA backend
+cmake --preset experimental-asan        # Serial + sanitizers
+```
+
+**Manual setup (not recommended - use presets instead):**
+```bash
+cmake --preset serial \
+  -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+  -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
+  -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
+  -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
+```
 
 ### Running Experimental Tests
 
@@ -121,34 +146,36 @@ Experimental tests are separate executables from stable tests:
 
 ```bash
 # After enabling experimental module and building
-ctest --preset serial  # Runs all tests (stable + experimental)
+ctest --preset experimental-serial  # Runs all experimental tests
+ctest --preset experimental-openmp  # Runs with OpenMP backend
+ctest --preset experimental-cuda-gcc12  # Runs with CUDA backend
 
-# Run specific experimental test executables
-./build-serial/experimental/tests/experimental_v1_unitary_test
-./build-serial/experimental/tests/experimental_v2_unitary_test
-./build-serial/experimental/tests/experimental_v3_unitary_test
-./build-serial/experimental/tests/experimental_cross_version_test  # Verifies v1/v2/v3 produce identical results
-./build-serial/experimental/tests/experimental_overlap_patterns_test
-./build-serial/experimental/tests/experimental_large_mesh_test
-./build-serial/experimental/tests/experimental_sorted_rows_test
+# Run specific experimental test executables (serial preset)
+./build-experimental-serial/experimental/tests/experimental_v1_unitary_test
+./build-experimental-serial/experimental/tests/experimental_v2_unitary_test
+./build-experimental-serial/experimental/tests/experimental_v3_unitary_test
+./build-experimental-serial/experimental/tests/experimental_cross_version_test  # Verifies v1/v2/v3 produce identical results
+./build-experimental-serial/experimental/tests/experimental_overlap_patterns_test
+./build-experimental-serial/experimental/tests/experimental_large_mesh_test
+./build-experimental-serial/experimental/tests/experimental_sorted_rows_test
 ```
 
 ### Running Experimental Benchmarks
 
 ```bash
-# Run all experimental benchmarks
-./build-serial/experimental/benchmarks/experimental_comparison_benchmark
+# Run all experimental benchmarks (serial preset)
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark
 
 # Run specific size configurations
-./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=SmallConfig
-./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=MediumConfig
-./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=LargeConfig
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=SmallConfig
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=MediumConfig
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=LargeConfig
 
 # Run only 2D benchmarks
-./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="2D"
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="2D"
 
 # Run only 3D benchmarks
-./build-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="3D"
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="3D"
 ```
 
 ### Execution Space Configuration

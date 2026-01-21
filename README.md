@@ -76,6 +76,10 @@ ctest --preset serial
 | `openmp` | OpenMP | Multi-threaded CPU |
 | `cuda-gcc12` | CUDA | NVIDIA GPU (requires GCC 12) |
 | `serial-asan` | Serial + sanitizers | Debug mode with AddressSanitizer |
+| `experimental-serial` | Serial (experimental only) | Experimental module, serial backend |
+| `experimental-openmp` | OpenMP (experimental only) | Experimental module, OpenMP backend |
+| `experimental-cuda-gcc12` | CUDA (experimental only) | Experimental module, CUDA backend |
+| `experimental-asan` | Serial + sanitizers (experimental) | Experimental module with sanitizers |
 
 ### Experimental Algorithms
 
@@ -86,16 +90,22 @@ An experimental module (`experimental/`) provides alternative set algebra implem
 - Dedicated tests and benchmarks
 - No stability guarantees - APIs may change
 
-Enable with:
+Enable with dedicated presets (recommended):
 ```bash
-cmake -DSUBSETIX_ENABLE_EXPERIMENTAL=ON --preset serial
-cmake --build --preset serial
+cmake --preset experimental-serial      # Serial backend
+cmake --build --preset experimental-serial
+ctest --preset experimental-serial
 
-# Run experimental tests
-ctest --preset serial
+cmake --preset experimental-openmp      # OpenMP backend
+cmake --build --preset experimental-openmp
 
-# Run experimental benchmarks
-./build-serial/experimental/benchmarks/experimental_comparison_benchmark
+cmake --preset experimental-cuda-gcc12  # CUDA backend
+cmake --build --preset experimental-cuda-gcc12
+```
+
+Run benchmarks:
+```bash
+./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark
 ```
 
 ---

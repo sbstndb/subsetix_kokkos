@@ -22,30 +22,45 @@ jobs:
           sudo apt-get install -y cmake ninja-build ccache
 
       - name: Configure with experimental enabled
-        run: |
-          cmake --preset serial \
-            -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
-            -DBUILD_TESTING=ON \
-            -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
-            -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
-            -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
+        run: cmake --preset experimental-serial
 
       - name: Build
-        run: cmake --build build-serial --parallel $(nproc)
+        run: cmake --build --preset experimental-serial --parallel $(nproc)
 
       - name: Run experimental tests
-        working-directory: build-serial
-        run: ctest --output-on-failure
+        run: ctest --preset experimental-serial --output-on-failure
 
       - name: Run benchmarks (sanity check only)
-        working-directory: build-serial
         run: |
-          ./experimental/benchmarks/experimental_comparison_benchmark \
+          ./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark \
             --benchmark_min_time=0.01s \
             --benchmark_repetitions=1 \
             --benchmark_filter="SmallConfig"
 
       # Note: Filter matches only SmallConfig benchmarks for fast CI execution.
+
+  # OpenMP backend check
+  experimental-openmp:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Configure with experimental and OpenMP
+        run: cmake --preset experimental-openmp
+
+      - name: Build
+        run: cmake --build --preset experimental-openmp --parallel $(nproc)
+
+      - name: Run experimental tests with OpenMP
+        run: ctest --preset experimental-openmp --output-on-failure
 
   # Debug build check with sanitizers
   experimental-sanitizer:
@@ -62,16 +77,10 @@ jobs:
           sudo apt-get install -y cmake ninja-build ccache
 
       - name: Configure with experimental and sanitizers
-        run: |
-          cmake --preset serial-asan \
-            -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
-            -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
-            -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
-            -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
+        run: cmake --preset experimental-asan
 
       - name: Build
-        run: cmake --build build-serial-asan --parallel $(nproc)
+        run: cmake --build --preset experimental-asan --parallel $(nproc)
 
       - name: Run experimental tests with sanitizers
-        working-directory: build-serial-asan
-        run: ctest --output-on-failure
+        run: ctest --preset experimental-asan --output-on-failure
