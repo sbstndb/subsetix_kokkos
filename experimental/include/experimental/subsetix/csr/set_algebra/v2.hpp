@@ -55,16 +55,6 @@ public:
 // Type aliases for common configurations
 // ============================================================================
 
-namespace detail {
-
-template <int DIM, class CoordType, class IndexType>
-struct MeshTraits {
-  using DeviceMemorySpace = Kokkos::DefaultExecutionSpace::memory_space;
-  using MeshType = Mesh<DIM, DeviceMemorySpace, CoordType, IndexType>;
-};
-
-} // namespace detail
-
 // Default configurations
 template <int DIM>
 using DefaultMesh = Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>;
