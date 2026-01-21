@@ -179,3 +179,8 @@ target_link_libraries(mach2_cylinder_fvd_api
         subsetix::core
 )
 target_include_directories(mach2_cylinder_fvd_api PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# ============================================================================
+# Geometry Gallery Examples (Documentation)
+# ============================================================================
+add_subdirectory(geometry_gallery)

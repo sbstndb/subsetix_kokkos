@@ -280,11 +280,22 @@ class VTKReader:
         for key in data['point_data'].keys():
             fields.append(f"point_{key}")
 
+        # If no scalar fields found, add a dummy "geometry" field
+        # for geometry-only VTK files
+        if not fields and data['cells']:
+            fields.append("geometry")
+
         return fields
 
     def get_field_data(self, filepath: str, field_name: str) -> np.ndarray:
         """Extract scalar field values"""
         data = self.read(filepath)
+
+        # Handle special "geometry" field for geometry-only VTK files
+        if field_name == "geometry" and field_name not in data['cell_data']:
+            # Create constant values (all 1.0) for visualization
+            n_cells = len(data['cells'])
+            return np.ones(n_cells, dtype=np.float64)
 
         # Try cell data first
         if field_name in data['cell_data']:
