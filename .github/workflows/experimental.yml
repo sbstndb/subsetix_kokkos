@@ -24,7 +24,9 @@ jobs:
       - name: Configure with experimental enabled
         run: |
           cmake --preset serial \
-            -DSUBSETIX_ENABLE_EXPERIMENTAL=ON
+            -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+            -DBUILD_EXAMPLES=OFF \
+            -DSUBSETIX_BUILD_STABLE_TESTS=OFF
 
       - name: Build
         run: cmake --build build-serial --parallel $(nproc)
