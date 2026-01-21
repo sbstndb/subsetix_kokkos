@@ -6,49 +6,56 @@
 #include <gtest/gtest.h>
 #include <experimental/subsetix/csr/set_algebra/v1.hpp>
 #include <experimental/subsetix/csr/set_algebra/v2.hpp>
+#include <experimental/subsetix/csr/types.hpp>
 #include <Kokkos_Core.hpp>
 
 using namespace experimental::subsetix::csr;
+using namespace experimental::subsetix::csr::v1;
+
+// Type aliases for convenience
+using Coord = int32_t;
+using IntervalType = Interval<Coord>;
+using RowKey2DType = RowKey2D<Coord>;
 
 // ============================================================================
 // Test each overlap pattern individually
 // ============================================================================
 
-Mesh2DDevice generate_mesh_2d_pattern(int n, int pattern, int offset_shift) {
-  Mesh2DDevice mesh;
+v1::Mesh2DDevice generate_mesh_2d_pattern(int n, int pattern, int offset_shift) {
+  v1::Mesh2DDevice mesh;
   mesh.num_rows = n;
   mesh.num_intervals = n;
-  mesh.row_keys = Mesh2DDevice::RowKeyView("gen_row_keys", n);
-  mesh.row_ptr = Mesh2DDevice::IndexView("gen_row_ptr", n + 1);
-  mesh.intervals = Mesh2DDevice::IntervalView("gen_intervals", n);
+  mesh.row_keys = Kokkos::View<RowKey2DType*, Kokkos::DefaultExecutionSpace::memory_space>("gen_row_keys", n);
+  mesh.row_ptr = Kokkos::View<std::size_t*, Kokkos::DefaultExecutionSpace::memory_space>("gen_row_ptr", n + 1);
+  mesh.intervals = Kokkos::View<IntervalType*, Kokkos::DefaultExecutionSpace::memory_space>("gen_intervals", n);
 
   auto row_keys_host = Kokkos::create_mirror_view(mesh.row_keys);
   auto row_ptr_host = Kokkos::create_mirror_view(mesh.row_ptr);
   auto intervals_host = Kokkos::create_mirror_view(mesh.intervals);
 
   for (int i = 0; i < n; ++i) {
-    Coord row_key_value;
+    int32_t row_key_value;
     switch (pattern) {
       case 0: // FULL_OVERLAP
-        row_key_value = static_cast<Coord>(i);
+        row_key_value = static_cast<int32_t>(i);
         break;
       case 1: // PARTIAL_OVERLAP
-        row_key_value = static_cast<Coord>(2 * i + offset_shift * n);
+        row_key_value = static_cast<int32_t>(2 * i + offset_shift * n);
         break;
       case 2: // MINIMAL_OVERLAP
-        row_key_value = static_cast<Coord>(10 * i + offset_shift * (9 * n / 10) * 10);
+        row_key_value = static_cast<int32_t>(10 * i + offset_shift * (9 * n / 10) * 10);
         break;
       case 3: // NO_OVERLAP
-        row_key_value = static_cast<Coord>(i + offset_shift * n);
+        row_key_value = static_cast<int32_t>(i + offset_shift * n);
         break;
       default:
-        row_key_value = static_cast<Coord>(i);
+        row_key_value = static_cast<int32_t>(i);
         break;
     }
 
-    row_keys_host(i) = RowKey2D{row_key_value};
+    row_keys_host(i) = RowKey2DType{row_key_value};
     row_ptr_host(i) = i;
-    intervals_host(i) = Interval{0, 100};
+    intervals_host(i) = IntervalType{0, 100};
   }
   row_ptr_host(n) = n;
 

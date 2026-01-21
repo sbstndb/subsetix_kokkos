@@ -20,21 +20,7 @@ using namespace experimental::subsetix::csr::test;
  * @brief Test suite for v3 algorithm using common format conversion
  */
 class V3ConversionTest : public ::testing::Test {
-protected:
-  // Helper to run intersection with conversion
-  CommonMesh2D intersect_2d(const CommonMesh2D& a, const CommonMesh2D& b) {
-    auto device_a = from_common_2d(a);
-    auto device_b = from_common_2d(b);
-    auto result_device = v3::intersect_meshes_2d(device_a, device_b);
-    return to_common_2d(result_device);
-  }
-
-  CommonMesh3D intersect_3d(const CommonMesh3D& a, const CommonMesh3D& b) {
-    auto device_a = from_common_3d(a);
-    auto device_b = from_common_3d(b);
-    auto result_device = v3::intersect_meshes_3d(device_a, device_b);
-    return to_common_3d(result_device);
-  }
+  // The wrapper functions from test_random_mesh_generator.hpp are used directly
 };
 
 // ============================================================================
@@ -45,7 +31,7 @@ TEST_F(V3ConversionTest, SimpleIntersection_KnownResult) {
   // A: [0, 10), [20, 30), [40, 50)
   // B: [5, 15), [25, 35)
   // Expected: [5, 10), [25, 30)
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 10}, {20, 30}, {40, 50}}});
   b.rows.push_back({0, {{5, 15}, {25, 35}}});
 
@@ -63,7 +49,7 @@ TEST_F(V3ConversionTest, SimpleIntersection_KnownResult) {
 }
 
 TEST_F(V3ConversionTest, NoOverlap_EmptyResult) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 10}, {20, 30}}});
   b.rows.push_back({0, {{40, 50}, {60, 70}}});
 
@@ -74,7 +60,7 @@ TEST_F(V3ConversionTest, NoOverlap_EmptyResult) {
 }
 
 TEST_F(V3ConversionTest, TouchingIntervals_NoOverlap) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 10}, {20, 30}}});
   b.rows.push_back({0, {{10, 20}}});
 
@@ -85,7 +71,7 @@ TEST_F(V3ConversionTest, TouchingIntervals_NoOverlap) {
 }
 
 TEST_F(V3ConversionTest, Subset_SingleInterval) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 100}}});
   b.rows.push_back({0, {{25, 75}}});
 
@@ -98,7 +84,7 @@ TEST_F(V3ConversionTest, Subset_SingleInterval) {
 }
 
 TEST_F(V3ConversionTest, MultipleRows_PartialOverlap) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 100}}});
   a.rows.push_back({10, {{0, 100}}});
   a.rows.push_back({20, {{0, 100}}});
@@ -121,7 +107,7 @@ TEST_F(V3ConversionTest, MultipleRows_PartialOverlap) {
 // ============================================================================
 
 TEST_F(V3ConversionTest, Commutativity) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 10}, {20, 30}, {40, 50}}});
   b.rows.push_back({0, {{5, 15}, {25, 35}, {45, 55}}});
 
@@ -133,7 +119,7 @@ TEST_F(V3ConversionTest, Commutativity) {
 }
 
 TEST_F(V3ConversionTest, Idempotence) {
-  CommonMesh2D a;
+  DefaultCommonMesh2D a;
   a.rows.push_back({0, {{0, 10}, {20, 30}, {40, 50}}});
 
   auto result = intersect_2d(a, a);
@@ -143,7 +129,7 @@ TEST_F(V3ConversionTest, Idempotence) {
 }
 
 TEST_F(V3ConversionTest, Associativity_WithSubsets) {
-  CommonMesh2D a, b, c;
+  DefaultCommonMesh2D a, b, c;
   a.rows.push_back({0, {{0, 100}}});
   b.rows.push_back({0, {{0, 50}}});
   c.rows.push_back({0, {{0, 25}}});
@@ -159,7 +145,7 @@ TEST_F(V3ConversionTest, Associativity_WithSubsets) {
 }
 
 TEST_F(V3ConversionTest, AbsorbingElement) {
-  CommonMesh2D a, empty;
+  DefaultCommonMesh2D a, empty;
   a.rows.push_back({0, {{0, 10}, {20, 30}}});
 
   auto result = intersect_2d(a, empty);
@@ -173,7 +159,7 @@ TEST_F(V3ConversionTest, AbsorbingElement) {
 // ============================================================================
 
 TEST_F(V3ConversionTest, ResultIntervalsDoNotOverlap) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 50}, {60, 100}}});
   b.rows.push_back({0, {{25, 75}}});
 
@@ -188,7 +174,7 @@ TEST_F(V3ConversionTest, ResultIntervalsDoNotOverlap) {
 }
 
 TEST_F(V3ConversionTest, ResultIntervalsAreNonEmpty) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 100}}});
   b.rows.push_back({0, {{25, 75}}});
 
@@ -207,7 +193,7 @@ TEST_F(V3ConversionTest, ResultIntervalsAreNonEmpty) {
 // ============================================================================
 
 TEST_F(V3ConversionTest, EmptyMesh_EmptyResult) {
-  CommonMesh2D empty_a, empty_b;
+  DefaultCommonMesh2D empty_a, empty_b;
 
   auto result = intersect_2d(empty_a, empty_b);
 
@@ -216,7 +202,7 @@ TEST_F(V3ConversionTest, EmptyMesh_EmptyResult) {
 }
 
 TEST_F(V3ConversionTest, EmptyMesh_NonEmptyGivesEmpty) {
-  CommonMesh2D a, empty;
+  DefaultCommonMesh2D a, empty;
   a.rows.push_back({0, {{0, 10}}});
 
   auto result1 = intersect_2d(a, empty);
@@ -227,7 +213,7 @@ TEST_F(V3ConversionTest, EmptyMesh_NonEmptyGivesEmpty) {
 }
 
 TEST_F(V3ConversionTest, PointIntersection_NoOverlap) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{0, 1}}});
   b.rows.push_back({0, {{1, 2}}});
 
@@ -238,7 +224,7 @@ TEST_F(V3ConversionTest, PointIntersection_NoOverlap) {
 }
 
 TEST_F(V3ConversionTest, LargeIntervals) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({0, {{1000000, 2000000}}});
   b.rows.push_back({0, {{1500000, 2500000}}});
 
@@ -251,7 +237,7 @@ TEST_F(V3ConversionTest, LargeIntervals) {
 }
 
 TEST_F(V3ConversionTest, NegativeCoordinates) {
-  CommonMesh2D a, b;
+  DefaultCommonMesh2D a, b;
   a.rows.push_back({-10, {{-100, -50}, {-20, 0}}});
   b.rows.push_back({-10, {{-75, -25}}});
 
@@ -268,7 +254,7 @@ TEST_F(V3ConversionTest, NegativeCoordinates) {
 // ============================================================================
 
 TEST_F(V3ConversionTest, Simple3DIntersection_KnownResult) {
-  CommonMesh3D a, b;
+  DefaultCommonMesh3D a, b;
   a.rows.push_back({0, 0, {{0, 10}, {20, 30}}});
   b.rows.push_back({0, 0, {{5, 15}, {25, 35}}});
 
@@ -283,7 +269,7 @@ TEST_F(V3ConversionTest, Simple3DIntersection_KnownResult) {
 }
 
 TEST_F(V3ConversionTest, Different3DZ_NoOverlap) {
-  CommonMesh3D a, b;
+  DefaultCommonMesh3D a, b;
   a.rows.push_back({0, 0, {{0, 10}}});
   a.rows.push_back({0, 5, {{0, 10}}});
   a.rows.push_back({0, 10, {{0, 10}}});
@@ -298,7 +284,7 @@ TEST_F(V3ConversionTest, Different3DZ_NoOverlap) {
 }
 
 TEST_F(V3ConversionTest, Multiple3DRowsWithDifferentZ) {
-  CommonMesh3D a, b;
+  DefaultCommonMesh3D a, b;
   // Y scope: [0, 10], Z scope: [0, 10]
   a.rows.push_back({0, 0, {{0, 100}}});
   a.rows.push_back({10, 5, {{0, 100}}});
@@ -323,7 +309,7 @@ TEST_F(V3ConversionTest, Multiple3DRowsWithDifferentZ) {
 // ============================================================================
 
 TEST_F(V3ConversionTest, RoundTripConversion_PreservesData) {
-  CommonMesh2D original;
+  DefaultCommonMesh2D original;
   original.rows.push_back({0, {{0, 10}, {20, 30}}});
   original.rows.push_back({10, {{5, 15}}});
   original.rows.push_back({20, {{100, 200}}});
@@ -335,7 +321,7 @@ TEST_F(V3ConversionTest, RoundTripConversion_PreservesData) {
 }
 
 TEST_F(V3ConversionTest, RoundTrip3DConversion_PreservesData) {
-  CommonMesh3D original;
+  DefaultCommonMesh3D original;
   original.rows.push_back({0, 0, {{0, 10}}});
   original.rows.push_back({5, 3, {{20, 30}}});
   original.rows.push_back({10, 0, {{100, 200}}});

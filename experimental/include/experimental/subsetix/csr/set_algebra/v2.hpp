@@ -3,21 +3,83 @@
 
 #pragma once
 
-#include <experimental/subsetix/csr/mesh.hpp>
+#include <experimental/subsetix/csr/types.hpp>
 #include <experimental/subsetix/csr/detail/utils.hpp>
 
 namespace experimental::subsetix::csr::v2 {
 
+// ============================================================================
+// v2 Mesh type (identical to v1, see v1.hpp for full documentation)
+// ============================================================================
+
+/** @brief CSR mesh for v2 algorithm. Identical to v1::Mesh. */
+template <int DIM, class MemorySpace,
+          class CoordType = int32_t,
+          class IndexType = std::size_t>
+class Mesh {
+public:
+  static constexpr int dim_value = DIM;
+  using coord_type = CoordType;
+  using index_type = IndexType;
+  using memory_space = MemorySpace;
+
+  // Row key type based on dimension
+  using RowKey = std::conditional_t<DIM == 2,
+                                     csr::RowKey2D<CoordType>,
+                                     csr::RowKey3D<CoordType>>;
+
+  // View types
+  using RowKeyView = Kokkos::View<RowKey*, MemorySpace>;
+  using IndexView = Kokkos::View<IndexType*, MemorySpace>;
+  using IntervalView = Kokkos::View<csr::Interval<CoordType>*, MemorySpace>;
+
+  // Mesh data
+  RowKeyView row_keys;     // [num_rows] - row coordinates
+  IndexView row_ptr;       // [num_rows + 1] - CSR offsets
+  IntervalView intervals;  // [num_intervals] - X-intervals
+
+  std::size_t num_rows = 0;
+  std::size_t num_intervals = 0;
+
+  KOKKOS_INLINE_FUNCTION
+  Mesh() = default;
+
+  KOKKOS_INLINE_FUNCTION
+  Mesh(const Mesh&) = default;
+
+  KOKKOS_INLINE_FUNCTION
+  Mesh& operator=(const Mesh&) = default;
+};
+
+// ============================================================================
+// Type aliases for common configurations
+// ============================================================================
+
+// Default configurations
+template <int DIM>
+using DefaultMesh = Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>;
+
+// 2D aliases
+template <class CoordType = int32_t, class IndexType = std::size_t>
+using Mesh2D = Mesh<2, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>;
+
+using Mesh2DDevice = Mesh2D<>;  // Default types
+using Mesh2DHost = Mesh<2, Kokkos::HostSpace, int32_t, std::size_t>;
+
+// 3D aliases
+template <class CoordType = int32_t, class IndexType = std::size_t>
+using Mesh3D = Mesh<3, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>;
+
+using Mesh3DDevice = Mesh3D<>;  // Default types
+using Mesh3DHost = Mesh<3, Kokkos::HostSpace, int32_t, std::size_t>;
+
+// ============================================================================
+// Core row intersection (identical to v1, see v1.hpp)
+// ============================================================================
+
 namespace detail {
 
-/**
- * @brief Core row intersection algorithm (two-pointer merge).
- *
- * When CountOnly=true, only counts intervals without writing.
- * When CountOnly=false, writes intervals to intervals_out.
- *
- * This is dimension-agnostic: works for both 2D and 3D meshes.
- */
+/** @brief Row intersection. Identical to v1::detail::row_intersection_impl. */
 template <bool CountOnly, class IntervalViewIn, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
 std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
@@ -28,6 +90,9 @@ std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
                                   std::size_t end_b,
                                   const IntervalViewOut& intervals_out,
                                   std::size_t out_offset) {
+  using IntervalType = std::remove_reference_t<decltype(intervals_a(0))>;
+  using CoordType = typename IntervalType::coord_type;
+
   std::size_t ia = begin_a;
   std::size_t ib = begin_b;
   std::size_t count = 0;
@@ -37,13 +102,13 @@ std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
     const auto b = intervals_b(ib);
 
     // Compute intersection: [max(begin), min(end))
-    const Coord start = (a.begin > b.begin) ? a.begin : b.begin;
-    const Coord end = (a.end < b.end) ? a.end : b.end;
+    const CoordType start = (a.begin > b.begin) ? a.begin : b.begin;
+    const CoordType end = (a.end < b.end) ? a.end : b.end;
 
     // Add non-empty intersection
     if (start < end) {
       if constexpr (!CountOnly) {
-        intervals_out(out_offset + count) = Interval{start, end};
+        intervals_out(out_offset + count) = IntervalType{start, end};
       }
       ++count;
     }
@@ -68,31 +133,16 @@ std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
 // Mesh intersection (2D and 3D) - v2 Algorithm
 // ============================================================================
 
-/**
- * @brief Compute the intersection of two meshes (2D or 3D).
- *
- * Returns a new mesh containing only the cells that exist in BOTH input meshes.
- *
- * Algorithm:
- * 1. Row mapping - find common rows via binary search O(log n)
- * 2. Count - count intersecting X-intervals per row
- * 3. Scan - compute CSR offsets (row_ptr)
- * 4. Fill - write intersected intervals
- * 5. Compact - filter rows with no intersections
- *
- * @tparam DIM Dimension (2 for 2D, 3 for 3D)
- * @param A First input mesh
- * @param B Second input mesh
- * @return Intersection mesh
- */
-template <int DIM>
-inline Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>
-intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A,
-                const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& B) {
+/** @brief Mesh intersection. Identical to v1::intersect_meshes. */
+template <int DIM, class CoordType = int32_t, class IndexType = std::size_t>
+inline Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>
+intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>& A,
+                const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>& B) {
   using DeviceMemorySpace = Kokkos::DefaultExecutionSpace::memory_space;
   using ExecSpace = Kokkos::DefaultExecutionSpace;
-  using MeshType = Mesh<DIM, DeviceMemorySpace>;
+  using MeshType = Mesh<DIM, DeviceMemorySpace, CoordType, IndexType>;
   using RowKey = typename MeshType::RowKey;
+  using Interval = csr::Interval<CoordType>;
 
   if (A.num_rows == 0 || B.num_rows == 0) {
     return MeshType{};
@@ -176,7 +226,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
   }
 
   // Allocate output buffers for row mapping
-  Kokkos::View<RowKey*, DeviceMemorySpace> out_rows("out_rows", num_rows_out);
+  Kokkos::View<typename MeshType::RowKey*, DeviceMemorySpace> out_rows("out_rows", num_rows_out);
   Kokkos::View<int*, DeviceMemorySpace> out_idx_a("out_idx_a", num_rows_out);
   Kokkos::View<int*, DeviceMemorySpace> out_idx_b("out_idx_b", num_rows_out);
 
@@ -199,9 +249,9 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
   // Allocate output mesh
   MeshType out;
   if (num_rows_out > 0) {
-    out.row_keys = typename MeshType::RowKeyView("mesh_row_keys", num_rows_out);
-    out.row_ptr = typename MeshType::IndexView("mesh_row_ptr", num_rows_out + 1);
-    out.intervals = typename MeshType::IntervalView(
+    out.row_keys = Kokkos::View<typename MeshType::RowKey*, DeviceMemorySpace>("mesh_row_keys", num_rows_out);
+    out.row_ptr = Kokkos::View<IndexType*, DeviceMemorySpace>("mesh_row_ptr", num_rows_out + 1);
+    out.intervals = Kokkos::View<csr::Interval<CoordType>*, DeviceMemorySpace>(
         "mesh_intervals", A.num_intervals + B.num_intervals);
   }
 
@@ -239,7 +289,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
         row_counts(i) = detail::row_intersection_impl<true>(
             intervals_a, r.begin_a, r.end_a,
             intervals_b, r.begin_b, r.end_b,
-            Kokkos::View<Interval*, DeviceMemorySpace>(), 0);
+            Kokkos::View<csr::Interval<CoordType>*, DeviceMemorySpace>(), 0);
       });
 
   // Phase 3: Scan to compute row_ptr offsets
@@ -250,9 +300,9 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
       KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
         const std::size_t count = row_counts(i);
         if (final_pass) {
-          out.row_ptr(i) = update;
+          out.row_ptr(i) = static_cast<IndexType>(update);
           if (i + 1 == num_rows_out) {
-            out.row_ptr(num_rows_out) = update + count;
+            out.row_ptr(num_rows_out) = static_cast<IndexType>(update + count);
             total_view() = update + count;
           }
         }
@@ -330,9 +380,9 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space>& A
 
   // Allocate compacted output
   MeshType compacted;
-  compacted.row_keys = typename MeshType::RowKeyView("compacted_row_keys", final_num_rows);
-  compacted.row_ptr = typename MeshType::IndexView("compacted_row_ptr", final_num_rows + 1);
-  compacted.intervals = typename MeshType::IntervalView("compacted_intervals", out.num_intervals);
+  compacted.row_keys = Kokkos::View<typename MeshType::RowKey*, DeviceMemorySpace>("compacted_row_keys", final_num_rows);
+  compacted.row_ptr = Kokkos::View<IndexType*, DeviceMemorySpace>("compacted_row_ptr", final_num_rows + 1);
+  compacted.intervals = Kokkos::View<csr::Interval<CoordType>*, DeviceMemorySpace>("compacted_intervals", out.num_intervals);
   compacted.num_rows = final_num_rows;
   compacted.num_intervals = out.num_intervals;
 
@@ -383,9 +433,10 @@ inline Mesh3DDevice intersect_meshes_3d(const Mesh3DDevice& A, const Mesh3DDevic
 /**
  * @brief Convert a mesh between memory spaces (e.g., Device -> Host).
  */
-template <int DIM, class ToSpace, class FromSpace>
-inline Mesh<DIM, ToSpace> mesh_to(const Mesh<DIM, FromSpace>& src) {
-  Mesh<DIM, ToSpace> dst;
+template <int DIM, class CoordType, class IndexType, class ToSpace, class FromSpace>
+inline Mesh<DIM, ToSpace, CoordType, IndexType>
+mesh_to(const Mesh<DIM, FromSpace, CoordType, IndexType>& src) {
+  Mesh<DIM, ToSpace, CoordType, IndexType> dst;
 
   if (src.num_rows == 0) {
     return dst;

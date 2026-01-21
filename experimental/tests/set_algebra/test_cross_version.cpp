@@ -27,48 +27,30 @@ using namespace experimental::subsetix::csr::test;
 class RandomComparisonTest : public ::testing::Test {
 protected:
   // Run intersection with v1 (reference)
-  CommonMesh2D intersect_v1_2d(const CommonMesh2D& a, const CommonMesh2D& b) {
-    auto device_a = from_common_2d(a);
-    auto device_b = from_common_2d(b);
-    auto result_device = v1::intersect_meshes_2d(device_a, device_b);
-    return to_common_2d(result_device);
+  DefaultCommonMesh2D intersect_v1_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+    return test::intersect_v1_2d(a, b);
   }
 
-  CommonMesh3D intersect_v1_3d(const CommonMesh3D& a, const CommonMesh3D& b) {
-    auto device_a = from_common_3d(a);
-    auto device_b = from_common_3d(b);
-    auto result_device = v1::intersect_meshes_3d(device_a, device_b);
-    return to_common_3d(result_device);
+  DefaultCommonMesh3D intersect_v1_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+    return test::intersect_v1_3d(a, b);
   }
 
   // Run intersection with v2
-  CommonMesh2D intersect_v2_2d(const CommonMesh2D& a, const CommonMesh2D& b) {
-    auto device_a = from_common_2d(a);
-    auto device_b = from_common_2d(b);
-    auto result_device = v2::intersect_meshes_2d(device_a, device_b);
-    return to_common_2d(result_device);
+  DefaultCommonMesh2D intersect_v2_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+    return test::intersect_v2_2d(a, b);
   }
 
-  CommonMesh3D intersect_v2_3d(const CommonMesh3D& a, const CommonMesh3D& b) {
-    auto device_a = from_common_3d(a);
-    auto device_b = from_common_3d(b);
-    auto result_device = v2::intersect_meshes_3d(device_a, device_b);
-    return to_common_3d(result_device);
+  DefaultCommonMesh3D intersect_v2_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+    return test::intersect_v2_3d(a, b);
   }
 
   // Run intersection with v3
-  CommonMesh2D intersect_v3_2d(const CommonMesh2D& a, const CommonMesh2D& b) {
-    auto device_a = from_common_2d(a);
-    auto device_b = from_common_2d(b);
-    auto result_device = v3::intersect_meshes_2d(device_a, device_b);
-    return to_common_2d(result_device);
+  DefaultCommonMesh2D intersect_v3_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+    return test::intersect_v3_2d(a, b);
   }
 
-  CommonMesh3D intersect_v3_3d(const CommonMesh3D& a, const CommonMesh3D& b) {
-    auto device_a = from_common_3d(a);
-    auto device_b = from_common_3d(b);
-    auto result_device = v3::intersect_meshes_3d(device_a, device_b);
-    return to_common_3d(result_device);
+  DefaultCommonMesh3D intersect_v3_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+    return test::intersect_v3_3d(a, b);
   }
 };
 
@@ -218,11 +200,11 @@ TEST_F(RandomComparisonTest, AllVersions_MathProperties_Random) {
     config.y_max = 10000;  // High y_max ensures unique row keys for math properties
 
     // Generate three random meshes
-    CommonMesh2D mesh_a = RandomMeshGenerator::generate_2d(config);
+    DefaultCommonMesh2D mesh_a = RandomMeshGenerator::generate_2d(config);
     config.seed++;
-    CommonMesh2D mesh_b = RandomMeshGenerator::generate_2d(config);
+    DefaultCommonMesh2D mesh_b = RandomMeshGenerator::generate_2d(config);
     config.seed++;
-    CommonMesh2D mesh_c = RandomMeshGenerator::generate_2d(config);
+    DefaultCommonMesh2D mesh_c = RandomMeshGenerator::generate_2d(config);
 
     // Test Commutativity: A ∩ B = B ∩ A
     auto v1_ab = intersect_v1_2d(mesh_a, mesh_b);

@@ -5,7 +5,11 @@
 
 #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
 
-#include <experimental/subsetix/csr/mesh.hpp>
+#include <experimental/subsetix/csr/types.hpp>
+#include <experimental/subsetix/csr/set_algebra/v1.hpp>
+#include <experimental/subsetix/csr/set_algebra/v2.hpp>
+#include <experimental/subsetix/csr/set_algebra/v3.hpp>
+#include <Kokkos_Core.hpp>
 #include <vector>
 #include <cstdint>
 
@@ -16,14 +20,18 @@ namespace experimental::subsetix::csr::test {
 // ============================================================================
 
 /**
- * @brief CPU-side row representation for testing
+ * @brief CPU-side row representation for testing (2D)
  *
  * This is a simple struct using std::vector for test data.
  * It can be easily created, compared, and validated on the host.
+ *
+ * @tparam CoordType The coordinate type (default: int32_t)
  */
+template<class CoordType = int32_t>
 struct CommonRow2D {
-  Coord y = 0;                       // Row key (Y coordinate)
-  std::vector<Interval> intervals;   // X intervals in this row
+  using coord_type = CoordType;
+  CoordType y = 0;                              // Row key (Y coordinate)
+  std::vector<csr::Interval<CoordType>> intervals;   // X intervals in this row
 
   bool operator==(const CommonRow2D& other) const {
     return y == other.y && intervals == other.intervals;
@@ -34,10 +42,17 @@ struct CommonRow2D {
   }
 };
 
+/**
+ * @brief CPU-side row representation for testing (3D)
+ *
+ * @tparam CoordType The coordinate type (default: int32_t)
+ */
+template<class CoordType = int32_t>
 struct CommonRow3D {
-  Coord y = 0;                       // Y coordinate
-  Coord z = 0;                       // Z coordinate
-  std::vector<Interval> intervals;   // X intervals in this row
+  using coord_type = CoordType;
+  CoordType y = 0;                              // Y coordinate
+  CoordType z = 0;                              // Z coordinate
+  std::vector<csr::Interval<CoordType>> intervals;   // X intervals in this row
 
   bool operator==(const CommonRow3D& other) const {
     return y == other.y && z == other.z && intervals == other.intervals;
@@ -54,13 +69,17 @@ struct CommonRow3D {
 };
 
 /**
- * @brief CPU-side mesh representation for testing
+ * @brief CPU-side mesh representation for testing (2D)
  *
  * This is the common format used for all test data.
  * It uses std::vector for easy manipulation on the host.
+ *
+ * @tparam CoordType The coordinate type (default: int32_t)
  */
+template<class CoordType = int32_t>
 struct CommonMesh2D {
-  std::vector<CommonRow2D> rows;
+  using coord_type = CoordType;
+  std::vector<CommonRow2D<CoordType>> rows;
 
   std::size_t num_rows() const { return rows.size(); }
 
@@ -81,8 +100,15 @@ struct CommonMesh2D {
   }
 };
 
+/**
+ * @brief CPU-side mesh representation for testing (3D)
+ *
+ * @tparam CoordType The coordinate type (default: int32_t)
+ */
+template<class CoordType = int32_t>
 struct CommonMesh3D {
-  std::vector<CommonRow3D> rows;
+  using coord_type = CoordType;
+  std::vector<CommonRow3D<CoordType>> rows;
 
   std::size_t num_rows() const { return rows.size(); }
 
@@ -104,20 +130,44 @@ struct CommonMesh3D {
 };
 
 // ============================================================================
+// Default type aliases (for backward compatibility)
+// ============================================================================
+
+using DefaultCommonRow2D = CommonRow2D<int32_t>;
+using DefaultCommonRow3D = CommonRow3D<int32_t>;
+using DefaultCommonMesh2D = CommonMesh2D<int32_t>;
+using DefaultCommonMesh3D = CommonMesh3D<int32_t>;
+
+// ============================================================================
 // Bidirectional Converters: Common Format <-> Version-Specific Format
 // ============================================================================
 
 /**
- * @brief Converter between CommonMesh2D and Mesh<DIM, MemorySpace>
+ * @brief Converter between CommonMesh2D and version-specific Mesh types
+ *
+ * This converter works with any version's Mesh type (v1, v2, v3)
+ * as long as they follow the same CSR structure.
+ *
+ * @tparam VersionNamespace The version namespace (v1, v2, v3)
+ * @tparam MemorySpace Kokkos memory space
+ * @tparam CoordType Coordinate type
+ * @tparam IndexType Index type for CSR row_ptr
  */
-template <class MemorySpace>
+template <template<int, class, class, class> class MeshType,
+          class MemorySpace,
+          class CoordType = int32_t,
+          class IndexType = std::size_t>
 struct MeshConverter2D {
-  using DeviceMesh = Mesh<2, MemorySpace>;
+  using DeviceMesh = MeshType<2, MemorySpace, CoordType, IndexType>;
+  using CommonMesh = CommonMesh2D<CoordType>;
+  using CommonRow = CommonRow2D<CoordType>;
+  using RowKey = csr::RowKey2D<CoordType>;
+  using Interval = csr::Interval<CoordType>;
 
   /**
    * @brief Convert from CommonMesh2D to DeviceMesh
    */
-  static DeviceMesh from_common(const CommonMesh2D& common) {
+  static DeviceMesh from_common(const CommonMesh& common) {
     DeviceMesh mesh;
     mesh.num_rows = common.num_rows();
     mesh.num_intervals = common.num_intervals();
@@ -126,9 +176,9 @@ struct MeshConverter2D {
       return mesh;
     }
 
-    mesh.row_keys = typename DeviceMesh::RowKeyView("row_keys", mesh.num_rows);
-    mesh.row_ptr = typename DeviceMesh::IndexView("row_ptr", mesh.num_rows + 1);
-    mesh.intervals = typename DeviceMesh::IntervalView("intervals", mesh.num_intervals);
+    mesh.row_keys = Kokkos::View<RowKey*, MemorySpace>("row_keys", mesh.num_rows);
+    mesh.row_ptr = Kokkos::View<IndexType*, MemorySpace>("row_ptr", mesh.num_rows + 1);
+    mesh.intervals = Kokkos::View<Interval*, MemorySpace>("intervals", mesh.num_intervals);
 
     // Create host mirrors
     auto keys_h = Kokkos::create_mirror_view(mesh.row_keys);
@@ -139,14 +189,14 @@ struct MeshConverter2D {
     std::size_t interval_idx = 0;
     for (std::size_t i = 0; i < common.rows.size(); ++i) {
       const auto& row = common.rows[i];
-      keys_h(i) = RowKey2D{row.y};
-      ptr_h(i) = interval_idx;
+      keys_h(i) = RowKey{row.y};
+      ptr_h(i) = static_cast<IndexType>(interval_idx);
 
       for (const auto& interval : row.intervals) {
         ints_h(interval_idx++) = interval;
       }
     }
-    ptr_h(common.rows.size()) = interval_idx;
+    ptr_h(common.rows.size()) = static_cast<IndexType>(interval_idx);
 
     // Copy to device
     Kokkos::deep_copy(mesh.row_keys, keys_h);
@@ -159,8 +209,8 @@ struct MeshConverter2D {
   /**
    * @brief Convert from DeviceMesh to CommonMesh2D
    */
-  static CommonMesh2D to_common(const DeviceMesh& mesh) {
-    CommonMesh2D common;
+  static CommonMesh to_common(const DeviceMesh& mesh) {
+    CommonMesh common;
 
     if (mesh.num_rows == 0) {
       return common;
@@ -174,7 +224,7 @@ struct MeshConverter2D {
     // Build common mesh
     common.rows.reserve(mesh.num_rows);
     for (std::size_t i = 0; i < mesh.num_rows; ++i) {
-      CommonRow2D row;
+      CommonRow row;
       row.y = keys_h(i).y;
 
       std::size_t start = ptr_h(i);
@@ -193,16 +243,28 @@ struct MeshConverter2D {
 };
 
 /**
- * @brief Converter between CommonMesh3D and Mesh<DIM, MemorySpace>
+ * @brief Converter between CommonMesh3D and version-specific Mesh types
+ *
+ * @tparam VersionNamespace The version namespace (v1, v2, v3)
+ * @tparam MemorySpace Kokkos memory space
+ * @tparam CoordType Coordinate type
+ * @tparam IndexType Index type for CSR row_ptr
  */
-template <class MemorySpace>
+template <template<int, class, class, class> class MeshType,
+          class MemorySpace,
+          class CoordType = int32_t,
+          class IndexType = std::size_t>
 struct MeshConverter3D {
-  using DeviceMesh = Mesh<3, MemorySpace>;
+  using DeviceMesh = MeshType<3, MemorySpace, CoordType, IndexType>;
+  using CommonMesh = CommonMesh3D<CoordType>;
+  using CommonRow = CommonRow3D<CoordType>;
+  using RowKey = csr::RowKey3D<CoordType>;
+  using Interval = csr::Interval<CoordType>;
 
   /**
    * @brief Convert from CommonMesh3D to DeviceMesh
    */
-  static DeviceMesh from_common(const CommonMesh3D& common) {
+  static DeviceMesh from_common(const CommonMesh& common) {
     DeviceMesh mesh;
     mesh.num_rows = common.num_rows();
     mesh.num_intervals = common.num_intervals();
@@ -211,9 +273,9 @@ struct MeshConverter3D {
       return mesh;
     }
 
-    mesh.row_keys = typename DeviceMesh::RowKeyView("row_keys", mesh.num_rows);
-    mesh.row_ptr = typename DeviceMesh::IndexView("row_ptr", mesh.num_rows + 1);
-    mesh.intervals = typename DeviceMesh::IntervalView("intervals", mesh.num_intervals);
+    mesh.row_keys = Kokkos::View<RowKey*, MemorySpace>("row_keys", mesh.num_rows);
+    mesh.row_ptr = Kokkos::View<IndexType*, MemorySpace>("row_ptr", mesh.num_rows + 1);
+    mesh.intervals = Kokkos::View<Interval*, MemorySpace>("intervals", mesh.num_intervals);
 
     // Create host mirrors
     auto keys_h = Kokkos::create_mirror_view(mesh.row_keys);
@@ -224,14 +286,14 @@ struct MeshConverter3D {
     std::size_t interval_idx = 0;
     for (std::size_t i = 0; i < common.rows.size(); ++i) {
       const auto& row = common.rows[i];
-      keys_h(i) = RowKey3D{row.y, row.z};
-      ptr_h(i) = interval_idx;
+      keys_h(i) = RowKey{row.y, row.z};
+      ptr_h(i) = static_cast<IndexType>(interval_idx);
 
       for (const auto& interval : row.intervals) {
         ints_h(interval_idx++) = interval;
       }
     }
-    ptr_h(common.rows.size()) = interval_idx;
+    ptr_h(common.rows.size()) = static_cast<IndexType>(interval_idx);
 
     // Copy to device
     Kokkos::deep_copy(mesh.row_keys, keys_h);
@@ -244,8 +306,8 @@ struct MeshConverter3D {
   /**
    * @brief Convert from DeviceMesh to CommonMesh3D
    */
-  static CommonMesh3D to_common(const DeviceMesh& mesh) {
-    CommonMesh3D common;
+  static CommonMesh to_common(const DeviceMesh& mesh) {
+    CommonMesh common;
 
     if (mesh.num_rows == 0) {
       return common;
@@ -259,7 +321,7 @@ struct MeshConverter3D {
     // Build common mesh
     common.rows.reserve(mesh.num_rows);
     for (std::size_t i = 0; i < mesh.num_rows; ++i) {
-      CommonRow3D row;
+      CommonRow row;
       row.y = keys_h(i).y;
       row.z = keys_h(i).z;
 
@@ -277,6 +339,34 @@ struct MeshConverter3D {
     return common;
   }
 };
+
+// ============================================================================
+// Convenience aliases for v1
+// ============================================================================
+
+namespace v1_test {
+  template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
+  using Converter2D = MeshConverter2D<experimental::subsetix::csr::v1::Mesh, MemorySpace, CoordType, IndexType>;
+
+  template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
+  using Converter3D = MeshConverter3D<experimental::subsetix::csr::v1::Mesh, MemorySpace, CoordType, IndexType>;
+}
+
+namespace v2_test {
+  template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
+  using Converter2D = MeshConverter2D<experimental::subsetix::csr::v2::Mesh, MemorySpace, CoordType, IndexType>;
+
+  template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
+  using Converter3D = MeshConverter3D<experimental::subsetix::csr::v2::Mesh, MemorySpace, CoordType, IndexType>;
+}
+
+namespace v3_test {
+  template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
+  using Converter2D = MeshConverter2D<experimental::subsetix::csr::v3::Mesh, MemorySpace, CoordType, IndexType>;
+
+  template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
+  using Converter3D = MeshConverter3D<experimental::subsetix::csr::v3::Mesh, MemorySpace, CoordType, IndexType>;
+}
 
 } // namespace experimental::subsetix::csr::test
 

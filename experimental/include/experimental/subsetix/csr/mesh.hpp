@@ -3,96 +3,12 @@
 
 #pragma once
 
+#include <experimental/subsetix/csr/types.hpp>
 #include <Kokkos_Core.hpp>
 #include <cstdint>
 #include <cstddef>
 
 namespace experimental::subsetix::csr {
-
-// Basic coordinate type for cell indices
-using Coord = int32_t;
-
-/**
- * @brief Half-open interval [begin, end) on the X axis.
- *
- * Invariant: begin < end
- */
-struct Interval {
-  Coord begin = 0;  // Inclusive
-  Coord end = 0;    // Exclusive
-
-  KOKKOS_INLINE_FUNCTION
-  Coord size() const { return end - begin; }
-
-  KOKKOS_INLINE_FUNCTION
-  bool empty() const { return begin >= end; }
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator==(const Interval& other) const {
-    return begin == other.begin && end == other.end;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator!=(const Interval& other) const {
-    return !(*this == other);
-  }
-};
-
-// ============================================================================
-// Row key types (2D and 3D)
-// ============================================================================
-
-/**
- * @brief Row key for 2D sparse structure.
- *
- * Rows are identified by their y coordinate.
- */
-struct RowKey2D {
-  Coord y = 0;
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator==(const RowKey2D& other) const {
-    return y == other.y;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator!=(const RowKey2D& other) const {
-    return !(*this == other);
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator<(const RowKey2D& other) const {
-    return y < other.y;
-  }
-};
-
-/**
- * @brief Row key for 3D sparse structure (Y and Z axes).
- *
- * Rows are identified by their (y, z) coordinates.
- */
-struct RowKey3D {
-  Coord y = 0;
-  Coord z = 0;
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator==(const RowKey3D& other) const {
-    return y == other.y && z == other.z;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator!=(const RowKey3D& other) const {
-    return !(*this == other);
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator<(const RowKey3D& other) const {
-    if (y != other.y) {
-      return y < other.y;
-    }
-    return z < other.z;
-  }
-};
 
 // ============================================================================
 // Mesh templates (2D and 3D)
@@ -107,6 +23,9 @@ struct RowKey3D {
  * - intervals stores [begin, end) X-intervals for each row
  *
  * Specializations for DIM=2 (2D) and DIM=3 (3D) are provided below.
+ *
+ * @tparam DIM Dimension (2 for 2D, 3 for 3D)
+ * @tparam MemorySpace Kokkos memory space
  *
  * Invariants:
  * - row_keys.extent(0) == num_rows
@@ -126,10 +45,10 @@ template <class MemorySpace>
 class Mesh<2, MemorySpace> {
 public:
   static constexpr int DIM = 2;
-  using RowKey = RowKey2D;
+  using RowKey = RowKey2D<int32_t>;
   using RowKeyView = Kokkos::View<RowKey*, MemorySpace>;
   using IndexView = Kokkos::View<std::size_t*, MemorySpace>;
-  using IntervalView = Kokkos::View<Interval*, MemorySpace>;
+  using IntervalView = Kokkos::View<csr::Interval<int32_t>*, MemorySpace>;
 
   RowKeyView row_keys;     // [num_rows] - y coordinates
   IndexView row_ptr;       // [num_rows + 1] - CSR offsets
@@ -156,10 +75,10 @@ template <class MemorySpace>
 class Mesh<3, MemorySpace> {
 public:
   static constexpr int DIM = 3;
-  using RowKey = RowKey3D;
+  using RowKey = RowKey3D<int32_t>;
   using RowKeyView = Kokkos::View<RowKey*, MemorySpace>;
   using IndexView = Kokkos::View<std::size_t*, MemorySpace>;
-  using IntervalView = Kokkos::View<Interval*, MemorySpace>;
+  using IntervalView = Kokkos::View<csr::Interval<int32_t>*, MemorySpace>;
 
   RowKeyView row_keys;     // [num_rows] - (y,z) coordinates
   IndexView row_ptr;       // [num_rows + 1] - CSR offsets
