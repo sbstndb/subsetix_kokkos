@@ -6,9 +6,25 @@
 #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
 
 #include "test_common_format.hpp"
+#include <experimental/subsetix/csr/set_algebra.hpp>
+#include <experimental/subsetix/csr/set_algebra/v1.hpp>
+#include <experimental/subsetix/csr/set_algebra/v2.hpp>
+#include <experimental/subsetix/csr/set_algebra/v3.hpp>
 #include <Kokkos_Random.hpp>
 #include <algorithm>
 #include <random>
+
+// Convenience aliases for backward compatibility
+using DefaultInterval = experimental::subsetix::csr::Interval<int32_t>;
+using DefaultCommonRow2D = experimental::subsetix::csr::test::CommonRow2D<int32_t>;
+using DefaultCommonRow3D = experimental::subsetix::csr::test::CommonRow3D<int32_t>;
+using DefaultCommonMesh2D = experimental::subsetix::csr::test::CommonMesh2D<int32_t>;
+using DefaultCommonMesh3D = experimental::subsetix::csr::test::CommonMesh3D<int32_t>;
+
+// Bring version namespaces into scope for test helpers
+using namespace experimental::subsetix::csr::v1;
+using namespace experimental::subsetix::csr::v2;
+using namespace experimental::subsetix::csr::v3;
 
 namespace experimental::subsetix::csr::test {
 
@@ -164,7 +180,7 @@ public:
    * @param config Configuration for generation
    * @return Random CommonMesh2D
    */
-  static CommonMesh2D generate_2d(const RandomMeshConfig& config = RandomMeshConfig{}) {
+  static DefaultCommonMesh2D generate_2d(const RandomMeshConfig& config = RandomMeshConfig{}) {
     // Use std::mt19937 for host-side generation (simpler for test data)
     std::mt19937 gen(config.seed);
 
@@ -172,7 +188,7 @@ public:
     std::uniform_int_distribution<int> rows_dist(config.num_rows_min, config.num_rows_max);
     int num_rows = rows_dist(gen);
 
-    CommonMesh2D mesh;
+    DefaultCommonMesh2D mesh;
     mesh.rows.reserve(num_rows);
 
     // Generate Y coordinates
@@ -201,8 +217,8 @@ public:
     std::uniform_int_distribution<int> gap_dist(config.gap_min, config.gap_max);
 
     for (int y : y_coords) {
-      CommonRow2D row;
-      row.y = y;
+      DefaultCommonRow2D row;
+      row.y = static_cast<int32_t>(y);
 
       int num_intervals = interval_count_dist(gen);
 
@@ -213,7 +229,7 @@ public:
 
       for (int j = 0; j < num_intervals; ++j) {
         int length = length_dist(gen);
-        Interval interval{current_x, current_x + length};
+        DefaultInterval interval{static_cast<int32_t>(current_x), static_cast<int32_t>(current_x + length)};
 
         // Only add if non-empty
         if (!interval.empty()) {
@@ -237,7 +253,7 @@ public:
    * @param config Configuration for generation
    * @return Random CommonMesh3D
    */
-  static CommonMesh3D generate_3d(const RandomMeshConfig& config = RandomMeshConfig{}) {
+  static DefaultCommonMesh3D generate_3d(const RandomMeshConfig& config = RandomMeshConfig{}) {
     // Use std::mt19937 for host-side generation
     std::mt19937 gen(config.seed);
 
@@ -245,7 +261,7 @@ public:
     std::uniform_int_distribution<int> rows_dist(config.num_rows_min, config.num_rows_max);
     int num_rows = rows_dist(gen);
 
-    CommonMesh3D mesh;
+    DefaultCommonMesh3D mesh;
     mesh.rows.reserve(num_rows);
 
     // Generate (Y, Z) coordinates
@@ -253,9 +269,9 @@ public:
     std::uniform_int_distribution<int> z_dist(config.z_min, config.z_max);
 
     for (int i = 0; i < num_rows; ++i) {
-      CommonRow3D row;
-      row.y = y_dist(gen);
-      row.z = z_dist(gen);
+      DefaultCommonRow3D row;
+      row.y = static_cast<int32_t>(y_dist(gen));
+      row.z = static_cast<int32_t>(z_dist(gen));
 
       // Generate intervals by construction (non-overlapping)
       std::uniform_int_distribution<int> interval_count_dist(
@@ -276,7 +292,7 @@ public:
 
       for (int j = 0; j < num_intervals; ++j) {
         int length = length_dist(gen);
-        Interval interval{current_x, current_x + length};
+        DefaultInterval interval{static_cast<int32_t>(current_x), static_cast<int32_t>(current_x + length)};
 
         if (!interval.empty()) {
           row.intervals.push_back(interval);
@@ -306,14 +322,14 @@ public:
 /**
  * @brief Check if two CommonMesh2D are equal (for testing)
  */
-inline bool common_meshes_equal(const CommonMesh2D& a, const CommonMesh2D& b) {
+inline bool common_meshes_equal(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
   return a == b;
 }
 
 /**
  * @brief Check if two CommonMesh3D are equal (for testing)
  */
-inline bool common_meshes_equal(const CommonMesh3D& a, const CommonMesh3D& b) {
+inline bool common_meshes_equal(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
   return a == b;
 }
 
@@ -325,7 +341,7 @@ inline bool common_meshes_equal(const CommonMesh3D& a, const CommonMesh3D& b) {
  * - Row keys are unique (if sorted_rows=true)
  * - All intervals are non-empty (begin < end)
  */
-inline bool validate_common_mesh_2d(const CommonMesh2D& mesh, bool sorted_rows = true) {
+inline bool validate_common_mesh_2d(const DefaultCommonMesh2D& mesh, bool sorted_rows = true) {
   for (const auto& row : mesh.rows) {
     // Check intervals are sorted and non-overlapping
     for (size_t i = 0; i < row.intervals.size(); ++i) {
@@ -358,7 +374,7 @@ inline bool validate_common_mesh_2d(const CommonMesh2D& mesh, bool sorted_rows =
 /**
  * @brief Validate that a CommonMesh3D satisfies invariants
  */
-inline bool validate_common_mesh_3d(const CommonMesh3D& mesh, bool sorted_rows = true) {
+inline bool validate_common_mesh_3d(const DefaultCommonMesh3D& mesh, bool sorted_rows = true) {
   for (const auto& row : mesh.rows) {
     // Check intervals are sorted and non-overlapping
     for (size_t i = 0; i < row.intervals.size(); ++i) {
@@ -389,31 +405,111 @@ inline bool validate_common_mesh_3d(const CommonMesh3D& mesh, bool sorted_rows =
 }
 
 /**
- * @brief Convert Mesh2DDevice to CommonMesh2D (convenience wrapper)
+ * @brief Convert Mesh2DDevice to CommonMesh2D (convenience wrapper for v1)
  */
-inline CommonMesh2D to_common_2d(const Mesh2DDevice& device_mesh) {
-  return MeshConverter2D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(device_mesh);
+inline DefaultCommonMesh2D to_common_2d(const v1::Mesh2DDevice& device_mesh) {
+  return v1_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(device_mesh);
 }
 
 /**
- * @brief Convert Mesh3DDevice to CommonMesh3D (convenience wrapper)
+ * @brief Convert Mesh3DDevice to CommonMesh3D (convenience wrapper for v1)
  */
-inline CommonMesh3D to_common_3d(const Mesh3DDevice& device_mesh) {
-  return MeshConverter3D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(device_mesh);
+inline DefaultCommonMesh3D to_common_3d(const v1::Mesh3DDevice& device_mesh) {
+  return v1_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(device_mesh);
 }
 
 /**
- * @brief Convert CommonMesh2D to Mesh2DDevice (convenience wrapper)
+ * @brief Convert CommonMesh2D to Mesh2DDevice (convenience wrapper for v1)
  */
-inline Mesh2DDevice from_common_2d(const CommonMesh2D& common_mesh) {
-  return MeshConverter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(common_mesh);
+inline v1::Mesh2DDevice from_common_2d(const DefaultCommonMesh2D& common_mesh) {
+  return v1_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(common_mesh);
 }
 
 /**
- * @brief Convert CommonMesh3D to Mesh3DDevice (convenience wrapper)
+ * @brief Convert CommonMesh3D to Mesh3DDevice (convenience wrapper for v1)
  */
-inline Mesh3DDevice from_common_3d(const CommonMesh3D& common_mesh) {
-  return MeshConverter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(common_mesh);
+inline v1::Mesh3DDevice from_common_3d(const DefaultCommonMesh3D& common_mesh) {
+  return v1_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(common_mesh);
+}
+
+// ============================================================================
+// Compatibility wrappers for test code
+// ============================================================================
+
+/**
+ * @brief Wrapper for v1::intersect_meshes<2> for backward compatibility
+ * Returns CommonMesh2D for easy testing
+ */
+inline DefaultCommonMesh2D intersect_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  auto device_a = from_common_2d(a);
+  auto device_b = from_common_2d(b);
+  auto result = v1::intersect_meshes<2>(device_a, device_b);
+  return to_common_2d(result);
+}
+
+/**
+ * @brief Wrapper for v1::intersect_meshes<3> for backward compatibility
+ * Returns CommonMesh3D for easy testing
+ */
+inline DefaultCommonMesh3D intersect_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  auto device_a = from_common_3d(a);
+  auto device_b = from_common_3d(b);
+  auto result = v1::intersect_meshes<3>(device_a, device_b);
+  return to_common_3d(result);
+}
+
+/**
+ * @brief Wrapper for v1::intersect_meshes<2> (explicit version name)
+ */
+inline DefaultCommonMesh2D intersect_v1_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  return intersect_2d(a, b);
+}
+
+/**
+ * @brief Wrapper for v2::intersect_meshes<2> (explicit version name)
+ */
+inline DefaultCommonMesh2D intersect_v2_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  auto device_a = v2_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(a);
+  auto device_b = v2_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(b);
+  auto result = v2::intersect_meshes<2>(device_a, device_b);
+  return v2_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(result);
+}
+
+/**
+ * @brief Wrapper for v3::intersect_meshes<2> (explicit version name)
+ */
+inline DefaultCommonMesh2D intersect_v3_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  auto device_a = v3_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(a);
+  auto device_b = v3_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(b);
+  auto result = v3::intersect_meshes<2>(device_a, device_b);
+  return v3_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(result);
+}
+
+/**
+ * @brief Wrapper for v1::intersect_meshes<3> (explicit version name)
+ */
+inline DefaultCommonMesh3D intersect_v1_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  return intersect_3d(a, b);
+}
+
+/**
+ * @brief Wrapper for v2::intersect_meshes<3> (explicit version name)
+ */
+inline DefaultCommonMesh3D intersect_v2_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  auto device_a = v2_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(a);
+  auto device_b = v2_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(b);
+  auto result = v2::intersect_meshes<3>(device_a, device_b);
+  return v2_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(result);
+}
+
+/**
+ * @brief Wrapper for v3::intersect_meshes<3> (explicit version name)
+ */
+inline DefaultCommonMesh3D intersect_v3_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  auto device_a = v3_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(a);
+  auto device_b = v3_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(b);
+  auto result = v3::intersect_meshes<3>(device_a, device_b);
+  return v3_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(result);
 }
 
 } // namespace experimental::subsetix::csr::test

@@ -5,7 +5,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_StdAlgorithms.hpp>
-#include <experimental/subsetix/csr/mesh.hpp>
+#include <experimental/subsetix/csr/types.hpp>
 #include <string>
 
 namespace experimental::subsetix::csr::detail {
@@ -35,10 +35,19 @@ inline void ensure_view_capacity(ViewType& view,
 
 /**
  * @brief Find a row index by y-coordinate using binary search (2D).
+ *
+ * @tparam RowKeyView Type of the row keys view (must support .y member)
+ * @tparam CoordType The coordinate type (deduced from RowKeyView)
+ *
+ * @param rows View of row keys (sorted)
+ * @param num_rows Number of rows in the view
+ * @param y Y-coordinate to search for
+ * @return Row index if found, -1 otherwise
  */
 template <class RowKeyView>
 KOKKOS_INLINE_FUNCTION
-int find_row_by_y(const RowKeyView& rows, std::size_t num_rows, Coord y) {
+auto find_row_by_y(const RowKeyView& rows, std::size_t num_rows,
+                   const auto& y) -> int {
   std::size_t lo = 0;
   std::size_t hi = num_rows;
 
@@ -60,10 +69,22 @@ int find_row_by_y(const RowKeyView& rows, std::size_t num_rows, Coord y) {
 
 /**
  * @brief Find a row index by (y,z) coordinates using binary search (3D).
+ *
+ * Uses lexicographic ordering: first by y, then by z.
+ *
+ * @tparam RowKeyView Type of the row keys view (must support .y and .z members)
+ * @tparam CoordType The coordinate type (deduced from RowKeyView)
+ *
+ * @param rows View of row keys (sorted)
+ * @param num_rows Number of rows in the view
+ * @param y Y-coordinate to search for
+ * @param z Z-coordinate to search for
+ * @return Row index if found, -1 otherwise
  */
 template <class RowKeyView>
 KOKKOS_INLINE_FUNCTION
-int find_row_by_yz(const RowKeyView& rows, std::size_t num_rows, Coord y, Coord z) {
+auto find_row_by_yz(const RowKeyView& rows, std::size_t num_rows,
+                    const auto& y, const auto& z) -> int {
   std::size_t lo = 0;
   std::size_t hi = num_rows;
 
@@ -119,6 +140,17 @@ struct RowRanges {
 
 /**
  * @brief Extract interval ranges for two rows given their indices.
+ *
+ * If a row index is negative (not found), the corresponding range is empty.
+ *
+ * @tparam RowPtrViewA Type of row_ptr view for mesh A
+ * @tparam RowPtrViewB Type of row_ptr view for mesh B
+ *
+ * @param ia Row index in mesh A (-1 if not found)
+ * @param ib Row index in mesh B (-1 if not found)
+ * @param row_ptr_a CSR row pointers for mesh A
+ * @param row_ptr_b CSR row pointers for mesh B
+ * @return RowRanges structure with the interval ranges
  */
 template <class RowPtrViewA, class RowPtrViewB>
 KOKKOS_FORCEINLINE_FUNCTION
