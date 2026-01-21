@@ -492,6 +492,15 @@ public:
     using Conserved = typename System::Conserved;
     using Primitive = typename System::Primitive;
 
+    // Compile-time validation: Ensure Conserved type has required fields
+    static_assert(System::n_conserved >= 1, "System must have at least 1 conserved variable");
+
+    // Validate field access patterns at compile time
+    static_assert(System::n_conserved >= 4 ?
+                      requires(const Conserved& c) { c.rho; } :
+                      requires(const Conserved& c) { c.value; },
+                  "Conserved type must have 'rho' field (n_conserved >= 4) or 'value' field (n_conserved == 1)");
+
     Real coarsen_threshold = Real(0.05);  // Lower than refine threshold (hysteresis)
     bool use_rho = true;
     bool use_p = true;

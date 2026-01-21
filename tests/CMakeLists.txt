@@ -166,3 +166,14 @@ add_executable(subsetix_test_fvd_source_terms
 target_link_libraries(subsetix_test_fvd_source_terms PRIVATE subsetix::core GTest::gtest)
 target_include_directories(subsetix_test_fvd_source_terms PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME FvdSourceTermsTests COMMAND subsetix_test_fvd_source_terms)
+
+# 15. FVD Refinement Criteria Tests: SmoothnessCriterion, GradientCriterion, etc.
+# Tests for refinement criteria (SmoothnessCriterion, GradientCriterion, VorticityCriterion,
+# ValueRangeCriterion, CurlCriterion, CompositeCriterion)
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_refinement_criteria
+    fvd_refinement_criteria_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_refinement_criteria PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_refinement_criteria PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdRefinementCriteriaTests COMMAND subsetix_test_fvd_refinement_criteria)
