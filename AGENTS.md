@@ -63,6 +63,8 @@ The `experimental/` directory provides an isolated research space for alternativ
 
 ### Development Workflow
 
+**IMPORTANT**: Always use dedicated experimental presets. Manual flag configuration is error-prone.
+
 ```bash
 # Use dedicated presets for experimental-only development
 cmake --preset experimental-serial      # Serial backend
@@ -83,6 +85,19 @@ ctest --preset experimental-cuda-gcc12
 ./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark
 ```
 
+**Do NOT use manual configuration** (unless adding a new preset):
+```bash
+# ERROR PRONE - requires 4 flags, easy to miss one
+cmake --preset serial \
+  -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+  -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
+  -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
+  -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF  # Easy to forget!
+
+# Use preset instead - one command, no errors
+cmake --preset experimental-serial
+```
+
 ### Contribution Rules
 
 - Experimental code has **no stability guarantees** - APIs may change without notice
@@ -100,6 +115,15 @@ ctest --preset experimental-cuda-gcc12
 - Keep changes focused; avoid mixing build, API, and formatting changes in one commit.
 - Do not commit large temporary artifacts or local build directories; prefer `.gitignore` updates.
 - Document new public APIs briefly in comments and, if relevant, in examples or tests.
+
+## CMake Options and Build Configuration
+
+When modifying CMake configuration or adding new options, refer to **CLAUDE.md** for the complete CMake options reference. Key points:
+
+- **Use presets** instead of manual flags when possible (e.g., `cmake --preset experimental-serial`)
+- **Experimental mode** requires disabling stable components to avoid linking errors
+- **Execution/Memory space** flags are mutually exclusive (CMake will error if multiple are set)
+- See `CLAUDE.md` → "CMake Options Reference" for full documentation
 
 ## Agent-Specific Instructions
 

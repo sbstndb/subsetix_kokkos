@@ -39,6 +39,64 @@ cmake --preset experimental-asan        # Serial + sanitizers, experimental only
 cmake --build --preset experimental-asan
 ```
 
+## CMake Options Reference
+
+All available CMake options and their default values:
+
+### Backend Selection
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_KOKKOS_OPENMP` | `OFF` | Enable Kokkos OpenMP backend |
+| `SUBSETIX_KOKKOS_CUDA` | `OFF` | Enable Kokkos CUDA backend |
+| `SUBSETIX_USE_MPI` | `OFF` | Enable MPI support for FVD layer |
+
+### Execution Space Overrides
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_EXECSPACE_FORCE_CUDA` | `OFF` | Force ExecSpace = Kokkos::Cuda |
+| `SUBSETIX_EXECSPACE_FORCE_OPENMP` | `OFF` | Force ExecSpace = Kokkos::OpenMP |
+| `SUBSETIX_EXECSPACE_FORCE_SERIAL` | `OFF` | Force ExecSpace = Kokkos::Serial |
+
+**Important**: Only one of `SUBSETIX_EXECSPACE_FORCE_*` can be `ON` at a time (CMake will error if multiple are set).
+
+### Memory Space Overrides
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_MEMORYSPACE_FORCE_UVM` | `OFF` | Force DeviceMemorySpace = Kokkos::CudaUVMSpace |
+| `SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED` | `OFF` | Force DeviceMemorySpace = Kokkos::HostPinnedSpace |
+
+**Important**: Only one of `SUBSETIX_MEMORYSPACE_FORCE_*` can be `ON` at a time.
+
+### Experimental Module
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_ENABLE_EXPERIMENTAL` | `OFF` | Enable experimental set algebra algorithms |
+| `SUBSETIX_BUILD_STABLE_LIBS` | `ON` | Build stable (non-experimental) libraries |
+| `SUBSETIX_BUILD_STABLE_TESTS` | `ON` | Build stable (non-experimental) tests |
+| `SUBSETIX_BUILD_STABLE_BENCHMARKS` | `ON` | Build stable (non-experimental) benchmarks |
+
+**Critical**: When `SUBSETIX_ENABLE_EXPERIMENTAL=ON`, you typically want to disable all stable components:
+```bash
+# Wrong - will cause linking errors
+cmake --preset serial -DSUBSETIX_ENABLE_EXPERIMENTAL=ON
+
+# Correct - disables stable components
+cmake --preset serial \
+  -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+  -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
+  -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
+  -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
+
+# Best - use dedicated preset (sets all flags automatically)
+cmake --preset experimental-serial
+```
+
+### Code Coverage
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_ENABLE_COVERAGE` | `OFF` | Enable code coverage analysis (GCC only, forces Debug build) |
+```
+
 ### Running Tests
 
 Tests are organized into 7 separate executables (to avoid ODR/CUDA linking issues):
