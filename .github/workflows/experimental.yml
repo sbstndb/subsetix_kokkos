@@ -37,5 +37,10 @@ jobs:
         working-directory: build-serial
         run: ctest --output-on-failure
 
-      # Note: Benchmarks are skipped in CI due to segfault issues in GitHub Actions environment
-      # Benchmarks work locally but fail in CI environment - to be investigated later
+      - name: Run benchmarks (sanity check only)
+        working-directory: build-serial
+        run: |
+          ./experimental/benchmarks/experimental_comparison_benchmark --benchmark_dry_run
+
+      # Note: Benchmarks run in dry-run mode (1 iteration) just to verify they
+      # don't segfault. Full benchmarks are skipped for CI performance.
