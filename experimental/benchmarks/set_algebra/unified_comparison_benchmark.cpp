@@ -44,28 +44,33 @@ Mesh<2, MemorySpace> generate_mesh_2d(
 
   for (int i = 0; i < n; ++i) {
     // Apply pattern-based offset
-    int row_offset = 0;
+    // IMPORTANT: row_keys MUST be sorted for binary search in intersection algorithms
+    Coord row_key_value;
     switch (pattern) {
       case OverlapPattern::FULL_OVERLAP:
-        row_offset = 0;
+        // Both meshes have rows [0, 1, 2, ..., n-1] -> 100% overlap
+        row_key_value = static_cast<Coord>(i);
         break;
       case OverlapPattern::PARTIAL_OVERLAP:
-        row_offset = (i % 2 == 0) ? 0 : n/2;
+        // Mesh A: [0, 2, 4, ..., 2n-2] (even numbers)
+        // Mesh B (offset_shift=1): [n, n+2, n+4, ..., 3n-2] (shifted even numbers)
+        // Overlap: [n, n+2, ..., 2n-2] -> ~50% overlap
+        row_key_value = static_cast<Coord>(2 * i + offset_shift * n);
         break;
       case OverlapPattern::MINIMAL_OVERLAP:
-        // Use disjoint ranges for non-overlapping rows to avoid coincidental matches
-        // - Overlapping rows (i%10==0): row_key = i for both A and B
-        // - Non-overlapping A rows: [LARGE, LARGE+n)
-        // - Non-overlapping B rows: [LARGE+n+shift, LARGE+2n+shift)
-        // where LARGE >> n, so the ranges don't overlap
-        row_offset = (i % 10 == 0) ? 0 : 1000000 + offset_shift * n;
+        // Mesh A: [0, 10, 20, ..., 10n-10] (multiples of 10)
+        // Mesh B (offset_shift=1): [9n/10*10, 9n/10*10+10, ..., 9n/10*10+10n-10] (shifted multiples of 10)
+        // Overlap: [9n/10*10, ..., 10n-10] -> ~10% of n rows ≈ 10% overlap
+        row_key_value = static_cast<Coord>(10 * i + offset_shift * (9 * n / 10) * 10);
         break;
       case OverlapPattern::NO_OVERLAP:
-        row_offset = n + offset_shift;
+        // Mesh A: [0, 1, 2, ..., n-1]
+        // Mesh B (offset_shift=1): [n, n+1, ..., 2n-1] -> 0% overlap
+        row_key_value = static_cast<Coord>(i + offset_shift * n);
         break;
     }
 
-    row_keys_host(i) = RowKey2D{i + row_offset};
+    row_keys_host(i) = RowKey2D{row_key_value};
     row_ptr_host(i) = i;
     intervals_host(i) = Interval{0, 100};
   }

@@ -43,7 +43,7 @@ jobs:
           ./experimental/benchmarks/experimental_comparison_benchmark \
             --benchmark_min_time=0.01s \
             --benchmark_repetitions=1 \
-            --benchmark_filter="FULL_OVERLAP|NoOverlap|BM_Intersection3D"
+            --benchmark_filter="/(64|512|4096|8192)$"
 
-      # Note: Benchmarks with partial/minimal overlap are excluded due to segfault bugs.
-      # Only FULL_OVERLAP and NoOverlap patterns work correctly.
+      # Note: Filter matches only benchmarks with explicit size suffixes to exclude
+      # aggregate benchmarks (which trigger a Google Benchmark bug with fixtures using Range()).

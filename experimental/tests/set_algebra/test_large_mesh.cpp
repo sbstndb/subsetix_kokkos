@@ -1,0 +1,91 @@
+// SPDX-FileCopyrightText: 2025 Subsetix Kokkos Contributors
+// SPDX-License-Identifier: BSD-3-Clause
+
+#ifdef SUBSETIX_ENABLE_EXPERIMENTAL
+
+#include <gtest/gtest.h>
+#include <experimental/subsetix/csr/set_algebra/v1.hpp>
+#include <experimental/subsetix/csr/set_algebra/v2.hpp>
+#include <Kokkos_Core.hpp>
+
+using namespace experimental::subsetix::csr;
+
+// ============================================================================
+// Test with large mesh sizes (same as benchmark ranges)
+// ============================================================================
+
+Mesh2DDevice generate_mesh_2d_partial(int n, int offset_shift) {
+  Mesh2DDevice mesh;
+  mesh.num_rows = n;
+  mesh.num_intervals = n;
+  mesh.row_keys = Mesh2DDevice::RowKeyView("gen_row_keys", n);
+  mesh.row_ptr = Mesh2DDevice::IndexView("gen_row_ptr", n + 1);
+  mesh.intervals = Mesh2DDevice::IntervalView("gen_intervals", n);
+
+  auto row_keys_host = Kokkos::create_mirror_view(mesh.row_keys);
+  auto row_ptr_host = Kokkos::create_mirror_view(mesh.row_ptr);
+  auto intervals_host = Kokkos::create_mirror_view(mesh.intervals);
+
+  for (int i = 0; i < n; ++i) {
+    Coord row_key_value = static_cast<Coord>(2 * i + offset_shift * n);
+    row_keys_host(i) = RowKey2D{row_key_value};
+    row_ptr_host(i) = i;
+    intervals_host(i) = Interval{0, 100};
+  }
+  row_ptr_host(n) = n;
+
+  Kokkos::deep_copy(mesh.row_keys, row_keys_host);
+  Kokkos::deep_copy(mesh.row_ptr, row_ptr_host);
+  Kokkos::deep_copy(mesh.intervals, intervals_host);
+
+  return mesh;
+}
+
+TEST(LargeMeshTest, PartialOverlap_n64) {
+  const int n = 64;
+  auto mesh_a = generate_mesh_2d_partial(n, 0);
+  auto mesh_b = generate_mesh_2d_partial(n, 1);
+
+  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  EXPECT_GT(result.num_rows, 0);
+}
+
+TEST(LargeMeshTest, PartialOverlap_n512) {
+  const int n = 512;
+  auto mesh_a = generate_mesh_2d_partial(n, 0);
+  auto mesh_b = generate_mesh_2d_partial(n, 1);
+
+  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  EXPECT_GT(result.num_rows, 0);
+}
+
+TEST(LargeMeshTest, PartialOverlap_n4096) {
+  const int n = 4096;
+  auto mesh_a = generate_mesh_2d_partial(n, 0);
+  auto mesh_b = generate_mesh_2d_partial(n, 1);
+
+  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  EXPECT_GT(result.num_rows, 0);
+}
+
+TEST(LargeMeshTest, PartialOverlap_n8192) {
+  const int n = 8192;
+  auto mesh_a = generate_mesh_2d_partial(n, 0);
+  auto mesh_b = generate_mesh_2d_partial(n, 1);
+
+  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  EXPECT_GT(result.num_rows, 0);
+}
+
+TEST(LargeMeshTest, PartialOverlap_n8192_v2_with_workspace) {
+  const int n = 8192;
+  auto mesh_a = generate_mesh_2d_partial(n, 0);
+  auto mesh_b = generate_mesh_2d_partial(n, 1);
+
+  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> workspace;
+
+  auto result = v2::intersect_meshes_2d(mesh_a, mesh_b, workspace);
+  EXPECT_GT(result.num_rows, 0);
+}
+
+#endif
