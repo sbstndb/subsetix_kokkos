@@ -6,75 +6,9 @@
 
 message(STATUS "Experimental tests will be built")
 
-# v2 tests - use custom test_main that initializes Kokkos
-add_executable(experimental_v2_test
-  test_main.cpp
-  set_algebra/v2_test.cpp
-)
-
-target_link_libraries(experimental_v2_test
-  PRIVATE
-    experimental_subsetix_csr
-    gtest
-    gmock
-    Kokkos::kokkos
-)
-
-add_test(NAME ExperimentalV2Test COMMAND experimental_v2_test)
-
-# v3 tests - use custom test_main that initializes Kokkos
-add_executable(experimental_v3_test
-  test_main.cpp
-  set_algebra/v3_test.cpp
-)
-
-target_link_libraries(experimental_v3_test
-  PRIVATE
-    experimental_subsetix_csr
-    gtest
-    gmock
-    Kokkos::kokkos
-)
-
-add_test(NAME ExperimentalV3Test COMMAND experimental_v3_test)
-
-# v1 correctness tests - comprehensive validation of v1 reference implementation
-add_executable(experimental_v1_correctness_test
-  test_main.cpp
-  set_algebra/test_v1_correctness.cpp
-)
-
-target_link_libraries(experimental_v1_correctness_test
-  PRIVATE
-    experimental_subsetix_csr
-    gtest
-    gmock
-    Kokkos::kokkos
-)
-
-add_test(NAME ExperimentalV1CorrectnessTest COMMAND experimental_v1_correctness_test)
-
-# Version-correctness tests - parametrized tests for v1/v2/v3
-add_executable(experimental_version_correctness_test
-  test_main.cpp
-  set_algebra/test_version_correctness.cpp
-)
-
-target_link_libraries(experimental_version_correctness_test
-  PRIVATE
-    experimental_subsetix_csr
-    gtest
-    gmock
-    Kokkos::kokkos
-)
-
-add_test(NAME ExperimentalVersionCorrectnessTest COMMAND experimental_version_correctness_test)
-
-message(STATUS "  - experimental_v2_test")
-message(STATUS "  - experimental_v3_test")
-message(STATUS "  - experimental_v1_correctness_test")
-message(STATUS "  - experimental_version_correctness_test")
-
+# ============================================================================
+# Special Purpose Tests (keep for specific validation)
+# ============================================================================
 
 # Sorted rows test - verifies that mesh generation produces sorted row_keys
 add_executable(experimental_sorted_rows_test
@@ -124,13 +58,21 @@ target_link_libraries(experimental_large_mesh_test
 
 add_test(NAME ExperimentalLargeMeshTest COMMAND experimental_large_mesh_test)
 
-# Cross-version validation test - verifies v1, v2, v3 produce identical results
-add_executable(experimental_cross_version_validation_test
+message(STATUS "  - experimental_sorted_rows_test")
+message(STATUS "  - experimental_overlap_patterns_test")
+message(STATUS "  - experimental_large_mesh_test")
+
+# ============================================================================
+# New Architecture Tests with Common Format and Random Generation
+# ============================================================================
+
+# v1 tests with conversion - comprehensive v1-specific tests using common format
+add_executable(experimental_v1_with_conversion_test
   test_main.cpp
-  set_algebra/test_cross_version_validation.cpp
+  set_algebra/test_v1_with_conversion.cpp
 )
 
-target_link_libraries(experimental_cross_version_validation_test
+target_link_libraries(experimental_v1_with_conversion_test
   PRIVATE
     experimental_subsetix_csr
     gtest
@@ -138,9 +80,57 @@ target_link_libraries(experimental_cross_version_validation_test
     Kokkos::kokkos
 )
 
-add_test(NAME ExperimentalCrossVersionValidationTest COMMAND experimental_cross_version_validation_test)
+add_test(NAME ExperimentalV1WithConversionTest COMMAND experimental_v1_with_conversion_test)
 
-message(STATUS "  - experimental_sorted_rows_test")
-message(STATUS "  - experimental_overlap_patterns_test")
-message(STATUS "  - experimental_large_mesh_test")
-message(STATUS "  - experimental_cross_version_validation_test")
+# v2 tests with conversion - v2-specific tests using common format
+add_executable(experimental_v2_with_conversion_test
+  test_main.cpp
+  set_algebra/test_v2_with_conversion.cpp
+)
+
+target_link_libraries(experimental_v2_with_conversion_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalV2WithConversionTest COMMAND experimental_v2_with_conversion_test)
+
+# v3 tests with conversion - v3-specific tests using common format
+add_executable(experimental_v3_with_conversion_test
+  test_main.cpp
+  set_algebra/test_v3_with_conversion.cpp
+)
+
+target_link_libraries(experimental_v3_with_conversion_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalV3WithConversionTest COMMAND experimental_v3_with_conversion_test)
+
+# Random comparison test - compares v1/v2/v3 using random geometries ONLY
+add_executable(experimental_random_comparison_test
+  test_main.cpp
+  set_algebra/test_random_comparison.cpp
+)
+
+target_link_libraries(experimental_random_comparison_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalRandomComparisonTest COMMAND experimental_random_comparison_test)
+
+message(STATUS "  - experimental_v1_with_conversion_test")
+message(STATUS "  - experimental_v2_with_conversion_test")
+message(STATUS "  - experimental_v3_with_conversion_test")
+message(STATUS "  - experimental_random_comparison_test")
