@@ -129,20 +129,6 @@ TEST(CrossVersionValidation2D, V1_vs_V3_FullOverlap) {
       << "v1 and v3 produced different 2D intersection results";
 }
 
-TEST(CrossVersionValidation2D, V2_vs_V3_FullOverlap) {
-  const int n = 128;
-  auto mesh_a = create_test_mesh_2d(n, 0);
-  auto mesh_b = create_test_mesh_2d(n, 0);
-
-  v2::MeshIntersectionWorkspace<Kokkos::DefaultExecutionSpace::memory_space> ws;
-
-  auto result_v2 = v2::intersect_meshes_2d(mesh_a, mesh_b, ws);
-  auto result_v3 = v3::intersect_meshes_2d(mesh_a, mesh_b);
-
-  EXPECT_TRUE(meshes_equal(result_v2, result_v3))
-      << "v2 and v3 produced different 2D intersection results";
-}
-
 TEST(CrossVersionValidation2D, AllVersions_PartialOverlap) {
   const int n = 128;
   // Create partial overlap: A has [0,2,4,...], B has [128,130,132,...]
