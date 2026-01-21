@@ -21,6 +21,7 @@ option(SUBSETIX_MEMORYSPACE_FORCE_UVM "Force DeviceMemorySpace = Kokkos::CudaUVM
 option(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED "Force DeviceMemorySpace = Kokkos::HostPinnedSpace" OFF)
 
 option(SUBSETIX_ENABLE_COVERAGE "Enable code coverage analysis (GCC only)" OFF)
+option(SUBSETIX_ENABLE_KOKKOS_TOOLS "Build Kokkos profiling tools (for benchmarks)" OFF)
 
 # ========================================================================
 # Experimental Algorithms Configuration
@@ -129,6 +130,72 @@ if(SUBSETIX_EXECSPACE_FORCE_SERIAL)
 endif()
 
 FetchContent_MakeAvailable(kokkos)
+
+# ========================================================================
+# Kokkos Profiling Tools Configuration
+# ========================================================================
+
+if(SUBSETIX_ENABLE_KOKKOS_TOOLS)
+  message(STATUS "=== Kokkos Profiling Tools Enabled ===")
+
+  # Declare kokkos-tools (using develop branch for Kokkos 4.5 compatibility)
+  FetchContent_Declare(
+      kokkos_tools
+      GIT_REPOSITORY https://github.com/kokkos/kokkos-tools.git
+      GIT_TAG develop
+  )
+
+  # Configure kokkos-tools options
+  # Disable tests and examples for faster build
+  set(KokkosTools_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+  set(KokkosTools_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(KokkosTools_ENABLE_SINGLE ON CACHE BOOL "Build monolithic library" FORCE)
+
+  # Force shared library build (required for dynamic profiling via KOKKOS_PROFILE_LIBRARY)
+  set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries for kokkos-tools" FORCE)
+
+  # Configure backend-specific profilers
+  if(SUBSETIX_KOKKOS_CUDA)
+    set(Kokkos_ENABLE_CUDA ON CACHE BOOL "" FORCE)
+  endif()
+
+  if(SUBSETIX_KOKKOS_OPENMP)
+    set(Kokkos_ENABLE_OPENMP ON CACHE BOOL "" FORCE)
+  endif()
+
+  # Make kokkos-tools available
+  FetchContent_MakeAvailable(kokkos_tools)
+
+  # Get the path to the built profiling library
+  if(KokkosTools_ENABLE_SINGLE)
+    # Find the profiling library in the build directory
+    # The library is typically in <build_dir>/lib/libkokkosp.so (or .dylib on macOS, .dll on Windows)
+    find_library(KOKKOS_PROFILE_LIB
+      NAMES kokkosp libkokkosp
+      PATHS
+        "${CMAKE_BINARY_DIR}/_deps/kokkos_tools-build"
+        "${CMAKE_BINARY_DIR}/_deps"
+        "${CMAKE_BINARY_DIR}"
+      PATH_SUFFIXES lib lib64
+      NO_DEFAULT_PATH
+    )
+
+    if(NOT KOKKOS_PROFILE_LIB)
+      # Fallback: try the build directory directly
+      set(KOKKOS_PROFILE_LIB "${CMAKE_BINARY_DIR}/_deps/lib/${CMAKE_SHARED_LIBRARY_PREFIX}kokkosp${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    endif()
+
+    message(STATUS "Kokkos profiling library: ${KOKKOS_PROFILE_LIB}")
+
+    # Set an environment variable hint for the user
+    set(KOKKOS_PROFILE_LIBRARY_HINT "${KOKKOS_PROFILE_LIB}" CACHE STRING "Path to Kokkos profiling library for KOKKOS_PROFILE_LIBRARY")
+    message(STATUS "Set KOKKOS_PROFILE_LIBRARY=${KOKKOS_PROFILE_LIBRARY_HINT} to enable profiling")
+  endif()
+
+  message(STATUS "Kokkos profiling tools built successfully")
+else()
+  message(STATUS "Kokkos profiling tools disabled")
+endif()
 
 if(SUBSETIX_EXECSPACE_FORCE_CUDA)
     add_compile_definitions(SUBSETIX_EXECSPACE_CUDA)

@@ -156,6 +156,54 @@
         "CMAKE_CXX_COMPILER": "g++-12",
         "SUBSETIX_USE_MPI": "OFF"
       }
+    },
+    {
+      "name": "experimental-serial-profile",
+      "displayName": "Experimental module only (Serial + Kokkos Profiling)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-serial-profile",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_ENABLE_KOKKOS_TOOLS": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-openmp-profile",
+      "displayName": "Experimental module only (OpenMP + Kokkos Profiling)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-openmp-profile",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_OPENMP": "ON",
+        "SUBSETIX_ENABLE_KOKKOS_TOOLS": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-cuda-gcc12-profile",
+      "displayName": "Experimental module only (CUDA + GCC 12 + Kokkos Profiling)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc12-profile",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_ENABLE_KOKKOS_TOOLS": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -206,6 +254,18 @@
     {
       "name": "experimental-cuda-gcc12",
       "configurePreset": "experimental-cuda-gcc12"
+    },
+    {
+      "name": "experimental-serial-profile",
+      "configurePreset": "experimental-serial-profile"
+    },
+    {
+      "name": "experimental-openmp-profile",
+      "configurePreset": "experimental-openmp-profile"
+    },
+    {
+      "name": "experimental-cuda-gcc12-profile",
+      "configurePreset": "experimental-cuda-gcc12-profile"
     }
   ],
   "testPresets": [
@@ -256,6 +316,18 @@
     {
       "name": "experimental-cuda-gcc12",
       "configurePreset": "experimental-cuda-gcc12"
+    },
+    {
+      "name": "experimental-serial-profile",
+      "configurePreset": "experimental-serial-profile"
+    },
+    {
+      "name": "experimental-openmp-profile",
+      "configurePreset": "experimental-openmp-profile"
+    },
+    {
+      "name": "experimental-cuda-gcc12-profile",
+      "configurePreset": "experimental-cuda-gcc12-profile"
     }
   ]
 }
