@@ -9,29 +9,10 @@
 namespace experimental::subsetix::csr::v3 {
 
 // ============================================================================
-// v1 Mesh type (versioned, templated on coordinate and index types)
+// v3 Mesh type (identical to v1, see v1.hpp for full documentation)
 // ============================================================================
 
-/**
- * @brief CSR-based mesh representation for v1 algorithm.
- *
- * This is a compressed sparse row (CSR) representation where:
- * - row_keys stores the row coordinates (sorted)
- * - row_ptr stores offsets into the intervals array for each row
- * - intervals stores [begin, end) X-intervals for each row
- *
- * @tparam DIM Dimension (2 for 2D, 3 for 3D)
- * @tparam MemorySpace Kokkos memory space
- * @tparam CoordType Coordinate type (int16_t, int32_t, int64_t, etc.)
- * @tparam IndexType Index type for CSR row_ptr (uint32_t, uint64_t, etc.)
- *
- * Invariants:
- * - row_keys.extent(0) == num_rows
- * - row_ptr.extent(0) == num_rows + 1
- * - intervals.extent(0) >= num_intervals
- * - For each row, intervals are sorted and non-overlapping
- * - row_keys are sorted
- */
+/** @brief CSR mesh for v3 algorithm. Identical to v1::Mesh. */
 template <int DIM, class MemorySpace,
           class CoordType = int32_t,
           class IndexType = std::size_t>
@@ -84,7 +65,7 @@ struct MeshTraits {
 
 } // namespace detail
 
-// Default configurations (backward compatible)
+// Default configurations
 template <int DIM>
 using DefaultMesh = Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>;
 
@@ -103,24 +84,12 @@ using Mesh3DDevice = Mesh3D<>;  // Default types
 using Mesh3DHost = Mesh<3, Kokkos::HostSpace, int32_t, std::size_t>;
 
 // ============================================================================
-// Core row intersection algorithm (two-pointer merge)
+// Core row intersection (identical to v1, see v1.hpp)
 // ============================================================================
 
 namespace detail {
 
-/**
- * @brief Core row intersection algorithm (two-pointer merge).
- *
- * When CountOnly=true, only counts intervals without writing.
- * When CountOnly=false, writes intervals to intervals_out.
- *
- * This is dimension-agnostic: works for both 2D and 3D meshes.
- *
- * @tparam CountOnly If true, only count; if false, write output
- * @tparam CoordType Coordinate type (deduced from IntervalViewIn)
- * @tparam IntervalViewIn Input interval view type
- * @tparam IntervalViewOut Output interval view type
- */
+/** @brief Row intersection. Identical to v1::detail::row_intersection_impl. */
 template <bool CountOnly, class IntervalViewIn, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
 std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
@@ -171,28 +140,10 @@ std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
 } // namespace detail
 
 // ============================================================================
-// Mesh intersection (2D and 3D) - v1 Algorithm
+// Mesh intersection (2D and 3D) - v3 Algorithm
 // ============================================================================
 
-/**
- * @brief Compute the intersection of two meshes (2D or 3D).
- *
- * Returns a new mesh containing only the cells that exist in BOTH input meshes.
- *
- * Algorithm:
- * 1. Row mapping - find common rows via binary search O(log n)
- * 2. Count - count intersecting X-intervals per row
- * 3. Scan - compute CSR offsets (row_ptr)
- * 4. Fill - write intersected intervals
- * 5. Compact - filter rows with no intersections
- *
- * @tparam DIM Dimension (2 for 2D, 3 for 3D)
- * @tparam CoordType Coordinate type
- * @tparam IndexType Index type for CSR row_ptr
- * @param A First input mesh
- * @param B Second input mesh
- * @return Intersection mesh
- */
+/** @brief Mesh intersection. Identical to v1::intersect_meshes. */
 template <int DIM, class CoordType = int32_t, class IndexType = std::size_t>
 inline Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>
 intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>& A,
@@ -476,7 +427,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, Co
   return compacted;
 }
 
-// Convenience aliases for 2D and 3D (backward compatible)
+// Convenience aliases for 2D and 3D
 inline Mesh2DDevice intersect_meshes_2d(const Mesh2DDevice& A, const Mesh2DDevice& B) {
   return intersect_meshes<2>(A, B);
 }

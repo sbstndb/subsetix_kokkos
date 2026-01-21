@@ -84,7 +84,7 @@ struct MeshTraits {
 
 } // namespace detail
 
-// Default configurations (backward compatible)
+// Default configurations
 template <int DIM>
 using DefaultMesh = Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>;
 
@@ -476,7 +476,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, Co
   return compacted;
 }
 
-// Convenience aliases for 2D and 3D (backward compatible)
+// Convenience aliases for 2D and 3D
 inline Mesh2DDevice intersect_meshes_2d(const Mesh2DDevice& A, const Mesh2DDevice& B) {
   return intersect_meshes<2>(A, B);
 }

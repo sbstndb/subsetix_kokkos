@@ -6,28 +6,8 @@
 #include <Kokkos_Core.hpp>
 #include <cstdint>
 #include <cstddef>
-#include <type_traits>
 
 namespace experimental::subsetix::csr {
-
-// ============================================================================
-// Type traits for coordinate types
-// ============================================================================
-
-/**
- * @brief Type traits for coordinate types.
- *
- * Provides compile-time information about coordinate types:
- * - Whether the type is signed
- * - Bit width of the type
- * - The underlying value type
- */
-template<class T>
-struct CoordTraits {
-  using value_type = T;
-  static constexpr bool is_signed = std::is_signed_v<T>;
-  static constexpr int bits = sizeof(T) * 8;
-};
 
 // ============================================================================
 // Interval template
@@ -127,21 +107,5 @@ struct RowKey3D {
     return z < other.z;
   }
 };
-
-// ============================================================================
-// Default types (backward compatibility)
-// ============================================================================
-
-/// Default coordinate type (for backward compatibility)
-using DefaultCoord = int32_t;
-
-/// Default interval type (for backward compatibility)
-using DefaultInterval = Interval<DefaultCoord>;
-
-/// Default 2D row key (for backward compatibility)
-using DefaultRowKey2D = RowKey2D<DefaultCoord>;
-
-/// Default 3D row key (for backward compatibility)
-using DefaultRowKey3D = RowKey3D<DefaultCoord>;
 
 } // namespace experimental::subsetix::csr

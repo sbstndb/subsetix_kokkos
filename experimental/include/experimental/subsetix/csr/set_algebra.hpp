@@ -19,9 +19,10 @@
  * - Disabled by default (SUBSETIX_ENABLE_EXPERIMENTAL=OFF)
  *
  * Architecture:
- * - types.hpp: Fundamental shared types (Interval, RowKey, CoordTraits)
- * - Each version (v1, v2, v3) has its own Mesh type templated on CoordType/IndexType
- * - Versioned Mesh types allow future versions to use different data structures
+ * - types.hpp: Fundamental shared types (Interval, RowKey2D, RowKey3D)
+ * - mesh.hpp: CSR mesh representation (Mesh<2>, Mesh<3>)
+ * - Each version (v1, v2, v3) has its own intersect_meshes function
+ * - Versioned algorithms allow independent evolution and comparison
  *
  * Current status:
  * - v1, v2, v3 are currently identical (baseline algorithm)
