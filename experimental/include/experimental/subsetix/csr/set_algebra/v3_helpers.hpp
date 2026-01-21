@@ -8,10 +8,6 @@
 
 namespace experimental::subsetix::csr::v3::detail {
 
-// Import RowHashMap from v2::detail
-using RowHashMap2D = experimental::subsetix::csr::v2::detail::RowHashMap<RowKey2D, Kokkos::DefaultExecutionSpace::memory_space>;
-using RowHashMap3D = experimental::subsetix::csr::v2::detail::RowHashMap<RowKey3D, Kokkos::DefaultExecutionSpace::memory_space>;
-
 // ============================================================================
 // Bounding Box Structures and Utilities
 // ============================================================================
@@ -121,51 +117,6 @@ auto compute_mesh_bbox(const Mesh<DIM, MemorySpace>& mesh) {
     return compute_mesh_bbox(static_cast<const Mesh<2, MemorySpace>&>(mesh));
   } else {
     return compute_mesh_bbox(static_cast<const Mesh<3, MemorySpace>&>(mesh));
-  }
-}
-
-// ============================================================================
-// Hash Map Building Utilities
-// ============================================================================
-
-// Helper to build hash map from mesh (serial build on host) - 2D version
-template <class MemorySpace>
-inline void build_hash_map_for_mesh(
-    const Mesh<2, MemorySpace>& mesh,
-    RowHashMap2D& hash_map_out,
-    const std::string& label = "row_hash_map") {
-
-  hash_map_out.reserve(mesh.num_rows, label);
-
-  // Copy row keys to host for building
-  auto row_keys_host = Kokkos::create_mirror_view_and_copy(
-      Kokkos::HostSpace{}, mesh.row_keys);
-
-  for (std::size_t i = 0; i < mesh.num_rows; ++i) {
-    RowKey2D key;
-    key.y = row_keys_host(i).y;
-    hash_map_out.insert(key, static_cast<int>(i));
-  }
-}
-
-// Helper to build hash map from mesh (serial build on host) - 3D version
-template <class MemorySpace>
-inline void build_hash_map_for_mesh(
-    const Mesh<3, MemorySpace>& mesh,
-    RowHashMap3D& hash_map_out,
-    const std::string& label = "row_hash_map") {
-
-  hash_map_out.reserve(mesh.num_rows, label);
-
-  // Copy row keys to host for building
-  auto row_keys_host = Kokkos::create_mirror_view_and_copy(
-      Kokkos::HostSpace{}, mesh.row_keys);
-
-  for (std::size_t i = 0; i < mesh.num_rows; ++i) {
-    RowKey3D key;
-    key.y = row_keys_host(i).y;
-    key.z = row_keys_host(i).z;
-    hash_map_out.insert(key, static_cast<int>(i));
   }
 }
 
