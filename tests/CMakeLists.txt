@@ -155,3 +155,14 @@ add_executable(subsetix_test_fvd_weno
 target_link_libraries(subsetix_test_fvd_weno PRIVATE subsetix::core GTest::gtest)
 target_include_directories(subsetix_test_fvd_weno PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME FvdWenoTests COMMAND subsetix_test_fvd_weno)
+
+# 14. FVD Source Terms Tests: Gravity, Custom, Zone, Composite, etc.
+# Tests for all source term implementations (GravitySource, CustomSource, ZoneSource,
+# CircularZoneSource, CompositeSource, NullSource, PointHeatSource, DragSource)
+# Note: Does not use test_main.cpp - has its own main()
+add_executable(subsetix_test_fvd_source_terms
+    fvd_source_terms_test.cpp
+)
+target_link_libraries(subsetix_test_fvd_source_terms PRIVATE subsetix::core GTest::gtest)
+target_include_directories(subsetix_test_fvd_source_terms PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME FvdSourceTermsTests COMMAND subsetix_test_fvd_source_terms)
