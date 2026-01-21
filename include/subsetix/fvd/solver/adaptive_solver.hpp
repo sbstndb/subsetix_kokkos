@@ -1171,6 +1171,7 @@ public:
 
         auto U_stage = stage_solution_;
         auto U_old = U_old_;
+        auto stage_rhs = stage_rhs_;  // Capture in local variable for C++20
         const int n = n_cells_;
 
         // CUDA: Copy static constexpr array to local variable for device access
@@ -1197,7 +1198,7 @@ public:
                 // Sum contributions from previous stages
                 for (int prev = 0; prev < stage; ++prev) {
                     Real coeff = a_stage[prev];
-                    const auto& k_prev = stage_rhs_[prev];
+                    const auto& k_prev = stage_rhs[prev];
                     sum.rho  += coeff * k_prev(i).rho;
                     sum.rhou += coeff * k_prev(i).rhou;
                     sum.rhov += coeff * k_prev(i).rhov;
@@ -1226,6 +1227,7 @@ public:
 
         auto U = U_;
         auto U_old = U_old_;
+        auto stage_rhs = stage_rhs_;  // Capture in local variable for C++20
         const int n = n_cells_;
 
         // CUDA: Copy static constexpr array to local variable for device access
@@ -1255,7 +1257,7 @@ public:
                 // Sum contributions from all stages (generic operator usage)
                 for (int s = 0; s < max_stages; ++s) {
                     Real coeff = b_coeffs[s];
-                    const auto& k_s = stage_rhs_[s];
+                    const auto& k_s = stage_rhs[s];
                     // Phase 6: Generic accumulation using operators
                     sum += k_s(i) * coeff;
                 }
@@ -3166,6 +3168,8 @@ public:
         auto criterion = refinement_config_.criterion;
         const Real dx = cfg_.dx;
         const std::size_t nx = cfg_.nx;
+        const int8_t finest_level = finest_level_;  // Capture for C++20
+        const int8_t max_level = static_cast<int8_t>(refinement_config_.max_level);  // Capture for C++20
 
         // Phase 5: Use full CompositeCriterion with coarsening support
         Kokkos::parallel_for(
@@ -3177,8 +3181,8 @@ public:
                 const Primitive q_cell = System::to_primitive(U_cell, gamma);
 
                 // Check level limits (for current finest level)
-                int8_t current_level = finest_level_;
-                if (current_level >= static_cast<int8_t>(refinement_config_.max_level)) {
+                int8_t current_level = finest_level;
+                if (current_level >= max_level) {
                     tags(idx) = static_cast<int8_t>(amr::RefinementAction::Keep);
                     return;
                 }
