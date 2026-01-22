@@ -199,6 +199,10 @@ struct GetLargeConfig {
   RandomMeshConfig operator()() const { return LargeConfig(); }
 };
 
+struct GetExtraLargeConfig {
+  RandomMeshConfig operator()() const { return ExtraLargeConfig(); }
+};
+
 // ============================================================================
 // 2D Benchmarks
 // ============================================================================
@@ -460,6 +464,52 @@ BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark3D, V3_3D_LargeConfig, GetLargeConfig)
   state.SetItemsProcessed(state.iterations() * total_intervals);
   state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
+}
+
+// ============================================================================
+// Extra Large Benchmarks (2x Large)
+// ============================================================================
+
+BENCHMARK_TEMPLATE_F(V1RandomMeshBenchmark2D, V1_ExtraLargeConfig, GetExtraLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v1::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V2RandomMeshBenchmark2D, V2_ExtraLargeConfig, GetExtraLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark2D, V3_ExtraLargeConfig, GetExtraLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
 }
 
 // ============================================================================

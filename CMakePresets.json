@@ -156,6 +156,120 @@
         "CMAKE_CXX_COMPILER": "g++-12",
         "SUBSETIX_USE_MPI": "OFF"
       }
+    },
+    {
+      "name": "experimental-perf-serial",
+      "displayName": "Experimental module only (Serial + Linux perf profiling)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-perf-serial",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_ENABLE_PROFILING_PERF": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-perf-openmp",
+      "displayName": "Experimental module only (OpenMP + Linux perf profiling)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-perf-openmp",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_OPENMP": "ON",
+        "SUBSETIX_ENABLE_PROFILING_PERF": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-serial-profile",
+      "displayName": "Experimental module only (Serial + Kokkos profiling tools)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-serial-profile",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_ENABLE_PROFILING_KOKKOS": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-openmp-profile",
+      "displayName": "Experimental module only (OpenMP + Kokkos profiling tools)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-openmp-profile",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_OPENMP": "ON",
+        "SUBSETIX_ENABLE_PROFILING_KOKKOS": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "experimental-cuda-gcc12-profile",
+      "displayName": "Experimental module only (CUDA + GCC 12 + Kokkos profiling tools)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc12-profile",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_ENABLE_PROFILING_KOKKOS": "ON",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "profiling-nsight-cuda-gcc12",
+      "displayName": "Profiling preset (CUDA + GCC 12 + Nsight, experimental only)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-gcc12",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PROFILING_CUDA": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "profiling-nsight-cuda-gcc12-release",
+      "displayName": "Profiling preset (CUDA + GCC 12 + Nsight, Release with symbols, experimental only)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-gcc12-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS": "-g",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PROFILING_CUDA": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -206,6 +320,34 @@
     {
       "name": "experimental-cuda-gcc12",
       "configurePreset": "experimental-cuda-gcc12"
+    },
+    {
+      "name": "experimental-perf-serial",
+      "configurePreset": "experimental-perf-serial"
+    },
+    {
+      "name": "experimental-perf-openmp",
+      "configurePreset": "experimental-perf-openmp"
+    },
+    {
+      "name": "experimental-serial-profile",
+      "configurePreset": "experimental-serial-profile"
+    },
+    {
+      "name": "experimental-openmp-profile",
+      "configurePreset": "experimental-openmp-profile"
+    },
+    {
+      "name": "experimental-cuda-gcc12-profile",
+      "configurePreset": "experimental-cuda-gcc12-profile"
+    },
+    {
+      "name": "profiling-nsight-cuda-gcc12",
+      "configurePreset": "profiling-nsight-cuda-gcc12"
+    },
+    {
+      "name": "profiling-nsight-cuda-gcc12-release",
+      "configurePreset": "profiling-nsight-cuda-gcc12-release"
     }
   ],
   "testPresets": [
@@ -256,6 +398,34 @@
     {
       "name": "experimental-cuda-gcc12",
       "configurePreset": "experimental-cuda-gcc12"
+    },
+    {
+      "name": "experimental-perf-serial",
+      "configurePreset": "experimental-perf-serial"
+    },
+    {
+      "name": "experimental-perf-openmp",
+      "configurePreset": "experimental-perf-openmp"
+    },
+    {
+      "name": "experimental-serial-profile",
+      "configurePreset": "experimental-serial-profile"
+    },
+    {
+      "name": "experimental-openmp-profile",
+      "configurePreset": "experimental-openmp-profile"
+    },
+    {
+      "name": "experimental-cuda-gcc12-profile",
+      "configurePreset": "experimental-cuda-gcc12-profile"
+    },
+    {
+      "name": "profiling-nsight-cuda-gcc12",
+      "configurePreset": "profiling-nsight-cuda-gcc12"
+    },
+    {
+      "name": "profiling-nsight-cuda-gcc12-release",
+      "configurePreset": "profiling-nsight-cuda-gcc12-release"
     }
   ]
 }

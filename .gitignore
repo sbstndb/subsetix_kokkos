@@ -14,3 +14,8 @@ presentation/.slides.typ.swp
 
 # Visualization outputs
 viz_output/
+**/__pycache__/
+
+# Profiling output directories
+perf_output/
+profiling_output/

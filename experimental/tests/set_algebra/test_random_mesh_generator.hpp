@@ -162,6 +162,45 @@ inline RandomMeshConfig LargeConfig() {
   };
 }
 
+/**
+ * @brief Extra Large mesh configuration for extreme benchmarks
+ *
+ * Suitable for:
+ * - Extreme performance benchmarks
+ * - GPU stress tests (H100, B200)
+ * - Maximum scale validation
+ *
+ * Parameters:
+ * - Y scope: [0, 8192] (2x Large)
+ * - Z scope: [0, 8192] (3D only, 2x Large)
+ * - Max intervals per row: 4
+ * - Row count: 5M-10M (2x Large)
+ * - 3D sparsity: ~15% (10M / (8192×8192) ≈ 15%
+ *
+ * Memory estimate:
+ * - 2D: ~10M intervals × 16 bytes = ~160 MB input data
+ * - 3D: ~10M intervals × 24 bytes = ~240 MB input data
+ */
+inline RandomMeshConfig ExtraLargeConfig() {
+  return RandomMeshConfig{
+    .seed = 42,
+    .num_rows_min = 5000000,
+    .num_rows_max = 10000000,
+    .intervals_per_row_min = 1,
+    .intervals_per_row_max = 4,
+    .interval_length_min = 1,
+    .interval_length_max = 100,
+    .gap_min = 0,
+    .gap_max = 50,
+    .y_min = 0,
+    .y_max = 8192,
+    .z_min = 0,
+    .z_max = 8192,
+    .sorted_rows = true,
+    .overlap_probability = 0.5
+  };
+}
+
 // ============================================================================
 // Random Mesh Generators
 // ============================================================================
