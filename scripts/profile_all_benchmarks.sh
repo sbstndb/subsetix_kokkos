@@ -127,7 +127,12 @@ CURRENT=0
 for CONFIG in "${CONFIGS[@]}"; do
     for DIM in "${DIMS[@]}"; do
         CURRENT=$((CURRENT + 1))
-        FILTER="${CONFIG}${DIM}"
+        # Build filter string: SmallConfig (2D) or 3D_SmallConfig (3D)
+        if [ "$DIM" = "3D" ]; then
+          FILTER="3D_${CONFIG}Config"
+        else
+          FILTER="${CONFIG}Config"
+        fi
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         PERF_DATA="$OUTPUT_DIR/perf_${PRESET}_${FILTER}_${TIMESTAMP}.data"
 

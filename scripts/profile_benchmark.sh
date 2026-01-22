@@ -137,7 +137,13 @@ if [ ! -f "$BENCHMARK_BIN" ]; then
 fi
 
 # Build filter string
-FILTER="${CONFIG}${DIMENSION}"
+# Benchmark names: V1_SmallConfig, V2_SmallConfig, V3_SmallConfig (2D)
+#                  V1_3D_SmallConfig, V2_3D_SmallConfig, V3_3D_SmallConfig (3D)
+if [ "$DIMENSION" = "3D" ]; then
+  FILTER="3D_${CONFIG}Config"
+else
+  FILTER="${CONFIG}Config"
+fi
 
 # Create output directory
 mkdir -p "$OUTPUT_DIR"

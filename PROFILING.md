@@ -251,11 +251,24 @@ firefox flamegraph.svg  # or your preferred browser
 
 ### Workflow 4: Profile Benchmarks
 
+Benchmark naming convention:
+- **2D**: `V1_SmallConfig`, `V2_SmallConfig`, `V3_SmallConfig`, etc.
+- **3D**: `V1_3D_SmallConfig`, `V2_3D_SmallConfig`, `V3_3D_SmallConfig`, etc.
+
 ```bash
-# Profile specific benchmark size
+# Profile specific 2D benchmark size (matches V1_SmallConfig, V2_SmallConfig, V3_SmallConfig)
 perf record --call-graph dwarf \
   ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark \
   --benchmark_filter=SmallConfig
+
+# Profile specific 3D benchmark size (matches V1_3D_MediumConfig, V2_3D_MediumConfig, V3_3D_MediumConfig)
+perf record --call-graph dwarf \
+  ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark \
+  --benchmark_filter=3D_MediumConfig
+
+# Or use the convenience script
+./scripts/profile_benchmark.sh experimental-perf-serial Small 2D
+./scripts/profile_benchmark.sh experimental-perf-serial Medium 3D
 
 # Profile all benchmarks and save
 perf record --call-graph dwarf -o benchmark_perf.data \

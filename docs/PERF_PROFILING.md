@@ -64,16 +64,52 @@ These presets:
 
 ## Profiling Workflows
 
-### Quick Profiling with Script
+### Quick Profiling with Scripts
 
-A convenience script is provided:
+Several convenience scripts are provided for different profiling tasks:
+
+#### Generic profiling
 
 ```bash
 ./scripts/perf_profile.sh experimental-perf-serial \
   ./build-experimental-perf-serial/experimental/tests/experimental_v1_unitary_test
 ```
 
-The script creates output in `./perf_output/` with timestamps.
+#### Profile specific benchmark configurations
+
+```bash
+# Profile Small 2D benchmarks
+./scripts/profile_benchmark.sh experimental-perf-serial Small 2D
+
+# Profile Medium 2D benchmarks with OpenMP
+./scripts/profile_benchmark.sh experimental-perf-openmp Medium 2D
+
+# Use perf stat for real-time statistics
+./scripts/profile_benchmark.sh experimental-perf-serial Small 2D --stat
+```
+
+#### Profile all benchmark configurations
+
+```bash
+# Profile all benchmarks (Small/Medium/Large × 2D/3D)
+./scripts/profile_all_benchmarks.sh experimental-perf-serial
+```
+
+#### Compare performance results
+
+```bash
+# Compare before/after optimization
+./scripts/compare_perf.sh perf_before.data perf_after.data
+```
+
+#### Generate consolidated reports
+
+```bash
+# Generate summary from multiple perf data files
+./scripts/generate_perf_report.sh ./perf_output
+```
+
+All scripts create output in `./perf_output/` with timestamps by default.
 
 ### Manual Profiling
 
@@ -111,12 +147,28 @@ perf stat -e cycles,instructions,cache-misses,branches,branch-misses \
 
 ## Profiling Benchmarks
 
+Benchmark naming convention:
+- **2D**: `V1_SmallConfig`, `V2_SmallConfig`, `V3_SmallConfig`, etc.
+- **3D**: `V1_3D_SmallConfig`, `V2_3D_SmallConfig`, `V3_3D_SmallConfig`, etc.
+
 ### Run a specific benchmark size
 
 ```bash
+# Filter for 2D Small benchmarks (matches V1_SmallConfig, V2_SmallConfig, V3_SmallConfig)
 perf record --call-graph dwarf \
   ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark \
   --benchmark_filter=SmallConfig
+
+# Filter for 3D Medium benchmarks
+perf record --call-graph dwarf \
+  ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark \
+  --benchmark_filter=3D_MediumConfig
+```
+
+Or use the convenience script:
+```bash
+./scripts/profile_benchmark.sh experimental-perf-serial Small 2D
+./scripts/profile_benchmark.sh experimental-perf-serial Medium 3D
 ```
 
 ### Profile all benchmarks
