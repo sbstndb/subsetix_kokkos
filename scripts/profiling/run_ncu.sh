@@ -15,17 +15,21 @@
 #   --benchmark FILTER     Benchmark filter (default: 3D_LargeConfig)
 #   --output-dir DIR       Output directory for profiling results (default: profiling_output_ncu)
 #   --ncu-opts OPTS        Extra options to pass to ncu
-#   --section-set SET      Section set to use (basic, full, or custom name)
+#   --section-set SET      Section set to use (default: detailed)
+#   --extra-sections SEC   Additional sections (default: WarpStateStats,InstructionStats)
 #   --kernel-only          Skip build, run profiling only
 #   --build-only           Only build, don't run profiling
 #   --help                 Show this help message
 #
 # Examples:
-#   # Profile 3D LargeConfig with basic metrics
+#   # Profile 3D LargeConfig with default detailed metrics
 #   ./run_ncu.sh --benchmark "3D_LargeConfig"
 #
-#   # Profile with detailed metrics
-#   ./run_ncu.sh --benchmark "LargeConfig" --section-set full
+#   # Profile with basic metrics (faster)
+#   ./run_ncu.sh --benchmark "LargeConfig" --section-set basic --extra-sections ""
+#
+#   # Profile with full metrics (very slow, ~6000 metrics)
+#   ./run_ncu.sh --section-set full --extra-sections ""
 #
 #   # Profile specific version
 #   ./run_ncu.sh --benchmark "V2_3D_MediumConfig"
@@ -38,7 +42,8 @@ BENCHMARK_FILTER="3D_LargeConfig"
 OUTPUT_DIR="profiling_output_ncu"
 BUILD_ONLY=0
 KERNEL_ONLY=0
-SECTION_SET=""
+SECTION_SET="detailed"  # Includes ComputeWorkloadAnalysis, MemoryWorkloadAnalysis, SourceCounters, Roofline
+EXTRA_SECTIONS="WarpStateStats,InstructionStats"  # Additional detailed sections
 
 # Find ncu - check multiple common paths
 find_ncu() {
@@ -179,13 +184,28 @@ fi
 echo "=================================="
 echo "Running Nsight Compute profiling..."
 echo "=================================="
-echo "Command: ${NCU_CMD} ${NCU_EXTRA_OPTS:-}"
+echo "Section set:         ${SECTION_SET}"
+echo "Extra sections:      ${EXTRA_SECTIONS}"
+echo "Total metrics:       ~1200 (detailed) + ~3500 (full sections)"
+echo "Expected overhead:   3-5x basic profiling"
 echo ""
+
+# Build sections list
+SECTION_ARGS=""
+if [ -n "${SECTION_SET}" ]; then
+  SECTION_ARGS="--set ${SECTION_SET}"
+fi
+if [ -n "${EXTRA_SECTIONS}" ]; then
+  IFS=',' read -ra SECTIONS <<< "${EXTRA_SECTIONS}"
+  for section in "${SECTIONS[@]}"; do
+    SECTION_ARGS="${SECTION_ARGS} --section ${section}"
+  done
+fi
 
 # Run profiling
 # Note: ncu does verbose profiling with multiple passes
 eval ${NCU_BIN} \
-  ${SECTION_SET:+--set ${SECTION_SET}} \
+  ${SECTION_ARGS} \
   ${NCU_EXTRA_OPTS:-} \
   -o "${OUTPUT_PREFIX}" \
   "${BENCHMARK_BIN}" \
@@ -209,10 +229,16 @@ echo "To view specific sections:"
 echo "  ${NCU_BIN} --import ${OUTPUT_PREFIX}.ncu-rep --page=raw"
 echo "  ${NCU_BIN} --import ${OUTPUT_PREFIX}.ncu-rep --page=source"
 echo ""
-echo "Common section sets for future runs:"
-echo "  --set basic      : Basic metrics (fast)"
-echo "  --set full       : All available metrics (detailed, slow)"
-echo "  --set launchOnly : Launch statistics only"
+echo "Section sets available:"
+echo "  --set basic      : Basic metrics (~190 metrics, fast)"
+echo "  --set detailed   : Compute+Memory workload + Source + Roofline (~1200 metrics, default)"
+echo "  --set full       : All available metrics (~5900 metrics, very slow)"
+echo ""
+echo "Additional sections:"
+echo "  --section WarpStateStats       : Warp stalled reasons, scheduler efficiency"
+echo "  --section InstructionStats     : Instruction mix, branch prediction"
+echo "  --section SchedulerStats       : Warp scheduler details"
+echo "  --section SourceCounters       : Source line-level profiling"
 echo ""
 echo "To filter kernels:"
 echo "  -k <kernel_name>     : Profile specific kernel"

@@ -45,11 +45,11 @@ cmake --build --preset profiling-cuda-gcc12
 ### Nsight Compute (Recommended for GPU Kernel Analysis)
 
 ```bash
-# Profile 3D LargeConfig with detailed metrics
+# Profile 3D LargeConfig with default detailed metrics (~4700 metrics)
 ./scripts/profiling/run_ncu.sh --benchmark "3D_LargeConfig"
 
-# Quick profiling with basic metrics
-./scripts/profiling/run_ncu.sh --benchmark "SmallConfig" --section-set basic
+# Quick profiling with basic metrics (~190 metrics)
+./scripts/profiling/run_ncu.sh --benchmark "SmallConfig" --section-set basic --extra-sections ""
 
 # View detailed results
 /usr/local/cuda-12.8/bin/ncu --import profiling_output_ncu/*.ncu-rep --page=details
@@ -164,6 +164,24 @@ Key metrics to look for:
 - **Launch Statistics**: Block size, grid size, registers per thread
 - **Workload Analysis**: Compute vs memory breakdown
 
+### Detailed Metrics (default with run_ncu.sh)
+
+By default, `run_ncu.sh` uses `--set detailed` with additional sections, collecting ~4700 metrics:
+
+| Section | Metrics | Purpose |
+|---------|---------|---------|
+| **ComputeWorkloadAnalysis** | FMA/ALU pipeline utilization, instruction mix | Identify compute bottlenecks |
+| **MemoryWorkloadAnalysis** | L1/L2 hit rates, coalescing, bank conflicts | Identify memory bottlenecks |
+| **WarpStateStats** | Warp stalled reasons, scheduler efficiency | Understand warp inefficiencies |
+| **InstructionStats** | Instruction counts, branch prediction | See which operations dominate |
+| **SourceCounters** | Source line-level timing | Find hot lines in code |
+| **SpeedOfLight_RooflineChart** | Performance vs arithmetic intensity | Roofline analysis |
+
+For faster profiling (~190 metrics), use:
+```bash
+./scripts/profiling/run_ncu.sh --section-set basic --extra-sections ""
+```
+
 ### Nsight Systems
 
 ```bash
@@ -179,6 +197,17 @@ nsys stats output.nsys-rep --format csv --output stats.csv
 # Specific reports
 nsys stats output.nsys-rep --report gpumemtimesum,gpumemsizesum
 ```
+
+**Automatic Stats Export**: `run_nsys.sh` automatically exports these reports:
+
+| Report | Purpose |
+|--------|---------|
+| `cuda_gpu_kern_sum` | GPU kernel summary (by time) |
+| `cuda_kern_exec_sum` | Kernel launch vs execution time (queue overhead) |
+| `cuda_gpu_mem_time_sum` | Memory operations by time |
+| `cuda_api_sum` | CUDA API summary |
+
+These are saved as both `.csv` and `.txt` files alongside the `.nsys-rep`.
 
 ## Profiling Best Practices
 

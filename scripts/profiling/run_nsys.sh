@@ -34,6 +34,7 @@ BENCHMARK_FILTER="LargeConfig"
 OUTPUT_DIR="profiling_output"
 BUILD_ONLY=0
 TRACE_ONLY=0
+EXPORT_STATS=1  # Automatically export stats after profiling
 
 # Default nsys options - good balance between detail and overhead
 # Note: --force-overwrite=true to avoid prompts
@@ -167,12 +168,47 @@ echo "  - ${OUTPUT_PREFIX}.nsys-rep (Nsight Systems report)"
 echo "  - ${OUTPUT_PREFIX}_stdout.log (benchmark stdout)"
 echo ""
 
+# Export stats reports
+if [ "${EXPORT_STATS}" -eq 1 ]; then
+  echo "=================================="
+  echo "Exporting stats reports..."
+  echo "=================================="
+
+  # List of useful reports for GPU kernel analysis
+  REPORTS=(
+    "cuda_gpu_kern_sum"
+    "cuda_kern_exec_sum"
+    "cuda_gpu_mem_time_sum"
+    "cuda_api_sum"
+  )
+
+  for report in "${REPORTS[@]}"; do
+    echo "Exporting: ${report}"
+    nsys stats --report "${report}" --format csv --output "${OUTPUT_PREFIX}_${report}.csv" "${OUTPUT_PREFIX}.nsys-rep" 2>/dev/null || true
+    nsys stats --report "${report}" --format table --output "${OUTPUT_PREFIX}_${report}.txt" "${OUTPUT_PREFIX}.nsys-rep" 2>/dev/null || true
+  done
+
+  echo ""
+  echo "Stats exported:"
+  for report in "${REPORTS[@]}"; do
+    echo "  - ${OUTPUT_PREFIX}_${report}.csv"
+    echo "  - ${OUTPUT_PREFIX}_${report}.txt"
+  done
+  echo ""
+fi
+
 # Generate summary
 echo "To view the profile in Nsight Systems GUI:"
 echo "  nsys-ui ${OUTPUT_PREFIX}.nsys-rep"
 echo ""
-echo "To export to text (requires nsys):"
-echo "  nsys stats ${OUTPUT_PREFIX}.nsys-rep --report gpumemtimesum,gpumemsizesum"
+echo "To export additional stats (requires nsys):"
+echo "  nsys stats ${OUTPUT_PREFIX}.nsys-rep --report <report_name>"
+echo ""
+echo "Available reports:"
+echo "  cuda_gpu_kern_sum     : GPU kernel summary (by time)"
+echo "  cuda_kern_exec_sum    : Kernel launch vs execution time (queue overhead)"
+echo "  cuda_gpu_mem_time_sum : Memory operations by time"
+echo "  cuda_api_sum          : CUDA API summary"
 echo ""
 echo "Common nsys options for future runs:"
 echo "  --trace=cuda,nvtx,osrt  : Trace CUDA, NVTX, OS runtime (default)"
