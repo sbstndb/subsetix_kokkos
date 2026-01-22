@@ -214,52 +214,56 @@ inline RandomMeshConfig ExtraLargeConfig() {
  * - Each row has exactly one interval covering the full X range
  * - Perfect alignment for set operations
  *
- * The num_rows parameter directly controls the number of rows (unlike random
- * which has y_max/z_max ranges with sparsity). This makes it easier to compare
- * regular vs random performance at similar mesh sizes.
+ * The parameters work as follows:
+ * - num_rows_2d: Direct number of rows for 2D (y = 0, 1, ..., num_rows_2d-1)
+ * - grid_size_3d: Size of ONE SIDE of the 3D grid (like y_max/z_max in random config)
+ *                Total rows = grid_size_3d * grid_size_3d
+ *
+ * This matches the random config semantics where y_max/z_max define the grid extent.
  */
 struct RegularMeshConfig {
   int num_rows_2d = 1250;   // Number of rows for 2D (y = 0, 1, ..., num_rows_2d-1)
-  int num_rows_3d = 1250;   // Number of rows for 3D (uses y/z from random's y_max/z_max range)
+  int grid_size_3d = 64;    // Grid size for 3D (total rows = grid_size_3d²)
 };
 
 /**
  * @brief Small regular mesh configuration (100% dense)
  *
- * Matches the number of rows in random SmallConfig but with 100% density:
+ * Matches the random SmallConfig grid extent but with 100% density:
  * - 2D: 1250 rows (same as random's ~1250)
- * - 3D: 4096 rows (64x64, which is 100% of random's y_max=64, z_max=64 range)
+ * - 3D: grid_size=64 → 64×64=4096 rows (100% of random's y_max=64, z_max=64 range)
  *
  * The regular mesh has the same or more rows than random, but with NO sparsity.
  */
 inline RegularMeshConfig SmallRegularConfig() {
-  return RegularMeshConfig{.num_rows_2d = 1250, .num_rows_3d = 64 * 64};
+  return RegularMeshConfig{.num_rows_2d = 1250, .grid_size_3d = 64};
 }
 
 /**
  * @brief Medium regular mesh configuration (100% dense)
  *
- * Matches the number of rows in random MediumConfig but with 100% density:
+ * Matches the random MediumConfig grid extent but with 100% density:
  * - 2D: 78643 rows (same as random's ~78643)
- * - 3D: 262144 rows (512x512, which is 100% of random's y_max=512, z_max=512 range)
+ * - 3D: grid_size=512 → 512×512=262144 rows (100% of random's y_max=512, z_max=512 range)
  *
  * The regular mesh has the same or more rows than random, but with NO sparsity.
  */
 inline RegularMeshConfig MediumRegularConfig() {
-  return RegularMeshConfig{.num_rows_2d = 78643, .num_rows_3d = 512 * 512};
+  return RegularMeshConfig{.num_rows_2d = 78643, .grid_size_3d = 512};
 }
 
 /**
  * @brief Large regular mesh configuration (100% dense)
  *
- * Matches the number of rows in random LargeConfig but with 100% density:
+ * Matches the random LargeConfig grid extent but with 100% density:
  * - 2D: 5M rows (same as random's ~5M)
- * - 3D: 1048576 rows (1024x1024, limited to avoid excessive memory vs random's 4096x4096)
+ * - 3D: grid_size=1024 → 1024×1024=1M rows (limited to avoid excessive memory,
+ *   random uses 4096×4096 which would be 16M rows at 100% density)
  *
  * The regular mesh has the same or more rows than random, but with NO sparsity.
  */
 inline RegularMeshConfig LargeRegularConfig() {
-  return RegularMeshConfig{.num_rows_2d = 5000000, .num_rows_3d = 1024 * 1024};
+  return RegularMeshConfig{.num_rows_2d = 5000000, .grid_size_3d = 1024};
 }
 
 // ============================================================================
@@ -279,6 +283,10 @@ inline RegularMeshConfig LargeRegularConfig() {
  * - All rows match perfectly
  * - All intervals match perfectly
  * - Minimal memory overhead (1 interval per row)
+ *
+ * Note: Regular meshes are generated deterministically with guaranteed
+ * correctness (sorted rows, non-empty intervals, no overlaps), so
+ * validation is not required unlike random meshes.
  */
 class RegularMeshGenerator {
 public:
@@ -286,8 +294,10 @@ public:
    * @brief Generate a regular CommonMesh2D (100% dense)
    *
    * Creates a mesh where:
-   * - y = 0, 1, 2, ..., num_rows-1 (ALL rows present, no gaps)
-   * - Each row has one interval [0, num_rows) covering the full X range
+   * - y = 0, 1, 2, ..., num_rows_2d-1 (ALL rows present, no gaps)
+   * - Each row has one interval [0, num_rows_2d) covering the full X range
+   *
+   * The generated mesh is guaranteed to be valid (sorted, non-overlapping).
    *
    * @param config Configuration containing num_rows_2d
    * @return Regular CommonMesh2D with num_rows_2d rows
@@ -299,7 +309,7 @@ public:
     for (int y = 0; y < config.num_rows_2d; ++y) {
       DefaultCommonRow2D row;
       row.y = static_cast<int32_t>(y);
-      // Single interval covering the entire X range [0, num_rows)
+      // Single interval covering the entire X range [0, num_rows_2d)
       row.intervals.push_back(DefaultInterval{0, static_cast<int32_t>(config.num_rows_2d)});
       mesh.rows.push_back(std::move(row));
     }
@@ -311,17 +321,17 @@ public:
    * @brief Generate a regular CommonMesh3D (100% dense cube)
    *
    * Creates a mesh where all (y,z) combinations in a square grid are present:
-   * - (y, z) = (0,0), (0,1), ..., (0, sqrt)-1, (1,0), ..., (sqrt-1, sqrt-1)
-   * - Total rows: num_rows_3d (which should be a perfect square)
-   * - Each row has one interval [0, sqrt) covering the full X range
+   * - (y, z) = (0,0), (0,1), ..., (0, grid_size-1), (1,0), ..., (grid_size-1, grid_size-1)
+   * - Total rows: grid_size_3d × grid_size_3d (perfect square grid)
+   * - Each row has one interval [0, grid_size_3d) covering the full X range
    *
-   * @param config Configuration containing num_rows_3d
-   * @return Regular CommonMesh3D with num_rows_3d rows
+   * @param config Configuration containing grid_size_3d (side length of the grid)
+   * @return Regular CommonMesh3D with grid_size_3d² rows
    */
   static DefaultCommonMesh3D generate_3d(const RegularMeshConfig& config = RegularMeshConfig{}) {
     DefaultCommonMesh3D mesh;
-    int grid_size = static_cast<int>(std::sqrt(config.num_rows_3d));
-    mesh.rows.reserve(config.num_rows_3d);
+    int grid_size = config.grid_size_3d;
+    mesh.rows.reserve(static_cast<std::size_t>(grid_size) * static_cast<std::size_t>(grid_size));
 
     for (int z = 0; z < grid_size; ++z) {
       for (int y = 0; y < grid_size; ++y) {

@@ -73,10 +73,10 @@ inline v3::Mesh3DDevice from_common_3d_v3(const DefaultCommonMesh3D& mesh) {
  * - No binary search misses
  * - Minimal memory overhead (1 interval per row)
  *
- * Configurations (matching random config row counts but 100% dense):
- * - SmallRegularConfig: 1250 rows (2D) or 4096 rows (3D = 64x64)
- * - MediumRegularConfig: 78643 rows (2D) or 262144 rows (3D = 512x512)
- * - LargeRegularConfig: 5M rows (2D) or 1M rows (3D = 1024x1024)
+ * Configurations (matching random config grid extent but 100% dense):
+ * - SmallRegularConfig: 1250 rows (2D) or 64×64=4096 rows (3D)
+ * - MediumRegularConfig: 78643 rows (2D) or 512×512=262144 rows (3D)
+ * - LargeRegularConfig: 5M rows (2D) or 1024×1024=1M rows (3D)
  */
 
 // ============================================================================
