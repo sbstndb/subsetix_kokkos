@@ -20,6 +20,23 @@ Lance un benchmark expérimental avec un outil de profiling Kokkos.
 **Options :**
 - `-o, --output DIR` : Répertoire de sortie (défaut: `profiling_output/`)
 - `-t, --threads N` : Threads OpenMP (défaut: 22)
+- `-s, --sampling-prob N` : Probabilité de sampling 1-100% (défaut: 100 = pas de sampling)
+- `-v, --sampler-verbose` : Afficher les kernels échantillonnés
+
+**Exemples :**
+```bash
+# Profile 3D LargeConfig avec kernel-timer (Serial)
+./scripts/profile_benchmark.sh experimental-serial-profile kernel-timer "3D.*LargeConfig"
+
+# Profile 2D MediumConfig avec chrome-tracing (OpenMP), 10% sampling
+./scripts/profile_benchmark.sh experimental-openmp-profile chrome-tracing "2D.*MediumConfig" -t 22 -s 10
+
+# Profile SmallConfig avec space-time-stack (CUDA), 5% sampling
+./scripts/profile_benchmark.sh experimental-cuda-gcc12-profile space-time-stack ".*SmallConfig" -s 5
+
+# Profile avec verbose sampling pour voir quels kernels sont mesurés
+./scripts/profile_benchmark.sh experimental-serial-profile kernel-timer ".*LargeConfig" -s 5 -v
+```
 
 **Exemples :**
 ```bash
@@ -78,6 +95,28 @@ Compare les résultats de plusieurs runs de profiling.
 | **space-time-stack** | stdout | Analyse complète (temps + mémoire) |
 | **memory-hwm** | stdout | High water mark mémoire (fin de programme) |
 | **memory-usage** | stdout | Suivi consommation mémoire (timestamps) |
+
+## Sampling (KernelSampler)
+
+Le **sampling** permet de réduire l'overhead de profiling en ne mesurant qu'un pourcentage des kernels.
+
+**Quand l'utiliser ?**
+- Pour réduire l'overhead massif de space-time-stack (surtout sur GPU)
+- Pour des runs de profiling très longs
+- Pour faire une analyse rapide avant un profiling complet
+
+**Variables d'environnement :**
+- `KOKKOS_TOOLS_SAMPLER_PROB=N` : Probabilité de sampling (1-100)
+- `KOKKOS_TOOLS_SAMPLER_VERBOSE=1` : Affiche les kernels échantillonnés
+
+**Recommandations :**
+| Outil | Sampling suggéré | Overhead réduit |
+|-------|-----------------|----------------|
+| space-time-stack | 5-10% | 50-70% |
+| chrome-tracing | 10-20% | 40-60% |
+| kernel-timer | 1-5% | 20-40% |
+
+**Note :** Le sampling ne réduit pas nécessairement le temps d'exécution, mais réduit la quantité de données collectées et les écritures dans les fichiers de sortie.
 
 ## Organisation des fichiers de sortie
 

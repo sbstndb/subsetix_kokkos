@@ -34,6 +34,8 @@ BENCHMARK_FILTER=""
 OUTPUT_DIR="${PROJECT_ROOT}/profiling_output"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 OPENMP_THREADS=22
+SAMPLER_PROB=""
+SAMPLER_VERBOSE=0
 
 # Available profiling tools
 declare -A TOOL_LIBS=(
@@ -58,24 +60,30 @@ ${BLUE}Arguments:${NC}
 ${BLUE}Options:${NC}
     -o, --output DIR      Output directory (default: ${OUTPUT_DIR})
     -t, --threads N      OpenMP threads (default: ${OPENMP_THREADS})
+    -s, --sampling-prob N  Sampling probability 1-100 (default: 100=no sampling)
+    -v, --sampler-verbose Enable sampler verbose output
     -h, --help           Show this help message
 
 ${BLUE}Examples:${NC}
     # Profile 3D LargeConfig with kernel-timer (Serial)
     $(basename "$0") experimental-serial-profile kernel-timer "3D.*LargeConfig"
 
-    # Profile 2D MediumConfig with chrome-tracing (OpenMP)
-    $(basename "$0") experimental-openmp-profile chrome-tracing "2D.*MediumConfig" -t 22
+    # Profile 2D MediumConfig with chrome-tracing (OpenMP), 10% sampling
+    $(basename "$0") experimental-openmp-profile chrome-tracing "2D.*MediumConfig" -t 22 -s 10
 
-    # Profile SmallConfig with space-time-stack (CUDA)
-    $(basename "$0") experimental-cuda-gcc12-profile space-time-stack ".*SmallConfig"
+    # Profile SmallConfig with space-time-stack (CUDA), 5% sampling
+    $(basename "$0") experimental-cuda-gcc12-profile space-time-stack ".*SmallConfig" -s 5
 
 ${BLUE}Available tools:${NC}
     kernel-timer     - Simple kernel timing (.dat output, use with kp_json_writer)
     chrome-tracing    - Chrome timeline JSON (open in chrome://tracing)
     space-time-stack - Detailed time + memory report (stdout)
-    memory-hwm       - Memory high water mark (stdout at program end)
-    memory-usage     - Memory usage tracking with timestamps (stdout)
+
+${BLUE}Sampling:${NC}
+    -s N                Sampling probability (1-100%, default: 100=no sampling)
+    Reduces profiling overhead by only measuring N% of kernels.
+    Recommended values: 1-10% for detailed tools, 10-20% for chrome-tracing.
+    Use -v to see which kernels are sampled.
 
 ${BLUE}Output:${NC}
     Traces saved to: ${OUTPUT_DIR}/<run_id>/
@@ -96,6 +104,14 @@ while [[ $# -gt 0 ]]; do
         -t|--threads)
             OPENMP_THREADS="$2"
             shift 2
+            ;;
+        -s|--sampling-prob)
+            SAMPLER_PROB="$2"
+            shift 2
+            ;;
+        -v|--sampler-verbose)
+            SAMPLER_VERBOSE=1
+            shift
             ;;
         -*)
             echo "${RED}Error: Unknown option $1${NC}"
@@ -160,10 +176,16 @@ if [[ ! -f "$BENCHMARK_BIN" ]]; then
 fi
 
 # Print configuration
+if [[ -n "$SAMPLER_PROB" ]]; then
+    SAMPLER_INFO=" (sampling: ${SAMPLER_PROB}%)"
+else
+    SAMPLER_INFO=""
+fi
+
 cat << EOF
 ${BLUE}=== Kokkos Profiling Session ===${NC}
 ${GREEN}Preset:${NC}        $PRESET
-${GREEN}Tool:${NC}          $TOOL
+${GREEN}Tool:${NC}          $TOOL $SAMPLER_INFO
 ${GREEN}Benchmark:${NC}     $BENCHMARK_FILTER
 ${GREEN}Threads:${NC}       $OPENMP_THREADS
 ${GREEN}Output:${NC}        $OUTPUT_DIR
@@ -175,10 +197,26 @@ EOF
 # Change to project root (so trace files are created there)
 cd "$PROJECT_ROOT"
 
-# Set environment variables and run benchmark
-export KOKKOS_PROFILE_LIBRARY="$TOOL_PATH"
+# Set environment variables
 export OMP_NUM_THREADS="$OPENMP_THREADS"
 export OMP_PROC_BIND="spread"
+
+# Configure profiling library with sampler if requested
+if [[ -n "$SAMPLER_PROB" ]]; then
+    SAMPLER_LIB="${BUILD_DIR}/_deps/kokkos_tools-build/common/kokkos-sampler/libkp_kokkos_sampler.so"
+    if [[ ! -f "$SAMPLER_LIB" ]]; then
+        echo "${RED}Error: Sampler library not found: $SAMPLER_LIB${NC}"
+        exit 1
+    fi
+    export KOKKOS_TOOLS_LIBS="${SAMPLER_LIB};${TOOL_PATH}"
+    export KOKKOS_TOOLS_SAMPLER_PROB="$SAMPLER_PROB"
+    if [[ $SAMPLER_VERBOSE -eq 1 ]]; then
+        export KOKKOS_TOOLS_SAMPLER_VERBOSE=1
+    fi
+    echo "${GREEN}Using sampling: ${SAMPLER_PROB}%${NC}"
+else
+    export KOKKOS_PROFILE_LIBRARY="$TOOL_PATH"
+fi
 
 echo "${BLUE}Running benchmark...${NC}"
 
@@ -234,6 +272,7 @@ Tool: $TOOL
 Benchmark Filter: $BENCHMARK_FILTER
 OpenMP Threads: $OPENMP_THREADS
 Tool Library: $TOOL_PATH
+Sampling: ${SAMPLER_PROB:-100}%
 
 Output Files:
 EOF
@@ -246,6 +285,10 @@ echo "${BLUE}Trace files:${NC} $OUTPUT_DIR"
 echo "${BLUE}Summary:${NC}      $OUTPUT_DIR/summary.txt"
 echo ""
 echo "${BLUE}Next steps:${NC}"
+if [[ -n "$SAMPLER_PROB" ]]; then
+    echo "  ${GREEN}Sampling was enabled at ${SAMPLER_PROB}% to reduce overhead${NC}"
+    echo "  Re-run without -s option for complete profiling data"
+fi
 case "$TOOL" in
     kernel-timer)
         echo "  Convert .dat to JSON:"
