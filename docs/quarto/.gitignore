@@ -3,3 +3,4 @@ _site/
 *.log
 *.tex
 *.pdf
+**/*.quarto_ipynb
