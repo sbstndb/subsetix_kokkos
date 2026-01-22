@@ -155,7 +155,7 @@ When modifying CMake configuration or adding new options, refer to **CLAUDE.md**
 - **Experimental mode** requires disabling stable components to avoid linking errors
 - **Execution/Memory space** flags are mutually exclusive (CMake will error if multiple are set)
 - See `CLAUDE.md` → "CMake Options Reference" for full documentation
-- For performance profiling, see `PROFILING.md` → Kokkos profiling guide
+- For performance profiling, use the scripts in `scripts/profiling/` (see `PROFILING.md`)
 
 ## Agent-Specific Instructions
 
