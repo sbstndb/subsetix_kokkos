@@ -7,21 +7,16 @@ This document describes the profiling infrastructure and best practices for the 
 Profiling is essential for understanding and optimizing performance. The project provides:
 - **CMake presets** for profiling-enabled builds
 - **Shell scripts** for running profiling on experimental benchmarks
-- Support for **Nsight Compute (`ncu`)**, **Nsight Systems (`nsys`)**, and **nvprof** (legacy)
+- Support for **Nsight Compute (`ncu`)** and **Nsight Systems (`nsys`)**
 
 ## Profiler Selection Guide
 
-| Profiler | Purpose | GPU Compatibility | When to Use |
-|----------|---------|-------------------|-------------|
-| **Nsight Compute (`ncu`)** | Detailed GPU kernel analysis | All GPUs | Deep dive into kernel performance, optimization work |
-| **Nsight Systems (`nsys`)** | System-wide tracing | All GPUs (8.0+) | Application timeline, CPU-GPU interaction |
-| **nvprof** | Legacy profiling | < 8.0 only | Legacy GPUs only |
+| Profiler | Purpose | When to Use |
+|----------|---------|-------------|
+| **Nsight Compute (`ncu`)** | Detailed GPU kernel analysis | Deep dive into kernel performance, optimization work |
+| **Nsight Systems (`nsys`)** | System-wide tracing | Application timeline, CPU-GPU interaction |
 
 **Recommendation**: Use `ncu` for detailed GPU kernel profiling and algorithm optimization.
-
-## Important: GPU Profiler Compatibility
-
-**nvprof does NOT work on GPUs with compute capability 8.0 and higher.** Use Nsight Compute or Nsight Systems for modern GPUs.
 
 ## CMake Presets for Profiling
 
@@ -60,7 +55,7 @@ cmake --build --preset profiling-cuda-gcc12
 /usr/local/cuda-12.8/bin/ncu --import profiling_output_ncu/*.ncu-rep --page=details
 ```
 
-### Nsight Systems (Recommended for Timeline Analysis)
+### Nsight Systems (Timeline Analysis)
 
 ```bash
 # Quick profiling on 3D SmallConfig (fast)
@@ -73,29 +68,15 @@ cmake --build --preset profiling-cuda-gcc12
 nsys-ui profiling_output/*.nsys-rep
 ```
 
-### nvprof (Legacy GPUs Only)
-
-```bash
-# Quick profiling
-./scripts/profiling/run_nvprof_quick.sh
-
-# Profile specific benchmark
-./scripts/profiling/run_nvprof.sh --benchmark "3D_LargeConfig"
-
-# View results
-nvvp profiling_output/*.prof
-```
-
 ## Profiling Scripts
 
 The profiling scripts are located in `scripts/profiling/`:
 
 | Script | Purpose | Profiler |
 |--------|---------|----------|
-| `run_nsys.sh` | Main profiling script | Nsight Systems |
+| `run_ncu.sh` | Detailed GPU kernel profiling | Nsight Compute |
+| `run_nsys.sh` | System-wide timeline profiling | Nsight Systems |
 | `run_nsys_quick.sh` | Quick profiling with SmallConfig | Nsight Systems |
-| `run_nvprof.sh` | Main profiling script (legacy) | nvprof |
-| `run_nvprof_quick.sh` | Quick profiling with SmallConfig (legacy) | nvprof |
 | `analyze_results.sh` | Analyze profiling results | Both |
 
 See `scripts/profiling/README.md` for detailed documentation.
@@ -159,24 +140,6 @@ nsys profile --trace=cuda --sample=cpu -o output.nsys-rep \
   build-profiling-cuda-gcc12/experimental/benchmarks/unified_comparison_benchmark
 ```
 
-### Using nvprof (Legacy)
-
-```bash
-# Basic profiling
-nvprof --print-gpu-trace \
-  build-profiling-cuda-gcc12/experimental/benchmarks/unified_comparison_benchmark \
-  --benchmark_filter="3D_LargeConfig"
-
-# With metrics
-nvprof --metrics all \
-  build-profiling-cuda-gcc12/experimental/benchmarks/unified_comparison_benchmark \
-  --benchmark_filter="LargeConfig"
-
-# Export profile for later analysis
-nvprof --export-profile output.prof \
-  build-profiling-cuda-gcc12/experimental/benchmarks/unified_comparison_benchmark
-```
-
 ## Analyzing Results
 
 ### Nsight Compute
@@ -217,16 +180,6 @@ nsys stats output.nsys-rep --format csv --output stats.csv
 nsys stats output.nsys-rep --report gpumemtimesum,gpumemsizesum
 ```
 
-### nvprof
-
-```bash
-# GUI
-nvvp output.prof
-
-# CLI analysis
-nvprof -i output.prof --print-gpu-trace
-```
-
 ## Profiling Best Practices
 
 ### 1. Start Small
@@ -234,7 +187,7 @@ nvprof -i output.prof --print-gpu-trace
 Use SmallConfig for rapid iterations during development:
 
 ```bash
-./scripts/profiling/run_nsys_quick.sh
+./scripts/profiling/run_ncu.sh --benchmark "SmallConfig" --section-set basic
 ```
 
 ### 2. Target Specific Benchmarks
@@ -243,15 +196,15 @@ Use specific filters to reduce profiling time:
 
 ```bash
 # Profile only v2 3D large mesh
-./scripts/profiling/run_nsys.sh --benchmark "V2_3D_LargeConfig"
+./scripts/profiling/run_ncu.sh --benchmark "V2_3D_LargeConfig"
 ```
 
 ### 3. Understand Overhead
 
 Profiling adds overhead. For accurate measurements:
-- Use `--trace=cuda` only for GPU tracing (minimal overhead)
-- Use `--sample=cpu` for CPU sampling (adds overhead)
-- Avoid all metrics on first pass
+- Use `--section-set basic` for faster profiling with ncu
+- Use `--set full` only for detailed analysis (slow)
+- Profile specific kernels with `-k` to reduce scope
 
 ### 4. Compare Versions
 
@@ -260,7 +213,7 @@ Profile multiple algorithm versions to compare performance:
 ```bash
 # Profile v1, v2, v3 on same benchmark
 for version in V1 V2 V3; do
-  ./scripts/profiling/run_nsys.sh \
+  ./scripts/profiling/run_ncu.sh \
     --benchmark "${version}_3D_LargeConfig" \
     --output-dir "profiling_comparison/${version}"
 done
@@ -268,14 +221,14 @@ done
 
 ### 5. Build Once, Profile Many Times
 
-Once built, use `--trace-only` to skip rebuild:
+Once built, use `--kernel-only` to skip rebuild:
 
 ```bash
 # First run: builds and profiles
-./scripts/profiling/run_nsys.sh --benchmark "3D_MediumConfig"
+./scripts/profiling/run_ncu.sh --benchmark "3D_MediumConfig"
 
 # Subsequent runs: skip build
-./scripts/profiling/run_nsys.sh --benchmark "3D_MediumConfig" --trace-only
+./scripts/profiling/run_ncu.sh --benchmark "3D_MediumConfig" --kernel-only
 ```
 
 ## Common Workflows
@@ -285,9 +238,9 @@ Once built, use `--trace-only` to skip rebuild:
 ```bash
 # 1. Make code changes
 # 2. Quick test with SmallConfig
-./scripts/profiling/run_nsys_quick.sh --skip-build
+./scripts/profiling/run_ncu.sh --benchmark "SmallConfig" --section-set basic --kernel-only
 # 3. View results
-nsys-ui profiling_output_quick/*/*.nsys-rep
+/usr/local/cuda-12.8/bin/ncu --import profiling_output_ncu/*.ncu-rep --page=details
 ```
 
 ### Performance Comparison
@@ -295,33 +248,28 @@ nsys-ui profiling_output_quick/*/*.nsys-rep
 ```bash
 # Compare before/after optimization
 git checkout before-optimization
-./scripts/profiling/run_nsys.sh --benchmark "3D_LargeConfig" --output-dir "before"
+./scripts/profiling/run_ncu.sh --benchmark "3D_LargeConfig" --output-dir "before"
 
 git checkout after-optimization
-./scripts/profiling/run_nsys.sh --benchmark "3D_LargeConfig" --output-dir "after"
+./scripts/profiling/run_ncu.sh --benchmark "3D_LargeConfig" --output-dir "after"
 
-# Compare the two .nsys-rep files in nsys-ui
+# Compare the two .ncu-rep files
+/usr/local/cuda-12.8/bin/ncu --import before/*.ncu-rep --import after/*.ncu-rep
 ```
 
 ### Full Benchmark Suite Profiling
 
 ```bash
-# Profile all benchmark configurations
+# For comprehensive profiling, use nsys for timeline analysis
 ./scripts/profiling/run_nsys_all.sh --output-dir "profiling_full"
+
+# Or profile individual configs with ncu for detailed GPU analysis
+for config in SmallConfig MediumConfig LargeConfig; do
+  ./scripts/profiling/run_ncu.sh --benchmark "3D_${config}" --kernel-only
+done
 ```
 
 ## Troubleshooting
-
-### "nvprof is not supported on devices with compute capability 8.0 and higher"
-
-Use Nsight Compute or Nsight Systems instead:
-```bash
-# For detailed GPU kernel profiling
-./scripts/profiling/run_ncu.sh --benchmark "LargeConfig"
-
-# For system-wide tracing
-./scripts/profiling/run_nsys.sh --benchmark "LargeConfig"
-```
 
 ### "ncu not found"
 
@@ -375,11 +323,14 @@ When working on new algorithm versions in `experimental/`:
 cmake --preset profiling-cuda-gcc12
 cmake --build --preset profiling-cuda-gcc12
 
-# 2. Profile your new version
-./scripts/profiling/run_nsys.sh --benchmark "V4_3D_MediumConfig"
+# 2. Profile your new version with detailed GPU metrics
+./scripts/profiling/run_ncu.sh --benchmark "V4_3D_MediumConfig"
 
 # 3. Compare against baseline
-./scripts/profiling/run_nsys.sh --benchmark "V1_3D_MediumConfig" --output-dir "baseline"
+./scripts/profiling/run_ncu.sh --benchmark "V1_3D_MediumConfig" --output-dir "baseline"
+
+# 4. Analyze the results
+/usr/local/cuda-12.8/bin/ncu --import profiling_output_ncu/V4_3D_MediumConfig_*.ncu-rep --page=details
 ```
 
 ## Additional Resources

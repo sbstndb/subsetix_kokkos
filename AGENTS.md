@@ -152,18 +152,19 @@ done
 
 For performance-critical work, especially in the experimental module, profiling is essential:
 
-- **Use Nsight Systems (`nsys`)** for modern GPUs (compute capability 8.0+)
+- **Use Nsight Compute (`ncu`)** for detailed GPU kernel profiling (recommended)
+- **Use Nsight Systems (`nsys`)** for system-wide timeline analysis
 - **Use nvprof** for legacy GPUs (compute capability < 8.0)
 - Build with profiling presets: `cmake --preset profiling-cuda-gcc12`
 - See **PROFILING.md** for comprehensive profiling guide, scripts, and best practices
 
 Quick profiling example:
 ```bash
-# Quick profiling on 3D SmallConfig
-./scripts/profiling/run_nsys_quick.sh
+# Quick GPU kernel profiling on 3D SmallConfig
+./scripts/profiling/run_ncu.sh --benchmark "3D_SmallConfig" --section-set basic
 
-# Profile specific benchmark
-./scripts/profiling/run_nsys.sh --benchmark "3D_LargeConfig"
+# Profile specific benchmark with detailed metrics
+./scripts/profiling/run_ncu.sh --benchmark "3D_LargeConfig"
 ```
 
 ## CMake Options and Build Configuration

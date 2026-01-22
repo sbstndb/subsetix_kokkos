@@ -2,9 +2,10 @@
 # SPDX-FileCopyrightText: 2025 Subsetix Kokkos Contributors
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# analyze_results.sh - Analyze and summarize nvprof profiling results
+# analyze_results.sh - Analyze and summarize profiling results
 #
-# This script helps extract and summarize key information from nvprof output.
+# This script helps extract and summarize key information from profiling output.
+# Supports ncu and nsys output files.
 #
 # Usage:
 #   ./analyze_results.sh [PROFILING_DIR]
@@ -33,19 +34,36 @@ if [ ! -d "${PROFILING_DIR}" ]; then
 fi
 
 echo "=================================="
-echo "NVProf Results Analysis"
+echo "Profiling Results Analysis"
 echo "=================================="
 echo "Directory: ${PROFILING_DIR}"
 echo ""
 
-# Function to extract timing info from nvprof log
-extract_timing() {
+# Detect profiler type and count files
+NCU_FILES=$(find "${PROFILING_DIR}" -name "*.ncu-rep" -type f 2>/dev/null | wc -l)
+NSYS_FILES=$(find "${PROFILING_DIR}" -name "*.nsys-rep" -type f 2>/dev/null | wc -l)
+LOG_FILES=$(find "${PROFILING_DIR}" -name "*.log" -type f 2>/dev/null)
+
+echo "Found files:"
+if [ "${NCU_FILES}" -gt 0 ]; then
+  echo "  - ${NCU_FILES} ncu report(s) (*.ncu-rep)"
+fi
+if [ "${NSYS_FILES}" -gt 0 ]; then
+  echo "  - ${NSYS_FILES} nsys report(s) (*.nsys-rep)"
+fi
+if [ -n "${LOG_FILES}" ]; then
+  LOG_COUNT=$(echo "${LOG_FILES}" | wc -l)
+  echo "  - ${LOG_COUNT} log file(s)"
+fi
+echo ""
+
+# Function to extract timing info from log files
+extract_log_timing() {
   local log_file="$1"
   if [ ! -f "${log_file}" ]; then
     return
   fi
 
-  # Extract GPU time from log (look for "GPU activities" section)
   echo "  File: $(basename "${log_file}")"
 
   # Try to extract total time from the benchmark output
@@ -54,39 +72,51 @@ extract_timing() {
     echo "    Real time: ${time}"
   fi
 
-  # Count kernel launches
-  if grep -q "CUDA" "${log_file}" 2>/dev/null; then
-    local kernels=$(grep -c "CUDA" "${log_file}" 2>/dev/null || echo "0")
-    echo "    CUDA operations: ${kernels}"
+  # Try to extract benchmark results
+  if grep -q "items_per_second" "${log_file}" 2>/dev/null; then
+    local ips=$(grep -oP 'items_per_second=\K[\d.]+' "${log_file}" 2>/dev/null | head -1)
+    if [ -n "${ips}" ]; then
+      echo "    Items/sec: ${ips}"
+    fi
   fi
 
   echo ""
 }
 
-# Find all log files
-LOG_FILES=$(find "${PROFILING_DIR}" -name "*.log" -type f 2>/dev/null)
-
-if [ -z "${LOG_FILES}" ]; then
-  echo "No log files found in ${PROFILING_DIR}"
-  exit 0
+# Process log files if they exist
+if [ -n "${LOG_FILES}" ]; then
+  echo "=================================="
+  echo "Log Files Summary"
+  echo "=================================="
+  for log_file in ${LOG_FILES}; do
+    extract_log_timing "${log_file}"
+  done
 fi
 
-echo "Found $(echo "${LOG_FILES}" | wc -l) log file(s)"
+# Print viewing instructions based on available files
+echo "=================================="
+echo "Viewing Instructions"
+echo "=================================="
+
+if [ "${NCU_FILES}" -gt 0 ]; then
+  NCU_BIN=$(find /usr -name "ncu" 2>/dev/null | head -1)
+  if [ -z "${NCU_BIN}" ]; then
+    NCU_BIN="ncu"
+  fi
+  echo ""
+  echo "To view ncu results:"
+  echo "  ${NCU_BIN} --import ${PROFILING_DIR}/*.ncu-rep --page=details"
+fi
+
+if [ "${NSYS_FILES}" -gt 0 ]; then
+  echo ""
+  echo "To view nsys results:"
+  echo "  nsys-ui ${PROFILING_DIR}/*.nsys-rep"
+  echo "  nsys stats ${PROFILING_DIR}/*.nsys-rep"
+fi
+
 echo ""
-
-# Process each log file
-for log_file in ${LOG_FILES}; do
-  extract_timing "${log_file}"
-done
-
 echo "=================================="
 echo "Summary"
 echo "=================================="
 echo "Profiling directory: ${PROFILING_DIR}"
-echo ""
-echo "To view detailed profiles with NVIDIA Visual Profiler:"
-echo "  nvvp ${PROFILING_DIR}/*/*.prof"
-echo ""
-echo "To export profile data to text:"
-echo "  nvprof --export-profile output.prof <your_command>"
-echo "  nvprof -i output.prof --print-gpu-trace > trace.txt"
