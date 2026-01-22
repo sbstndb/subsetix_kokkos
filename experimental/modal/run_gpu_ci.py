@@ -115,7 +115,13 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
         capture_output=True, text=True,
     )
     if result.returncode != 0:
-        return f"❌ [{gpu_type}] Build failed:\n{result.stderr}"
+        return f"""❌ [{gpu_type}] Build failed:
+STDERR:
+{result.stderr}
+
+STDOUT:
+{result.stdout[:5000]}  # Truncate stdout to avoid overflow
+"""
 
     # Run tests
     result = subprocess.run(
