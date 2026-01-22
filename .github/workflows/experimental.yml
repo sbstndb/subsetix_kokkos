@@ -35,13 +35,13 @@ jobs:
           ./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark \
             --benchmark_min_time=0.01s \
             --benchmark_repetitions=1 \
-            --benchmark_filter="SmallConfig"
+            --benchmark_filter="SmallConfig|MediumConfig"
           ./build-experimental-serial/experimental/benchmarks/experimental_regular_mesh_benchmark \
             --benchmark_min_time=0.01s \
             --benchmark_repetitions=1 \
-            --benchmark_filter="SmallConfig"
+            --benchmark_filter="SmallConfig|MediumConfig"
 
-      # Note: Filter matches only SmallConfig benchmarks for fast CI execution.
+      # Note: Filter matches SmallConfig and MediumConfig for fast but meaningful CI execution.
 
   # OpenMP backend check
   experimental-openmp:
