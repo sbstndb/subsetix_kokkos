@@ -11,7 +11,7 @@
 #   ./run_ncu.sh [OPTIONS]
 #
 # Options:
-#   --preset PRESET        CMake preset to use (default: profiling-cuda-gcc12)
+#   --preset PRESET        CMake preset to use (default: profiling-nsight-cuda-gcc12)
 #   --benchmark FILTER     Benchmark filter (default: 3D_LargeConfig)
 #   --output-dir DIR       Output directory for profiling results (default: profiling_output_ncu)
 #   --ncu-opts OPTS        Extra options to pass to ncu
@@ -37,7 +37,7 @@
 set -euo pipefail
 
 # Default values
-PRESET="profiling-cuda-gcc12"
+PRESET="profiling-nsight-cuda-gcc12"
 BENCHMARK_FILTER="3D_LargeConfig"
 OUTPUT_DIR="profiling_output_ncu"
 BUILD_ONLY=0
@@ -124,7 +124,7 @@ done
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-BUILD_DIR="${PROJECT_ROOT}/build-profiling-cuda-gcc12"
+BUILD_DIR="${PROJECT_ROOT}/build-profiling-nsight-cuda-gcc12"
 BENCHMARK_BIN="${BUILD_DIR}/experimental/benchmarks/experimental_comparison_benchmark"
 
 # Create output directory

@@ -86,7 +86,7 @@ echo ""
 # Build if needed
 if [ "${SKIP_BUILD}" -eq 0 ]; then
   echo "Building with profiling preset..."
-  "${RUN_NSYS}" --preset profiling-cuda-gcc12 --build-only || {
+  "${RUN_NSYS}" --preset profiling-nsight-cuda-gcc12 --build-only || {
     echo "Error: Build failed"
     exit 1
   }
@@ -105,7 +105,7 @@ if [ "${VERSION}" = "all" ]; then
   if [ "${DIMENSION}" = "both" ]; then
     echo "Running quick profiling: 2D and 3D, all versions..."
     "${RUN_NSYS}" \
-      --preset profiling-cuda-gcc12 \
+      --preset profiling-nsight-cuda-gcc12 \
       --benchmark "SmallConfig" \
       --output-dir "${OUTPUT_DIR}/all" \
       --nsys-opts "${NSYS_OPTS}" \
@@ -113,7 +113,7 @@ if [ "${VERSION}" = "all" ]; then
   elif [ "${DIMENSION}" = "3D" ]; then
     echo "Running quick profiling: 3D, all versions..."
     "${RUN_NSYS}" \
-      --preset profiling-cuda-gcc12 \
+      --preset profiling-nsight-cuda-gcc12 \
       --benchmark "3D_SmallConfig" \
       --output-dir "${OUTPUT_DIR}/3d_all" \
       --nsys-opts "${NSYS_OPTS}" \
@@ -121,7 +121,7 @@ if [ "${VERSION}" = "all" ]; then
   else
     echo "Running quick profiling: 2D, all versions..."
     "${RUN_NSYS}" \
-      --preset profiling-cuda-gcc12 \
+      --preset profiling-nsight-cuda-gcc12 \
       --benchmark "SmallConfig" \
       --output-dir "${OUTPUT_DIR}/2d_all" \
       --nsys-opts "${NSYS_OPTS}" \
@@ -142,7 +142,7 @@ else
 
   echo "Running quick profiling: ${FILTER}..."
   "${RUN_NSYS}" \
-    --preset profiling-cuda-gcc12 \
+    --preset profiling-nsight-cuda-gcc12 \
     --benchmark "${FILTER}" \
     --output-dir "${SUBDIR}" \
     --nsys-opts "${NSYS_OPTS}" \
