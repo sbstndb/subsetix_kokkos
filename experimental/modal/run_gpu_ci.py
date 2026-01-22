@@ -19,12 +19,12 @@ import modal
 # -----------------------------------------------------------------------------
 
 # GPU architecture mapping for Kokkos
-# NOTE: B200 (BLACKWELL, CC 10.0) is not supported by Kokkos 4.5.0
+# NOTE: This branch uses Kokkos 5.0.1 which supports Compute Capability 10.0 (BLACKWELL/B200)
 GPU_ARCH_MAP = {
     "T4": "TURING75",
     "A100": "AMPERE80",
     "H100": "HOPPER90",
-    "B200": "BLACKWELL",  # Will fail - Kokkos 4.5.0 doesn't support CC 10.0
+    "B200": "BLACKWELL",  # Supported with Kokkos 5.0.1+
 }
 
 def create_image() -> modal.Image:

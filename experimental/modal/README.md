@@ -38,7 +38,9 @@ Results are printed directly to your terminal.
 | T4 | TURING75 | ✅ Working | ~$0.07/run |
 | A100 | AMPERE80 | ✅ Working | ~$0.15/run |
 | H100 | HOPPER90 | ✅ Working | ~$0.15/run |
-| B200 | BLACKWELL | ❌ Kokkos 4.5.0 doesn't support CC 10.0 | N/A |
+| B200 | BLACKWELL | ✅ Supported (Kokkos 5.0.1+) | ~$0.30/run |
+
+**Note:** This branch uses Kokkos 5.0.1 which supports Compute Capability 10.0 (BLACKWELL/B200).
 
 ## Execution Modes
 
@@ -78,7 +80,13 @@ Check that GCC 12 and CUDA toolkit are available in the container. The script in
 Modal's NVIDIA driver version may differ. The script uses CUDA 12.3.2 from NVIDIA containers which should be compatible with most drivers.
 
 ### B200 fails with "CUDA enabled but no NVIDIA GPU architecture"
-This is expected - Kokkos 4.5.0 doesn't support Compute Capability 10.0 (BLACKWELL). You need to upgrade Kokkos to a newer version or use a different GPU.
+
+**On Kokkos 4.5.0:** This is expected - Kokkos 4.5.0 doesn't support Compute Capability 10.0 (BLACKWELL).
+
+**Solution:** Switch to the `feat/modal-gpu-ci-kokkos-5` branch which uses Kokkos 5.0.1:
+```bash
+git checkout feat/modal-gpu-ci-kokkos-5
+```
 
 ## Cost Estimate
 

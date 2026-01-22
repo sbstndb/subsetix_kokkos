@@ -52,12 +52,12 @@ cat /tmp/*_results.txt
 
 ### GPU Support Matrix
 
-| GPU | Kokkos Arch | Compute Capability | Status |
-|-----|-------------|-------------------|--------|
-| T4 | TURING75 | 7.5 | ✅ Working |
-| A100 | AMPERE80 | 8.0 | ✅ Working |
-| H100 | HOPPER90 | 9.0 | ✅ Working |
-| B200 | BLACKWELL | 10.0 | ❌ Kokkos 4.5.0 limitation |
+| GPU | Kokkos Arch | Compute Capability | Kokkos 4.5.0 | Kokkos 5.0.1+ |
+|-----|-------------|-------------------|-------------|---------------|
+| T4 | TURING75 | 7.5 | ✅ Working | ✅ Working |
+| A100 | AMPERE80 | 8.0 | ✅ Working | ✅ Working |
+| H100 | HOPPER90 | 9.0 | ✅ Working | ✅ Working |
+| B200 | BLACKWELL | 10.0 | ❌ Not supported | ✅ Supported |
 
 ### Container Image
 
@@ -151,9 +151,13 @@ Running all 3 in parallel: **~$0.20 total**
 
 **Error**: `CUDA enabled but no NVIDIA GPU architecture currently enabled`
 
-**Cause**: Kokkos 4.5.0 doesn't support Compute Capability 10.0 (BLACKWELL).
+**Cause (Kokkos 4.5.0)**: Kokkos 4.5.0 doesn't support Compute Capability 10.0 (BLACKWELL).
 
-**Solution**: Use T4, A100, or H100; or upgrade Kokkos to version 4.6+.
+**Solution:** Use the `feat/modal-gpu-ci-kokkos-5` branch which includes Kokkos 5.0.1:
+```bash
+git checkout feat/modal-gpu-ci-kokkos-5
+modal run experimental/modal/run_gpu_ci.py::run_b200_entry
+```
 
 ### Build fails with CUDA errors
 
