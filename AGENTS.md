@@ -27,6 +27,13 @@ Use CMake presets - see **CLAUDE.md** for complete reference.
 | | `experimental-openmp` | OpenMP | `build-experimental-openmp` |
 | | `experimental-cuda-gcc12` | CUDA | `build-experimental-cuda-gcc12` |
 | | `experimental-asan` | Serial + sanitizers | `build-experimental-asan` |
+| **Profiling** | `experimental-perf-serial` | Serial + Linux perf | `build-experimental-perf-serial` |
+| | `experimental-perf-openmp` | OpenMP + Linux perf | `build-experimental-perf-openmp` |
+| | `experimental-serial-profile` | Serial + Kokkos tools | `build-experimental-serial-profile` |
+| | `experimental-openmp-profile` | OpenMP + Kokkos tools | `build-experimental-openmp-profile` |
+| | `experimental-cuda-gcc12-profile` | CUDA + Kokkos tools | `build-experimental-cuda-gcc12-profile` |
+| | `profiling-nsight-cuda-gcc12` | CUDA + Nsight | `build-profiling-nsight-cuda-gcc12` |
+| | `profiling-nsight-cuda-gcc12-release` | CUDA + Nsight (Release) | `build-profiling-nsight-cuda-gcc12-release` |
 
 ### Quick Start
 
@@ -76,6 +83,53 @@ ctest --preset cuda-gcc12
 ctest --preset experimental-serial
 ./build-experimental-serial/experimental/tests/experimental_v1_unitary_test
 ```
+
+## Profiling Guidelines
+
+The project supports three profiling approaches for performance analysis:
+
+### Profiling Tools
+
+| Tool | Best For | Backend | Preset |
+|------|----------|---------|--------|
+| **Linux perf** | CPU analysis (hot paths, cache) | Serial, OpenMP | `experimental-perf-*` |
+| **Nsight (ncu/nsys)** | GPU kernel profiling | CUDA | `profiling-nsight-*` |
+| **Kokkos tools** | Kernel-level timing | All | `experimental-*-profile` |
+
+### Quick Start
+
+```bash
+# Linux perf (Serial/OpenMP)
+cmake --preset experimental-perf-serial
+cmake --build --preset experimental-perf-serial
+./scripts/perf_profile.sh ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark
+
+# Nsight GPU profiling (CUDA)
+cmake --preset profiling-nsight-cuda-gcc12
+cmake --build --preset profiling-nsight-cuda-gcc12
+./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
+
+# Kokkos profiling tools (All backends)
+cmake --preset experimental-serial-profile
+cmake --build --preset experimental-serial-profile
+./scripts/profile_benchmark.sh experimental-serial-profile kernel-timer "SmallConfig"
+```
+
+### Profiling Scripts
+
+- `scripts/perf_profile.sh` - Generic perf profiling
+- `scripts/profile_benchmark.sh` - Kokkos tools profiling
+- `scripts/profiling/run_ncu.sh` - Nsight Compute
+- `scripts/profiling/run_nsys.sh` - Nsight Systems
+- `scripts/profiling/profile_all_backends.sh` - Profile all backends
+
+### Documentation
+
+See **PROFILING.md** for comprehensive profiling guide, including:
+- Tool selection guide
+- Profiling overhead information
+- Sampling support
+- Script reference
 
 ## Experimental Module Guidelines
 

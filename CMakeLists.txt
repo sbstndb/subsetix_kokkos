@@ -23,6 +23,14 @@ option(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED "Force DeviceMemorySpace = Kokkos::
 option(SUBSETIX_ENABLE_COVERAGE "Enable code coverage analysis (GCC only)" OFF)
 
 # ========================================================================
+# Profiling Configuration
+# ========================================================================
+
+option(SUBSETIX_ENABLE_PROFILING_PERF "Enable Linux perf profiling support (adds debug symbols)" OFF)
+option(SUBSETIX_ENABLE_PROFILING_CUDA "Enable CUDA profiling support (Nsight ncu/nsys, adds debug symbols)" OFF)
+option(SUBSETIX_ENABLE_PROFILING_KOKKOS "Enable Kokkos profiling tools support (kernel-timer, chrome-tracing, etc.)" OFF)
+
+# ========================================================================
 # Experimental Algorithms Configuration
 # ========================================================================
 
@@ -34,6 +42,57 @@ if(SUBSETIX_ENABLE_EXPERIMENTAL)
   message(STATUS "Experimental algorithms will be compiled and tested")
 else()
   message(STATUS "Experimental algorithms disabled (default)")
+endif()
+
+# ========================================================================
+# Profiling Configuration
+# ========================================================================
+
+set(_SUBSETIX_PROFILING_COUNT 0)
+if(SUBSETIX_ENABLE_PROFILING_PERF)
+  math(EXPR _SUBSETIX_PROFILING_COUNT "${_SUBSETIX_PROFILING_COUNT} + 1")
+endif()
+if(SUBSETIX_ENABLE_PROFILING_CUDA)
+  math(EXPR _SUBSETIX_PROFILING_COUNT "${_SUBSETIX_PROFILING_COUNT} + 1")
+endif()
+if(SUBSETIX_ENABLE_PROFILING_KOKKOS)
+  math(EXPR _SUBSETIX_PROFILING_COUNT "${_SUBSETIX_PROFILING_COUNT} + 1")
+endif()
+
+if(_SUBSETIX_PROFILING_COUNT GREATER 0)
+  message(STATUS "=== Profiling Enabled ===")
+
+  # Add debug symbols for all profiling modes
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-g>)
+  add_link_options(-g)
+
+  if(SUBSETIX_ENABLE_PROFILING_PERF)
+    message(STATUS "  Linux perf profiling enabled")
+    add_compile_definitions(SUBSETIX_ENABLE_PROFILING_PERF)
+
+    # Ensure we have optimization but with debug info
+    if(NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+      set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type for perf profiling" FORCE)
+      message(STATUS "  Build type set to RelWithDebInfo for perf profiling")
+    endif()
+  endif()
+
+  if(SUBSETIX_ENABLE_PROFILING_CUDA)
+    message(STATUS "  CUDA profiling enabled (Nsight ncu/nsys)")
+    add_compile_definitions(SUBSETIX_ENABLE_PROFILING_CUDA)
+
+    # For nvprof/nsight, we want Release optimization with debug symbols
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+      message(WARNING "Profiling with Debug build may produce misleading results. Consider using RelWithDebInfo or Release.")
+    endif()
+  endif()
+
+  if(SUBSETIX_ENABLE_PROFILING_KOKKOS)
+    message(STATUS "  Kokkos profiling tools enabled")
+    add_compile_definitions(SUBSETIX_ENABLE_PROFILING_KOKKOS)
+  endif()
+
+  message(STATUS "Debug symbols added for profiling")
 endif()
 
 set(_SUBSETIX_EXECSPACE_FORCE_COUNT 0)
@@ -97,7 +156,7 @@ include(FetchContent)
 FetchContent_Declare(
     kokkos
     GIT_REPOSITORY https://github.com/kokkos/kokkos.git
-    GIT_TAG 4.5.00
+    GIT_TAG 5.0.1
 )
 
 set(Kokkos_ENABLE_SERIAL ON CACHE BOOL "Enable Kokkos SERIAL backend" FORCE)
@@ -129,6 +188,72 @@ if(SUBSETIX_EXECSPACE_FORCE_SERIAL)
 endif()
 
 FetchContent_MakeAvailable(kokkos)
+
+# ========================================================================
+# Kokkos Profiling Tools Configuration
+# ========================================================================
+
+if(SUBSETIX_ENABLE_PROFILING_KOKKOS)
+  message(STATUS "=== Kokkos Profiling Tools Build ===")
+
+  # Declare kokkos-tools (using develop branch for Kokkos 4.5+ compatibility)
+  FetchContent_Declare(
+      kokkos_tools
+      GIT_REPOSITORY https://github.com/kokkos/kokkos-tools.git
+      GIT_TAG develop
+  )
+
+  # Configure kokkos-tools options
+  # Disable tests and examples for faster build
+  set(KokkosTools_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+  set(KokkosTools_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(KokkosTools_ENABLE_SINGLE ON CACHE BOOL "Build monolithic library" FORCE)
+
+  # Force shared library build (required for dynamic profiling via KOKKOS_PROFILE_LIBRARY)
+  set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries for kokkos-tools" FORCE)
+
+  # Configure backend-specific profilers
+  if(SUBSETIX_KOKKOS_CUDA)
+    set(Kokkos_ENABLE_CUDA ON CACHE BOOL "" FORCE)
+  endif()
+
+  if(SUBSETIX_KOKKOS_OPENMP)
+    set(Kokkos_ENABLE_OPENMP ON CACHE BOOL "" FORCE)
+  endif()
+
+  # Make kokkos-tools available
+  FetchContent_MakeAvailable(kokkos_tools)
+
+  # Get the path to the built profiling library
+  if(KokkosTools_ENABLE_SINGLE)
+    # Find the profiling library in the build directory
+    # The library is typically in <build_dir>/lib/libkokkosp.so (or .dylib on macOS, .dll on Windows)
+    find_library(KOKKOS_PROFILE_LIB
+      NAMES kokkosp libkokkosp
+      PATHS
+        "${CMAKE_BINARY_DIR}/_deps/kokkos_tools-build"
+        "${CMAKE_BINARY_DIR}/_deps"
+        "${CMAKE_BINARY_DIR}"
+      PATH_SUFFIXES lib lib64
+      NO_DEFAULT_PATH
+    )
+
+    if(NOT KOKKOS_PROFILE_LIB)
+      # Fallback: try the build directory directly
+      set(KOKKOS_PROFILE_LIB "${CMAKE_BINARY_DIR}/_deps/lib/${CMAKE_SHARED_LIBRARY_PREFIX}kokkosp${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    endif()
+
+    message(STATUS "Kokkos profiling library: ${KOKKOS_PROFILE_LIB}")
+
+    # Set an environment variable hint for the user
+    set(KOKKOS_PROFILE_LIBRARY_HINT "${KOKKOS_PROFILE_LIB}" CACHE STRING "Path to Kokkos profiling library for KOKKOS_PROFILE_LIBRARY")
+    message(STATUS "Set KOKKOS_PROFILE_LIBRARY=${KOKKOS_PROFILE_LIBRARY_HINT} to enable profiling")
+  endif()
+
+  message(STATUS "Kokkos profiling tools built successfully")
+else()
+  message(STATUS "Kokkos profiling tools disabled")
+endif()
 
 if(SUBSETIX_EXECSPACE_FORCE_CUDA)
     add_compile_definitions(SUBSETIX_EXECSPACE_CUDA)
@@ -170,7 +295,7 @@ endif()
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.15.0
+    GIT_TAG v1.17.0
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
@@ -179,7 +304,7 @@ FetchContent_MakeAvailable(googletest)
 FetchContent_Declare(
     googlebenchmark
     GIT_REPOSITORY https://github.com/google/benchmark.git
-    GIT_TAG v1.8.4
+    GIT_TAG v1.9.4
 )
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googlebenchmark)
