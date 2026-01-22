@@ -1,0 +1,9 @@
+---
+title: "Subsetix Kokkos"
+---
+
+# Subsetix Kokkos
+
+Documentation coming soon.
+
+See [README.md](https://github.com/sbstndb/subsetix_kokkos) for project information.

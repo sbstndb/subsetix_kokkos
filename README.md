@@ -264,6 +264,12 @@ solver.add_source([](const auto& U, const auto& q, Real x, Real y, Real t) {
 });
 ```
 
+### Project Documentation
+
+- **QUARTO.md** - Quarto documentation system (website, presentations, PDFs)
+- **CLAUDE.md** - Development guide for Claude Code agents
+- **AGENTS.md** - Repository guidelines and coding standards
+
 ---
 
 ## Testing

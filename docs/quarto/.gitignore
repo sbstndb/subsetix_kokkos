@@ -1,0 +1,6 @@
+_site/
+.quarto/
+*.log
+*.tex
+*.pdf
+**/*.quarto_ipynb

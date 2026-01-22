@@ -1,0 +1,16 @@
+project:
+  type: website
+
+website:
+  title: "Subsetix Kokkos"
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      - href: index.qmd
+        text: "Home"
+
+format:
+  html:
+    theme: cosmo
+    toc: true
