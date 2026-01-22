@@ -1,10 +1,11 @@
 """
 Modal CI for subsetix_kokkos experimental module on NVIDIA GPU.
 
-This script builds and runs the experimental tests/benchmarks on Modal GPU.
-
 Usage:
-    modal run experimental/modal/run_gpu_ci.py
+    modal run experimental/modal/run_gpu_ci.py::run_t4
+    modal run experimental/modal/run_gpu_ci.py::run_a100
+    modal run experimental/modal/run_gpu_ci.py::run_h100
+    modal run experimental/modal/run_gpu_ci.py::run_b200
 """
 
 from pathlib import Path
@@ -17,15 +18,18 @@ import modal
 # Modal Configuration
 # -----------------------------------------------------------------------------
 
+# GPU architecture mapping for Kokkos
+GPU_ARCH_MAP = {
+    "T4": "TURING75",
+    "A100": "AMPERE80",
+    "H100": "HOPPER90",
+    "B200": "BLACKWELL",
+}
+
 def create_image() -> modal.Image:
     """Create the Modal image with the project code included."""
-    # Get project root relative to this script
-    # The script is at: experimental/modal/run_gpu_ci.py
-    # Project root is three levels up
     script_path = Path(__file__).resolve()
     project_root = script_path.parent.parent.parent
-
-    print(f"📦 Building image with project root: {project_root}")
 
     return (
         modal.Image.from_registry(
@@ -33,65 +37,45 @@ def create_image() -> modal.Image:
             add_python="3.11",
         )
         .apt_install(
-            # Build essentials
             "cmake",
             "ninja-build",
             "gcc-12",
             "g++-12",
             "git",
-            # Dependencies
             "libfmt-dev",
             "libmpfr-dev",
         )
         .env({
             "CC": "gcc-12",
             "CXX": "g++-12",
-            "CUDA_ARCHITECTURES": "75",  # Turing (T4), good default for Modal
         })
         .workdir("/workspace")
-        # add_local_dir must be last (unless copy=True)
         .add_local_dir(project_root, remote_path="/workspace")
     )
 
-
-# Create image - this will be called when the app is deployed
 IMAGE = create_image()
-
-GPU_CONFIG = "any"  # Any available NVIDIA GPU
 
 app = modal.App("subsetix-experimental-gpu-ci", image=IMAGE)
 
 
 # -----------------------------------------------------------------------------
-# Build and run function
+# GPU-specific functions
 # -----------------------------------------------------------------------------
 
-@app.function(gpu=GPU_CONFIG, timeout=1200)
-def build_and_run_tests() -> str:
-    """Build and run experimental tests on GPU."""
-
-    import os
-
-    # Working directory is /workspace because we set workdir on the image
+def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
+    """Build and run experimental tests on specified GPU."""
     repo_root = Path("/workspace")
-
-    print(f"📂 Working in: {repo_root}")
-    print(f"📂 Contents: {[f.name for f in repo_root.iterdir()][:10]}")
-
-    # Build in /tmp (writable)
     build_dir = Path("/tmp/build-experimental-cuda")
     build_dir.mkdir(exist_ok=True)
 
+    print(f"🎯 GPU: {gpu_type} | CUDA ARCH: {cuda_arch}")
+
     # Configure
-    print("\n🔨 Configuring...")
     cmake_cmd = [
-        "cmake",
-        "-S", str(repo_root),
-        "-B", str(build_dir),
-        "-G", "Ninja",
+        "cmake", "-S", str(repo_root), "-B", str(build_dir), "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DKokkos_ENABLE_CUDA=ON",
-        "-DKokkos_ARCH_TURING75=ON",
+        f"-DKokkos_ARCH_{cuda_arch}=ON",
         "-DSUBSETIX_ENABLE_EXPERIMENTAL=ON",
         "-DSUBSETIX_BUILD_STABLE_LIBS=OFF",
         "-DSUBSETIX_BUILD_STABLE_TESTS=OFF",
@@ -100,64 +84,119 @@ def build_and_run_tests() -> str:
 
     result = subprocess.run(cmake_cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        return f"❌ Configure failed:\n{result.stderr}\n{result.stdout}"
-
-    print("✅ Configure OK")
+        return f"❌ [{gpu_type}] Configure failed:\n{result.stderr}\n{result.stdout}"
 
     # Build
-    print("\n🔨 Building...")
     result = subprocess.run(
         ["cmake", "--build", str(build_dir), "--parallel"],
-        capture_output=True,
-        text=True,
+        capture_output=True, text=True,
     )
     if result.returncode != 0:
-        return f"❌ Build failed:\n{result.stderr}\n{result.stdout}"
-
-    print("✅ Build OK")
-    build_output = result.stdout
+        return f"❌ [{gpu_type}] Build failed:\n{result.stderr}"
 
     # Run tests
-    print("\n🧪 Running tests...")
     result = subprocess.run(
         ["ctest", "--output-on-failure"],
-        cwd=str(build_dir),
-        capture_output=True,
-        text=True,
+        cwd=str(build_dir), capture_output=True, text=True,
     )
     test_output = result.stdout + result.stderr
 
     # Run benchmarks
-    print("\n📊 Running benchmarks...")
     bench_exe = build_dir / "experimental" / "benchmarks" / "experimental_comparison_benchmark"
     bench_output = ""
     if bench_exe.exists():
         result = subprocess.run([str(bench_exe)], capture_output=True, text=True)
         bench_output = result.stdout + result.stderr
     else:
-        bench_output = f"⚠️  Benchmark not found at {bench_exe}"
+        bench_output = f"⚠️  Benchmark not found"
+
+    # Extract key benchmark results
+    lines = bench_output.split('\n')
+    v3_large_2d = ""
+    v3_large_3d = ""
+    for line in lines:
+        if "V3RandomMeshBenchmark2D<GetLargeConfig>" in line:
+            v3_large_2d = line
+        elif "V3RandomMeshBenchmark3D<GetLargeConfig>" in line:
+            v3_large_3d = line
 
     return f"""
 {'='*60}
-BUILD OUTPUT
+🎯 GPU: {gpu_type} | CUDA ARCH: {cuda_arch}
 {'='*60}
-{build_output[-2000:] if len(build_output) > 2000 else build_output}
 
-{'='*60}
-TESTS OUTPUT
-{'='*60}
-{test_output[-2000:] if len(test_output) > 2000 else test_output}
+TESTS:
+{test_output.split('Test project')[1] if 'Test project' in test_output else test_output}
 
-{'='*60}
-BENCHMARKS OUTPUT
-{'='*60}
+KEY BENCHMARKS (V3 Large Config):
+2D: {v3_large_2d}
+3D: {v3_large_3d}
+
+FULL BENCHMARK OUTPUT:
 {bench_output}
 """
 
 
+@app.function(gpu="T4", timeout=1200)
+def run_t4() -> str:
+    return run_benchmarks("T4", "TURING75")
+
+@app.function(gpu="A100", timeout=1200)
+def run_a100() -> str:
+    return run_benchmarks("A100", "AMPERE80")
+
+@app.function(gpu="H100", timeout=1200)
+def run_h100() -> str:
+    return run_benchmarks("H100", "HOPPER90")
+
+@app.function(gpu="B200", timeout=1200)
+def run_b200() -> str:
+    return run_benchmarks("B200", "BLACKWELL")
+
+
+# -----------------------------------------------------------------------------
+# Entry points
+# -----------------------------------------------------------------------------
+
 @app.local_entrypoint()
 def main():
-    """Entry point for running from local machine."""
-    print("🚀 Running subsetix experimental GPU CI on Modal...")
-    output = build_and_run_tests.remote()
-    print(output)
+    """Run all GPU benchmarks."""
+    print("🚀 Running benchmarks on T4...")
+    t4_result = run_t4.remote()
+    print(t4_result)
+
+    print("\n" + "="*60)
+    print("🚀 Running benchmarks on A100...")
+    a100_result = run_a100.remote()
+    print(a100_result)
+
+    print("\n" + "="*60)
+    print("🚀 Running benchmarks on H100...")
+    h100_result = run_h100.remote()
+    print(h100_result)
+
+    print("\n" + "="*60)
+    print("🚀 Running benchmarks on B200...")
+    b200_result = run_b200.remote()
+    print(b200_result)
+
+
+@app.local_entrypoint()
+def run_t4_entry():
+    print("🚀 Running T4 benchmarks...")
+    print(run_t4.remote())
+
+@app.local_entrypoint()
+def run_a100_entry():
+    print("🚀 Running A100 benchmarks...")
+    print(run_a100.remote())
+
+@app.local_entrypoint()
+def run_h100_entry():
+    print("🚀 Running H100 benchmarks...")
+    print(run_h100.remote())
+
+@app.local_entrypoint()
+def run_b200_entry():
+    print("🚀 Running B200 benchmarks...")
+    print(run_b200.remote())
