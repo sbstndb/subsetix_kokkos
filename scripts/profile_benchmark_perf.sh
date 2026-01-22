@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: 2025 Subsetix Kokkos Contributors
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Script to profile experimental benchmarks with perf
-# Usage: ./scripts/profile_benchmark.sh <preset> <config> <dimension> [options]
+# Script to profile experimental benchmarks with Linux perf
+# Usage: ./scripts/profile_benchmark_perf.sh <preset> <config> <dimension> [options]
 
 set -e
 

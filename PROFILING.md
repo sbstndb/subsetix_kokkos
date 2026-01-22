@@ -244,7 +244,7 @@ All profiling presets:
 | Script | Purpose |
 |--------|---------|
 | `scripts/perf_profile.sh` | Generic profiling for any executable |
-| `scripts/profile_benchmark.sh` | Profile specific benchmark configurations |
+| `scripts/profile_benchmark_perf.sh` | Profile specific benchmark configurations with perf |
 | `scripts/profile_all_benchmarks.sh` | Profile all benchmark configurations |
 | `scripts/compare_perf.sh` | Compare two perf data files |
 | `scripts/generate_perf_report.sh` | Generate consolidated report |

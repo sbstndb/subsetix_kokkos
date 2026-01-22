@@ -79,13 +79,13 @@ Several convenience scripts are provided for different profiling tasks:
 
 ```bash
 # Profile Small 2D benchmarks
-./scripts/profile_benchmark.sh experimental-perf-serial Small 2D
+./scripts/profile_benchmark_perf.sh experimental-perf-serial Small 2D
 
 # Profile Medium 2D benchmarks with OpenMP
-./scripts/profile_benchmark.sh experimental-perf-openmp Medium 2D
+./scripts/profile_benchmark_perf.sh experimental-perf-openmp Medium 2D
 
 # Use perf stat for real-time statistics
-./scripts/profile_benchmark.sh experimental-perf-serial Small 2D --stat
+./scripts/profile_benchmark_perf.sh experimental-perf-serial Small 2D --stat
 ```
 
 #### Profile all benchmark configurations
@@ -167,8 +167,8 @@ perf record --call-graph dwarf \
 
 Or use the convenience script:
 ```bash
-./scripts/profile_benchmark.sh experimental-perf-serial Small 2D
-./scripts/profile_benchmark.sh experimental-perf-serial Medium 3D
+./scripts/profile_benchmark_perf.sh experimental-perf-serial Small 2D
+./scripts/profile_benchmark_perf.sh experimental-perf-serial Medium 3D
 ```
 
 ### Profile all benchmarks
