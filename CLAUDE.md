@@ -37,6 +37,10 @@ cmake --preset experimental-cuda-gcc12  # CUDA, experimental module only
 cmake --build --preset experimental-cuda-gcc12
 cmake --preset experimental-asan        # Serial + sanitizers, experimental only
 cmake --build --preset experimental-asan
+
+# Profiling builds (see PROFILING.md for details)
+cmake --preset profiling-cuda-gcc12     # CUDA with debug symbols for profiling
+cmake --build --preset profiling-cuda-gcc12
 ```
 
 ## CMake Options Reference
@@ -377,6 +381,7 @@ See **AGENTS.md** for:
 ## Key Documentation Files
 
 - `/AGENTS.md` - Project guidelines (READ THIS FIRST)
+- `/PROFILING.md` - Profiling guide and best practices
 - `/3D.md` - Design notes for 3D extension
 - `/FIELD_UPGRADE_SUMMARY.md` - Field system evolution
 - `/docs/fvd_layer_proposal_v3.1.md` - Detailed FVD design specification

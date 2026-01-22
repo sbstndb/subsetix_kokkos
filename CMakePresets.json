@@ -156,6 +156,41 @@
         "CMAKE_CXX_COMPILER": "g++-12",
         "SUBSETIX_USE_MPI": "OFF"
       }
+    },
+    {
+      "name": "profiling-cuda-gcc12",
+      "displayName": "Profiling preset (CUDA + GCC 12, experimental only)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-profiling-cuda-gcc12",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PROFILING": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
+    },
+    {
+      "name": "profiling-cuda-gcc12-release",
+      "displayName": "Profiling preset (CUDA + GCC 12, Release with symbols, experimental only)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-profiling-cuda-gcc12-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS": "-g",
+        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PROFILING": "ON",
+        "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
+        "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
+        "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
+        "SUBSETIX_KOKKOS_CUDA": "ON",
+        "CMAKE_CXX_COMPILER": "g++-12",
+        "SUBSETIX_USE_MPI": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -206,6 +241,14 @@
     {
       "name": "experimental-cuda-gcc12",
       "configurePreset": "experimental-cuda-gcc12"
+    },
+    {
+      "name": "profiling-cuda-gcc12",
+      "configurePreset": "profiling-cuda-gcc12"
+    },
+    {
+      "name": "profiling-cuda-gcc12-release",
+      "configurePreset": "profiling-cuda-gcc12-release"
     }
   ],
   "testPresets": [
@@ -256,6 +299,14 @@
     {
       "name": "experimental-cuda-gcc12",
       "configurePreset": "experimental-cuda-gcc12"
+    },
+    {
+      "name": "profiling-cuda-gcc12",
+      "configurePreset": "profiling-cuda-gcc12"
+    },
+    {
+      "name": "profiling-cuda-gcc12-release",
+      "configurePreset": "profiling-cuda-gcc12-release"
     }
   ]
 }

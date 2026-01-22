@@ -23,6 +23,28 @@ option(SUBSETIX_MEMORYSPACE_FORCE_HOSTPINNED "Force DeviceMemorySpace = Kokkos::
 option(SUBSETIX_ENABLE_COVERAGE "Enable code coverage analysis (GCC only)" OFF)
 
 # ========================================================================
+# Profiling Configuration
+# ========================================================================
+
+option(SUBSETIX_ENABLE_PROFILING "Enable profiling support (adds debug symbols for nvprof/Nsight)" OFF)
+
+if(SUBSETIX_ENABLE_PROFILING)
+  message(STATUS "=== Profiling Enabled ===")
+  add_compile_definitions(SUBSETIX_ENABLE_PROFILING)
+
+  # Add debug symbols for profiling tools
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-g>)
+  add_link_options(-g)
+
+  # For nvprof, we want Release optimization with debug symbols
+  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(WARNING "Profiling with Debug build may produce misleading results. Consider using RelWithDebInfo or Release.")
+  endif()
+
+  message(STATUS "Profiling support enabled (debug symbols added)")
+endif()
+
+# ========================================================================
 # Experimental Algorithms Configuration
 # ========================================================================
 

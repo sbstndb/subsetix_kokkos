@@ -27,6 +27,7 @@ Use CMake presets - see **CLAUDE.md** for complete reference.
 | | `experimental-openmp` | OpenMP | `build-experimental-openmp` |
 | | `experimental-cuda-gcc12` | CUDA | `build-experimental-cuda-gcc12` |
 | | `experimental-asan` | Serial + sanitizers | `build-experimental-asan` |
+| **Profiling** | `profiling-cuda-gcc12` | CUDA + debug symbols | `build-profiling-cuda-gcc12` |
 
 ### Quick Start
 
@@ -146,6 +147,24 @@ done
 - Keep changes focused; avoid mixing build, API, and formatting changes in one commit.
 - Do not commit large temporary artifacts or local build directories; prefer `.gitignore` updates.
 - Document new public APIs briefly in comments and, if relevant, in examples or tests.
+
+## Profiling Guidelines
+
+For performance-critical work, especially in the experimental module, profiling is essential:
+
+- **Use Nsight Systems (`nsys`)** for modern GPUs (compute capability 8.0+)
+- **Use nvprof** for legacy GPUs (compute capability < 8.0)
+- Build with profiling presets: `cmake --preset profiling-cuda-gcc12`
+- See **PROFILING.md** for comprehensive profiling guide, scripts, and best practices
+
+Quick profiling example:
+```bash
+# Quick profiling on 3D SmallConfig
+./scripts/profiling/run_nsys_quick.sh
+
+# Profile specific benchmark
+./scripts/profiling/run_nsys.sh --benchmark "3D_LargeConfig"
+```
 
 ## CMake Options and Build Configuration
 
