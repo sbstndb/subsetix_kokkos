@@ -66,23 +66,42 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
     """Build and run experimental tests on specified GPU."""
     repo_root = Path("/workspace")
     build_dir = Path("/tmp/build-experimental-cuda")
+
+    # Clean build directory to avoid cache issues
+    import shutil
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
     build_dir.mkdir(exist_ok=True)
 
     print(f"🎯 GPU: {gpu_type} | CUDA ARCH: {cuda_arch}")
 
-    # Configure
+    # Check GPU status
+    try:
+        import subprocess
+        nvidia_smi = subprocess.run(["nvidia-smi", "--query-gpu=name,compute_cap,driver_version,memory.total,memory.free,memory.used", "--format=csv,noheader"],
+                                          capture_output=True, text=True, timeout=5)
+        print(f"🎮 GPU Status:\n{nvidia_smi.stdout}")
+    except:
+        print("⚠️  nvidia-smi not available")
+
+    # Configure - Use subsetix project options (not raw Kokkos)
     cmake_cmd = [
         "cmake", "-S", str(repo_root), "-B", str(build_dir), "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
-        "-DKokkos_ENABLE_CUDA=ON",
-        f"-DKokkos_ARCH_{cuda_arch}=ON",
         "-DSUBSETIX_ENABLE_EXPERIMENTAL=ON",
         "-DSUBSETIX_BUILD_STABLE_LIBS=OFF",
         "-DSUBSETIX_BUILD_STABLE_TESTS=OFF",
         "-DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF",
+        "-DSUBSETIX_KOKKOS_CUDA=ON",      # ← La bonne option subsetix !
+        "-DCMAKE_CXX_COMPILER=g++-12",
     ]
 
     result = subprocess.run(cmake_cmd, capture_output=True, text=True)
+
+    # Show CMake configuration for debugging
+    print("\n🔍 CMake Configuration Output:")
+    print(result.stdout)
+
     if result.returncode != 0:
         return f"❌ [{gpu_type}] Configure failed:\n{result.stderr}\n{result.stdout}"
 
@@ -128,11 +147,9 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
 TESTS:
 {test_output.split('Test project')[1] if 'Test project' in test_output else test_output}
 
-KEY BENCHMARKS (V3 Large Config):
-2D: {v3_large_2d}
-3D: {v3_large_3d}
-
-FULL BENCHMARK OUTPUT:
+{'='*60}
+ALL BENCHMARK RESULTS:
+{'='*60}
 {bench_output}
 """
 
