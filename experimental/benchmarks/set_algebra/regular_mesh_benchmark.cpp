@@ -190,6 +190,10 @@ struct GetLargeRegularConfig {
   RegularMeshConfig operator()() const { return LargeRegularConfig(); }
 };
 
+struct GetExtraLargeRegularConfig {
+  RegularMeshConfig operator()() const { return ExtraLargeRegularConfig(); }
+};
+
 // ============================================================================
 // 2D Benchmarks
 // ============================================================================
@@ -320,6 +324,48 @@ BENCHMARK_TEMPLATE_F(V3RegularMeshBenchmark2D, V3_Regular_LargeConfig, GetLargeR
   state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
 }
 
+BENCHMARK_TEMPLATE_F(V1RegularMeshBenchmark2D, V1_Regular_ExtraLargeConfig, GetExtraLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v1::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V2RegularMeshBenchmark2D, V2_Regular_ExtraLargeConfig, GetExtraLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V3RegularMeshBenchmark2D, V3_Regular_ExtraLargeConfig, GetExtraLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
 // ============================================================================
 // 3D Benchmarks
 // ============================================================================
@@ -421,6 +467,42 @@ BENCHMARK_TEMPLATE_F(V2RegularMeshBenchmark3D, V2_3D_Regular_LargeConfig, GetLar
 }
 
 BENCHMARK_TEMPLATE_F(V3RegularMeshBenchmark3D, V3_3D_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V1RegularMeshBenchmark3D, V1_3D_Regular_ExtraLargeConfig, GetExtraLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v1::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V2RegularMeshBenchmark3D, V2_3D_Regular_ExtraLargeConfig, GetExtraLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v2::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V3RegularMeshBenchmark3D, V3_3D_Regular_ExtraLargeConfig, GetExtraLargeRegularConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
