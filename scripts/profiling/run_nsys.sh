@@ -83,7 +83,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/build-profiling-cuda-gcc12"
-BENCHMARK_BIN="${BUILD_DIR}/experimental/benchmarks/unified_comparison_benchmark"
+BENCHMARK_BIN="${BUILD_DIR}/experimental/benchmarks/experimental_comparison_benchmark"
 
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"

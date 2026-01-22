@@ -94,10 +94,10 @@ fi
 
 # Set up profiling options based on detail level
 if [ "${DETAILED}" -eq 1 ]; then
-  NSYS_OPTS="--trace=cuda,nvtx,osrt --sample=cpu"
+  NSYS_OPTS="--sample=cpu"  # Add CPU sampling to default trace options
 else
-  # Quick profiling - focus on GPU tracing
-  NSYS_OPTS="--trace=cuda"
+  # Quick profiling - use default trace options from run_nsys.sh
+  NSYS_OPTS=""
 fi
 
 # Run profiling
