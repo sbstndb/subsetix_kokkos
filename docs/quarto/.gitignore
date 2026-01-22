@@ -1,3 +1,5 @@
 _site/
 .quarto/
-profiling_detailed/
+*.log
+*.tex
+*.pdf
