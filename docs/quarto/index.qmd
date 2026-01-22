@@ -2,12 +2,6 @@
 title: "Subsetix Kokkos"
 ---
 
-```{r}
-#| echo: false
-#| message: false
-knitr::include_graphics("logo.png")
-```
-
 # Subsetix Kokkos
 
 **Subsetix Kokkos** is a C++20 library for finite volume discretization on sparse adaptive geometries using Kokkos for performance portability.

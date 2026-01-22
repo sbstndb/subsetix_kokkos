@@ -44,6 +44,11 @@ website:
           - href: design/fvd-layer-proposal.qmd
             text: "FVD Proposal v3.1"
 
+      - section: "Presentations"
+        contents:
+          - href: presentation/intersection-algorithm.qmd
+            text: "Intersection Algorithm"
+
 format:
   html:
     theme:
