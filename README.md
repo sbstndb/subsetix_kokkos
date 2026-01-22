@@ -324,5 +324,6 @@ See [LICENSE](LICENSE) file for details.
 
 - **Architecture Details**: See `CLAUDE.md`
 - **Development Guidelines**: See `AGENTS.md`
+- **Modal GPU CI**: See `docs/MODAL.md`
 - **3D Design Notes**: See `3D.md`
 - **FVD Specification**: See `docs/fvd_layer_proposal_v3.1.md`

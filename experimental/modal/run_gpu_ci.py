@@ -2,15 +2,15 @@
 Modal CI for subsetix_kokkos experimental module on NVIDIA GPU.
 
 Usage:
-    modal run experimental/modal/run_gpu_ci.py::run_t4
-    modal run experimental/modal/run_gpu_ci.py::run_a100
-    modal run experimental/modal/run_gpu_ci.py::run_h100
-    modal run experimental/modal/run_gpu_ci.py::run_b200
+    modal run experimental/modal/run_gpu_ci.py::run_t4_entry
+    modal run experimental/modal/run_gpu_ci.py::run_a100_entry
+    modal run experimental/modal/run_gpu_ci.py::run_h100_entry
+    modal run experimental/modal/run_gpu_ci.py::run_b200_entry
 """
 
 from pathlib import Path
+import shutil
 import subprocess
-import sys
 
 import modal
 
@@ -19,11 +19,12 @@ import modal
 # -----------------------------------------------------------------------------
 
 # GPU architecture mapping for Kokkos
+# NOTE: B200 (BLACKWELL, CC 10.0) is not supported by Kokkos 4.5.0
 GPU_ARCH_MAP = {
     "T4": "TURING75",
     "A100": "AMPERE80",
     "H100": "HOPPER90",
-    "B200": "BLACKWELL",
+    "B200": "BLACKWELL",  # Will fail - Kokkos 4.5.0 doesn't support CC 10.0
 }
 
 def create_image() -> modal.Image:
@@ -68,7 +69,6 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
     build_dir = Path("/tmp/build-experimental-cuda")
 
     # Clean build directory to avoid cache issues
-    import shutil
     if build_dir.exists():
         shutil.rmtree(build_dir)
     build_dir.mkdir(exist_ok=True)
@@ -77,12 +77,16 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
 
     # Check GPU status
     try:
-        import subprocess
-        nvidia_smi = subprocess.run(["nvidia-smi", "--query-gpu=name,compute_cap,driver_version,memory.total,memory.free,memory.used", "--format=csv,noheader"],
-                                          capture_output=True, text=True, timeout=5)
+        nvidia_smi = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,compute_cap,driver_version,memory.total,memory.free,memory.used",
+             "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=10
+        )
         print(f"🎮 GPU Status:\n{nvidia_smi.stdout}")
-    except:
-        print("⚠️  nvidia-smi not available")
+    except subprocess.TimeoutExpired:
+        print("⚠️  nvidia-smi timeout")
+    except Exception as e:
+        print(f"⚠️  nvidia-smi failed: {e}")
 
     # Configure - Use subsetix project options (not raw Kokkos)
     cmake_cmd = [
@@ -92,7 +96,7 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
         "-DSUBSETIX_BUILD_STABLE_LIBS=OFF",
         "-DSUBSETIX_BUILD_STABLE_TESTS=OFF",
         "-DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF",
-        "-DSUBSETIX_KOKKOS_CUDA=ON",      # ← La bonne option subsetix !
+        "-DSUBSETIX_KOKKOS_CUDA=ON",      # Correct subsetix project option
         "-DCMAKE_CXX_COMPILER=g++-12",
     ]
 
@@ -127,17 +131,13 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
         result = subprocess.run([str(bench_exe)], capture_output=True, text=True)
         bench_output = result.stdout + result.stderr
     else:
-        bench_output = f"⚠️  Benchmark not found"
+        bench_output = "⚠️  Benchmark executable not found"
 
-    # Extract key benchmark results
-    lines = bench_output.split('\n')
-    v3_large_2d = ""
-    v3_large_3d = ""
-    for line in lines:
-        if "V3RandomMeshBenchmark2D<GetLargeConfig>" in line:
-            v3_large_2d = line
-        elif "V3RandomMeshBenchmark3D<GetLargeConfig>" in line:
-            v3_large_3d = line
+    # Parse test output - handle both full and partial output formats
+    if "Test project" in test_output:
+        test_section = test_output.split('Test project')[1]
+    else:
+        test_section = test_output
 
     return f"""
 {'='*60}
@@ -145,7 +145,7 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
 {'='*60}
 
 TESTS:
-{test_output.split('Test project')[1] if 'Test project' in test_output else test_output}
+{test_section}
 
 {'='*60}
 ALL BENCHMARK RESULTS:
@@ -156,19 +156,19 @@ ALL BENCHMARK RESULTS:
 
 @app.function(gpu="T4", cpu=16.0, timeout=1200)
 def run_t4() -> str:
-    return run_benchmarks("T4", "TURING75")
+    return run_benchmarks("T4", GPU_ARCH_MAP["T4"])
 
 @app.function(gpu="A100", cpu=16.0, timeout=1200)
 def run_a100() -> str:
-    return run_benchmarks("A100", "AMPERE80")
+    return run_benchmarks("A100", GPU_ARCH_MAP["A100"])
 
 @app.function(gpu="H100", cpu=16.0, timeout=1200)
 def run_h100() -> str:
-    return run_benchmarks("H100", "HOPPER90")
+    return run_benchmarks("H100", GPU_ARCH_MAP["H100"])
 
 @app.function(gpu="B200", cpu=16.0, timeout=1200)
 def run_b200() -> str:
-    return run_benchmarks("B200", "BLACKWELL")
+    return run_benchmarks("B200", GPU_ARCH_MAP["B200"])
 
 
 # -----------------------------------------------------------------------------

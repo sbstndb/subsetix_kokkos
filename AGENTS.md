@@ -161,6 +161,7 @@ When modifying CMake configuration or adding new options, refer to **CLAUDE.md**
 - Respect this layout when adding new geometry/field features; reuse existing CSR types.
 - Prefer adding example usage in `examples/` for new public capabilities.
 - When modifying CMake or presets, preserve existing presets and options unless there is a clear reason to change them.
+- For Modal GPU CI, see `/docs/MODAL.md` for cloud GPU benchmarking infrastructure.
 
 ## Communication Guidelines
 

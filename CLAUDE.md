@@ -377,6 +377,8 @@ See **AGENTS.md** for:
 ## Key Documentation Files
 
 - `/AGENTS.md` - Project guidelines (READ THIS FIRST)
+- `/CLAUDE.md` - Architecture overview and build commands
+- `/docs/MODAL.md` - Modal GPU CI documentation
 - `/3D.md` - Design notes for 3D extension
 - `/FIELD_UPGRADE_SUMMARY.md` - Field system evolution
 - `/docs/fvd_layer_proposal_v3.1.md` - Detailed FVD design specification
