@@ -12,6 +12,7 @@
 #include <experimental/subsetix/csr/set_algebra/v3.hpp>
 #include <Kokkos_Random.hpp>
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 // Convenience aliases for backward compatibility
@@ -200,6 +201,142 @@ inline RandomMeshConfig ExtraLargeConfig() {
     .overlap_probability = 0.5
   };
 }
+
+// ============================================================================
+// Regular Mesh Configurations for Benchmarking
+// ============================================================================
+
+/**
+ * @brief Configuration for regular mesh generation
+ *
+ * Regular meshes represent "optimal" performance scenarios:
+ * - All rows are present (100% density, no gaps)
+ * - Each row has exactly one interval covering the full X range
+ * - Perfect alignment for set operations
+ *
+ * The num_rows parameter directly controls the number of rows (unlike random
+ * which has y_max/z_max ranges with sparsity). This makes it easier to compare
+ * regular vs random performance at similar mesh sizes.
+ */
+struct RegularMeshConfig {
+  int num_rows_2d = 1250;   // Number of rows for 2D (y = 0, 1, ..., num_rows_2d-1)
+  int num_rows_3d = 1250;   // Number of rows for 3D (uses y/z from random's y_max/z_max range)
+};
+
+/**
+ * @brief Small regular mesh configuration (100% dense)
+ *
+ * Matches the number of rows in random SmallConfig but with 100% density:
+ * - 2D: 1250 rows (same as random's ~1250)
+ * - 3D: 4096 rows (64x64, which is 100% of random's y_max=64, z_max=64 range)
+ *
+ * The regular mesh has the same or more rows than random, but with NO sparsity.
+ */
+inline RegularMeshConfig SmallRegularConfig() {
+  return RegularMeshConfig{.num_rows_2d = 1250, .num_rows_3d = 64 * 64};
+}
+
+/**
+ * @brief Medium regular mesh configuration (100% dense)
+ *
+ * Matches the number of rows in random MediumConfig but with 100% density:
+ * - 2D: 78643 rows (same as random's ~78643)
+ * - 3D: 262144 rows (512x512, which is 100% of random's y_max=512, z_max=512 range)
+ *
+ * The regular mesh has the same or more rows than random, but with NO sparsity.
+ */
+inline RegularMeshConfig MediumRegularConfig() {
+  return RegularMeshConfig{.num_rows_2d = 78643, .num_rows_3d = 512 * 512};
+}
+
+/**
+ * @brief Large regular mesh configuration (100% dense)
+ *
+ * Matches the number of rows in random LargeConfig but with 100% density:
+ * - 2D: 5M rows (same as random's ~5M)
+ * - 3D: 1048576 rows (1024x1024, limited to avoid excessive memory vs random's 4096x4096)
+ *
+ * The regular mesh has the same or more rows than random, but with NO sparsity.
+ */
+inline RegularMeshConfig LargeRegularConfig() {
+  return RegularMeshConfig{.num_rows_2d = 5000000, .num_rows_3d = 1024 * 1024};
+}
+
+// ============================================================================
+// Regular Mesh Generators
+// ============================================================================
+
+/**
+ * @brief Regular mesh generator for optimal performance benchmarking
+ *
+ * Generates fully dense meshes where:
+ * - All rows are present (no gaps)
+ * - Each row has exactly one interval [0, size)
+ * - Perfect alignment for self-intersection (A ∩ A = A)
+ *
+ * This provides the "best case" performance scenario:
+ * - No binary search misses
+ * - All rows match perfectly
+ * - All intervals match perfectly
+ * - Minimal memory overhead (1 interval per row)
+ */
+class RegularMeshGenerator {
+public:
+  /**
+   * @brief Generate a regular CommonMesh2D (100% dense)
+   *
+   * Creates a mesh where:
+   * - y = 0, 1, 2, ..., num_rows-1 (ALL rows present, no gaps)
+   * - Each row has one interval [0, num_rows) covering the full X range
+   *
+   * @param config Configuration containing num_rows_2d
+   * @return Regular CommonMesh2D with num_rows_2d rows
+   */
+  static DefaultCommonMesh2D generate_2d(const RegularMeshConfig& config = RegularMeshConfig{}) {
+    DefaultCommonMesh2D mesh;
+    mesh.rows.reserve(config.num_rows_2d);
+
+    for (int y = 0; y < config.num_rows_2d; ++y) {
+      DefaultCommonRow2D row;
+      row.y = static_cast<int32_t>(y);
+      // Single interval covering the entire X range [0, num_rows)
+      row.intervals.push_back(DefaultInterval{0, static_cast<int32_t>(config.num_rows_2d)});
+      mesh.rows.push_back(std::move(row));
+    }
+
+    return mesh;
+  }
+
+  /**
+   * @brief Generate a regular CommonMesh3D (100% dense cube)
+   *
+   * Creates a mesh where all (y,z) combinations in a square grid are present:
+   * - (y, z) = (0,0), (0,1), ..., (0, sqrt)-1, (1,0), ..., (sqrt-1, sqrt-1)
+   * - Total rows: num_rows_3d (which should be a perfect square)
+   * - Each row has one interval [0, sqrt) covering the full X range
+   *
+   * @param config Configuration containing num_rows_3d
+   * @return Regular CommonMesh3D with num_rows_3d rows
+   */
+  static DefaultCommonMesh3D generate_3d(const RegularMeshConfig& config = RegularMeshConfig{}) {
+    DefaultCommonMesh3D mesh;
+    int grid_size = static_cast<int>(std::sqrt(config.num_rows_3d));
+    mesh.rows.reserve(config.num_rows_3d);
+
+    for (int z = 0; z < grid_size; ++z) {
+      for (int y = 0; y < grid_size; ++y) {
+        DefaultCommonRow3D row;
+        row.y = static_cast<int32_t>(y);
+        row.z = static_cast<int32_t>(z);
+        // Single interval covering the entire X range [0, grid_size)
+        row.intervals.push_back(DefaultInterval{0, static_cast<int32_t>(grid_size)});
+        mesh.rows.push_back(std::move(row));
+      }
+    }
+
+    return mesh;
+  }
+};
 
 // ============================================================================
 // Random Mesh Generators
