@@ -284,8 +284,11 @@ inline RegularMeshConfig LargeRegularConfig() {
  * - 3D: grid_size=8192 → 8192×8192=67M rows (100% of random's y_max=8192, z_max=8192 range,
  *   random has ~10M at 15% sparsity)
  *
- * NOTE: 67M rows may be too large for practical benchmarks. Consider using a smaller
- * grid_size for 3D if memory is a concern.
+ * WARNING: 3D ExtraLarge requires >512MB GPU memory and will crash on most GPUs.
+ * - Use 3D ExtraLarge for CPU benchmarking only
+ * - 2D ExtraLarge is safe for GPU (8192 rows fits easily in GPU memory)
+ *
+ * NOTE: For CUDA, 3D benchmarks are limited to Large (16.8M rows) to avoid OOM.
  */
 inline RegularMeshConfig ExtraLargeRegularConfig() {
   return RegularMeshConfig{.num_rows_2d = 8192, .grid_size_3d = 8192};
