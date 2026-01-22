@@ -76,6 +76,8 @@ Compare les résultats de plusieurs runs de profiling.
 | **kernel-timer** | `.dat` + JSON | Analyse quantitative des temps par kernel |
 | **chrome-tracing** | `.json` | Visualisation timeline (chrome://tracing) |
 | **space-time-stack** | stdout | Analyse complète (temps + mémoire) |
+| **memory-hwm** | stdout | High water mark mémoire (fin de programme) |
+| **memory-usage** | stdout | Suivi consommation mémoire (timestamps) |
 
 ## Organisation des fichiers de sortie
 

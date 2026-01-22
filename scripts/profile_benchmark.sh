@@ -40,6 +40,8 @@ declare -A TOOL_LIBS=(
     ["kernel-timer"]="profiling/simple-kernel-timer/libkp_kernel_timer.so"
     ["chrome-tracing"]="profiling/chrome-tracing/libkp_chrome_tracing.so"
     ["space-time-stack"]="profiling/space-time-stack/libkp_space_time_stack.so"
+    ["memory-hwm"]="profiling/memory-hwm/libkp_hwm.so"
+    ["memory-usage"]="profiling/memory-usage/libkp_memory_usage.so"
 )
 
 # Usage
@@ -72,6 +74,8 @@ ${BLUE}Available tools:${NC}
     kernel-timer     - Simple kernel timing (.dat output, use with kp_json_writer)
     chrome-tracing    - Chrome timeline JSON (open in chrome://tracing)
     space-time-stack - Detailed time + memory report (stdout)
+    memory-hwm       - Memory high water mark (stdout at program end)
+    memory-usage     - Memory usage tracking with timestamps (stdout)
 
 ${BLUE}Output:${NC}
     Traces saved to: ${OUTPUT_DIR}/<run_id>/
@@ -211,6 +215,14 @@ case "$TOOL" in
         # Report is in benchmark_output.txt, but save summary
         echo "${GREEN}✓${NC} Space-time-stack report saved to $OUTPUT_DIR/benchmark_output.txt"
         ;;
+    memory-hwm)
+        # Memory high water mark report is in stdout
+        echo "${GREEN}✓${NC} Memory HWM report captured to $OUTPUT_DIR/benchmark_output.txt"
+        ;;
+    memory-usage)
+        # Memory usage report is in stdout
+        echo "${GREEN}✓${NC} Memory usage report captured to $OUTPUT_DIR/benchmark_output.txt"
+        ;;
 esac
 
 # Create summary
@@ -246,5 +258,13 @@ case "$TOOL" in
         ;;
     space-time-stack)
         echo "  Report is in $OUTPUT_DIR/benchmark_output.txt"
+        ;;
+    memory-hwm)
+        echo "  Memory HWM report is in $OUTPUT_DIR/benchmark_output.txt"
+        echo "  Look for: 'KokkosP: High water mark memory consumption: XXX kB'"
+        ;;
+    memory-usage)
+        echo "  Memory usage report is in $OUTPUT_DIR/benchmark_output.txt"
+        echo "  Look for: 'Memory Usage' and 'High water mark' sections"
         ;;
 esac
