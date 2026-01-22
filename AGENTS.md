@@ -21,19 +21,19 @@ Use CMake presets - see **CLAUDE.md** for complete reference.
 |----------|--------|---------|-----------|
 | **Stable builds** | `serial` | Serial CPU | `build-serial` |
 | | `openmp` | Multi-threaded CPU | `build-openmp` |
-| | `cuda-gcc12` | NVIDIA GPU | `build-cuda-gcc12` |
+| | `cuda-gcc14` | NVIDIA GPU | `build-cuda-gcc14` |
 | | `serial-asan` | Serial + sanitizers | `build-serial-asan` |
 | **Experimental-only** | `experimental-serial` | Serial | `build-experimental-serial` |
 | | `experimental-openmp` | OpenMP | `build-experimental-openmp` |
-| | `experimental-cuda-gcc12` | CUDA | `build-experimental-cuda-gcc12` |
+| | `experimental-cuda-gcc14` | CUDA | `build-experimental-cuda-gcc14` |
 | | `experimental-asan` | Serial + sanitizers | `build-experimental-asan` |
 | **Profiling** | `experimental-perf-serial` | Serial + Linux perf | `build-experimental-perf-serial` |
 | | `experimental-perf-openmp` | OpenMP + Linux perf | `build-experimental-perf-openmp` |
 | | `experimental-serial-profile` | Serial + Kokkos tools | `build-experimental-serial-profile` |
 | | `experimental-openmp-profile` | OpenMP + Kokkos tools | `build-experimental-openmp-profile` |
-| | `experimental-cuda-gcc12-profile` | CUDA + Kokkos tools | `build-experimental-cuda-gcc12-profile` |
-| | `profiling-nsight-cuda-gcc12` | CUDA + Nsight | `build-profiling-nsight-cuda-gcc12` |
-| | `profiling-nsight-cuda-gcc12-release` | CUDA + Nsight (Release) | `build-profiling-nsight-cuda-gcc12-release` |
+| | `experimental-cuda-gcc14-profile` | CUDA + Kokkos tools | `build-experimental-cuda-gcc14-profile` |
+| | `profiling-nsight-cuda-gcc14` | CUDA + Nsight | `build-profiling-nsight-cuda-gcc14` |
+| | `profiling-nsight-cuda-gcc14-release` | CUDA + Nsight (Release) | `build-profiling-nsight-cuda-gcc14-release` |
 
 ### Quick Start
 
@@ -63,7 +63,7 @@ Prefer presets over direct `make` calls.
 ### Stable Tests
 
 - Tests use GoogleTest and live in `tests/`, organized into separate executables by domain: `subsetix_test_core`, `subsetix_test_ops`, `subsetix_test_advanced`, `subsetix_test_amr`, `subsetix_test_fvd_api`, `subsetix_test_fvd_execution`, `subsetix_test_fvd_integrators`.
-- Keep tests fast and deterministic; they must pass on serial, OpenMP, and CUDA (use preset `cuda-gcc12`).
+- Keep tests fast and deterministic; they must pass on serial, OpenMP, and CUDA (use preset `cuda-gcc14`).
 - Prefer focused `TEST()` cases over large monolithic tests; share common helpers in small headers or `.cpp` files.
 - When adding device code, exercise it at least in the serial preset.
 - For set‑algebra primitives (e.g. `set_union_device`), add both high‑level tests and focused tests for low‑level building blocks to simplify debugging.
@@ -74,7 +74,7 @@ Prefer presets over direct `make` calls.
 # All tests (stable)
 ctest --preset serial
 ctest --preset openmp
-ctest --preset cuda-gcc12
+ctest --preset cuda-gcc14
 
 # Specific test executable
 ./build-serial/tests/subsetix_test_core
@@ -105,8 +105,8 @@ cmake --build --preset experimental-perf-serial
 ./scripts/perf_profile.sh ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark
 
 # Nsight GPU profiling (CUDA)
-cmake --preset profiling-nsight-cuda-gcc12
-cmake --build --preset profiling-nsight-cuda-gcc12
+cmake --preset profiling-nsight-cuda-gcc14
+cmake --build --preset profiling-nsight-cuda-gcc14
 ./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
 
 # Kokkos profiling tools (All backends)
@@ -168,20 +168,20 @@ ctest --preset experimental-serial
 
 1. **Identify your scope**: Are you working in `stable/` or `experimental/`?
 2. **Full build for scope**:
-   - **Stable changes**: Build and test on `serial`, `openmp`, `cuda-gcc12`
-   - **Experimental changes**: Build and test on `experimental-serial`, `experimental-openmp`, `experimental-cuda-gcc12`
+   - **Stable changes**: Build and test on `serial`, `openmp`, `cuda-gcc14`
+   - **Experimental changes**: Build and test on `experimental-serial`, `experimental-openmp`, `experimental-cuda-gcc14`
 3. **All tests must pass**: No exceptions, even in the playground
 
 ```bash
 # Example: Working in stable/
-for preset in serial openmp cuda-gcc12; do
+for preset in serial openmp cuda-gcc14; do
   cmake --preset $preset || exit 1
   cmake --build --preset $preset || exit 1
   ctest --preset $preset --output-on-failure || exit 1
 done
 
 # Example: Working in experimental/
-for preset in experimental-serial experimental-openmp experimental-cuda-gcc12; do
+for preset in experimental-serial experimental-openmp experimental-cuda-gcc14; do
   cmake --preset $preset || exit 1
   cmake --build --preset $preset || exit 1
   ctest --preset $preset --output-on-failure || exit 1

@@ -32,7 +32,7 @@ Lance un benchmark expérimental avec un outil de profiling Kokkos.
 ./scripts/profile_benchmark.sh experimental-openmp-profile chrome-tracing "2D.*MediumConfig" -t 22 -s 10
 
 # Profile SmallConfig avec space-time-stack (CUDA), 5% sampling
-./scripts/profile_benchmark.sh experimental-cuda-gcc12-profile space-time-stack ".*SmallConfig" -s 5
+./scripts/profile_benchmark.sh experimental-cuda-gcc14-profile space-time-stack ".*SmallConfig" -s 5
 
 # Profile avec verbose sampling pour voir quels kernels sont mesurés
 ./scripts/profile_benchmark.sh experimental-serial-profile kernel-timer ".*LargeConfig" -s 5 -v
@@ -47,7 +47,7 @@ Lance un benchmark expérimental avec un outil de profiling Kokkos.
 ./scripts/profile_benchmark.sh experimental-openmp-profile chrome-tracing "2D.*MediumConfig" -t 22
 
 # Profile SmallConfig avec space-time-stack (CUDA)
-./scripts/profile_benchmark.sh experimental-cuda-gcc12-profile space-time-stack ".*SmallConfig"
+./scripts/profile_benchmark.sh experimental-cuda-gcc14-profile space-time-stack ".*SmallConfig"
 ```
 
 ### 2. `profile_all_backends.sh` - Profiler tous les backends

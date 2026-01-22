@@ -44,7 +44,7 @@ Close-up showing the 4-level AMR grid structure. Refinement automatically follow
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| C++ compiler | C++20 compliant | GCC 12+ |
+| C++ compiler | C++20 compliant | GCC 14+ |
 | CMake | 3.16 | 3.23+ (for presets) |
 | Kokkos | 4.5.00 (auto-fetched) | — |
 | CUDA (optional) | CUDA 12.x | — |
@@ -59,7 +59,7 @@ cd subsetix_kokkos
 # Configure (choose one preset)
 cmake --preset serial          # CPU only
 cmake --preset openmp          # CPU with OpenMP
-cmake --preset cuda-gcc12      # NVIDIA GPU
+cmake --preset cuda-gcc14      # NVIDIA GPU
 
 # Build
 cmake --build --preset serial
@@ -74,20 +74,20 @@ ctest --preset serial
 |--------|---------|-------------|
 | `serial` | Serial | Basic CPU execution |
 | `openmp` | OpenMP | Multi-threaded CPU |
-| `cuda-gcc12` | CUDA | NVIDIA GPU (requires GCC 12) |
+| `cuda-gcc14` | CUDA | NVIDIA GPU (requires GCC 14) |
 | `serial-asan` | Serial + sanitizers | Debug mode with AddressSanitizer |
 | `experimental-serial` | Serial (experimental only) | Experimental module, serial backend |
 | `experimental-openmp` | OpenMP (experimental only) | Experimental module, OpenMP backend |
-| `experimental-cuda-gcc12` | CUDA (experimental only) | Experimental module, CUDA backend |
+| `experimental-cuda-gcc14` | CUDA (experimental only) | Experimental module, CUDA backend |
 | `experimental-asan` | Serial + sanitizers (experimental) | Experimental module with sanitizers |
 | **Profiling presets** |||
 | `experimental-perf-serial` | Serial + Linux perf | CPU performance analysis |
 | `experimental-perf-openmp` | OpenMP + Linux perf | CPU performance analysis |
 | `experimental-serial-profile` | Serial + Kokkos tools | Kernel-level profiling |
 | `experimental-openmp-profile` | OpenMP + Kokkos tools | Kernel-level profiling |
-| `experimental-cuda-gcc12-profile` | CUDA + Kokkos tools | GPU kernel profiling |
-| `profiling-nsight-cuda-gcc12` | CUDA + Nsight | Detailed GPU analysis |
-| `profiling-nsight-cuda-gcc12-release` | CUDA + Nsight (Release) | Production GPU analysis |
+| `experimental-cuda-gcc14-profile` | CUDA + Kokkos tools | GPU kernel profiling |
+| `profiling-nsight-cuda-gcc14` | CUDA + Nsight | Detailed GPU analysis |
+| `profiling-nsight-cuda-gcc14-release` | CUDA + Nsight (Release) | Production GPU analysis |
 
 ### Experimental Algorithms
 
@@ -107,8 +107,8 @@ ctest --preset experimental-serial
 cmake --preset experimental-openmp      # OpenMP backend
 cmake --build --preset experimental-openmp
 
-cmake --preset experimental-cuda-gcc12  # CUDA backend
-cmake --build --preset experimental-cuda-gcc12
+cmake --preset experimental-cuda-gcc14  # CUDA backend
+cmake --build --preset experimental-cuda-gcc14
 ```
 
 Run benchmarks:
@@ -137,8 +137,8 @@ cmake --build --preset experimental-perf-serial
 ./scripts/perf_profile.sh ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark
 
 # Nsight (GPU profiling)
-cmake --preset profiling-nsight-cuda-gcc12
-cmake --build --preset profiling-nsight-cuda-gcc12
+cmake --preset profiling-nsight-cuda-gcc14
+cmake --build --preset profiling-nsight-cuda-gcc14
 ./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
 
 # Kokkos profiling tools

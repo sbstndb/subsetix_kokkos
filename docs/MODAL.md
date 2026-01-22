@@ -68,7 +68,7 @@ cat /tmp/*_results.txt
 The Modal image is based on:
 - **Base**: `nvidia/cuda:13.0.0-devel-ubuntu22.04` (CUDA 13.0 required for sm_100/B200)
 - **Python**: 3.11
-- **Compiler**: GCC 12
+- **Compiler**: GCC 14
 - **Build tools**: CMake, Ninja
 
 **Note:** For B200 (BLACKWELL), CUDA 13.0 is required because CUDA 12.x doesn't support `sm_100`.
@@ -83,7 +83,7 @@ cmake -S /workspace -B /tmp/build-experimental-cuda -G Ninja \
     -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
     -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF \
     -DSUBSETIX_KOKKOS_CUDA=ON \
-    -DCMAKE_CXX_COMPILER=g++-12
+    -DCMAKE_CXX_COMPILER=g++-14
 ```
 
 **Important**: Uses `SUBSETIX_KOKKOS_CUDA=ON` (project option), not `Kokkos_ENABLE_CUDA=ON` (native Kokkos option).

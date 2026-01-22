@@ -40,15 +40,15 @@ def create_image() -> modal.Image:
         .apt_install(
             "cmake",
             "ninja-build",
-            "gcc-12",
-            "g++-12",
+            "gcc-14",
+            "g++-14",
             "git",
             "libfmt-dev",
             "libmpfr-dev",
         )
         .env({
-            "CC": "gcc-12",
-            "CXX": "g++-12",
+            "CC": "gcc-14",
+            "CXX": "g++-14",
         })
         .workdir("/workspace")
         .add_local_dir(project_root, remote_path="/workspace")
@@ -97,7 +97,7 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
         "-DSUBSETIX_BUILD_STABLE_TESTS=OFF",
         "-DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF",
         "-DSUBSETIX_KOKKOS_CUDA=ON",      # Correct subsetix project option
-        "-DCMAKE_CXX_COMPILER=g++-12",
+        "-DCMAKE_CXX_COMPILER=g++-14",
     ]
 
     result = subprocess.run(cmake_cmd, capture_output=True, text=True)

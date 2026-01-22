@@ -56,7 +56,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 OUTPUT_BASE="${PROJECT_ROOT}/profiling_output/${TIMESTAMP}-${TOOL}"
 
 # Presets to profile
-PRESETS=("experimental-serial-profile" "experimental-openmp-profile" "experimental-cuda-gcc12-profile")
+PRESETS=("experimental-serial-profile" "experimental-openmp-profile" "experimental-cuda-gcc14-profile")
 BACKEND_NAMES=("Serial" "OpenMP" "CUDA")
 
 # Validate tool

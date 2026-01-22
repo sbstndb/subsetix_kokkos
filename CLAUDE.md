@@ -16,13 +16,13 @@ cmake --build --preset serial
 cmake --preset openmp              # OpenMP + Serial
 cmake --build --preset openmp
 
-cmake --preset cuda-gcc12          # CUDA + Serial (requires GCC 12)
-cmake --build --preset cuda-gcc12
+cmake --preset cuda-gcc14          # CUDA + Serial (requires GCC 14)
+cmake --build --preset cuda-gcc14
 
 # MPI variants
 cmake --preset mpi-serial          # MPI + Serial
 cmake --preset mpi-openmp          # MPI + OpenMP
-cmake --preset mpi-cuda-gcc12      # MPI + CUDA (GCC 12)
+cmake --preset mpi-cuda-gcc14      # MPI + CUDA (GCC 14)
 
 # Debug with sanitizers
 cmake --preset serial-asan         # Address + UB sanitizer
@@ -33,8 +33,8 @@ cmake --preset experimental-serial      # Serial, experimental module only
 cmake --build --preset experimental-serial
 cmake --preset experimental-openmp      # OpenMP, experimental module only
 cmake --build --preset experimental-openmp
-cmake --preset experimental-cuda-gcc12  # CUDA, experimental module only
-cmake --build --preset experimental-cuda-gcc12
+cmake --preset experimental-cuda-gcc14  # CUDA, experimental module only
+cmake --build --preset experimental-cuda-gcc14
 cmake --preset experimental-asan        # Serial + sanitizers, experimental only
 cmake --build --preset experimental-asan
 
@@ -45,8 +45,8 @@ cmake --preset experimental-perf-openmp       # Linux perf + OpenMP
 cmake --build --preset experimental-perf-openmp
 cmake --preset experimental-serial-profile    # Kokkos profiling tools
 cmake --build --preset experimental-serial-profile
-cmake --preset profiling-nsight-cuda-gcc12    # Nsight GPU profiling
-cmake --build --preset profiling-nsight-cuda-gcc12
+cmake --preset profiling-nsight-cuda-gcc14    # Nsight GPU profiling
+cmake --build --preset profiling-nsight-cuda-gcc14
 ```
 
 ## CMake Options Reference
@@ -126,9 +126,9 @@ cmake --preset experimental-serial
 | `experimental-perf-openmp` | Linux perf | OpenMP |
 | `experimental-serial-profile` | Kokkos tools | Serial |
 | `experimental-openmp-profile` | Kokkos tools | OpenMP |
-| `experimental-cuda-gcc12-profile` | Kokkos tools | CUDA |
-| `profiling-nsight-cuda-gcc12` | Nsight | CUDA |
-| `profiling-nsight-cuda-gcc12-release` | Nsight (Release) | CUDA |
+| `experimental-cuda-gcc14-profile` | Kokkos tools | CUDA |
+| `profiling-nsight-cuda-gcc14` | Nsight | CUDA |
+| `profiling-nsight-cuda-gcc14-release` | Nsight (Release) | CUDA |
 
 ### Running Tests
 
@@ -138,7 +138,7 @@ Tests are organized into 7 separate executables (to avoid ODR/CUDA linking issue
 # Run all tests
 ctest --preset serial
 ctest --preset openmp
-ctest --preset cuda-gcc12
+ctest --preset cuda-gcc14
 
 # Run specific test executable
 ./build-serial/tests/subsetix_test_core          # Builders, basic data structures, VTK
@@ -218,7 +218,7 @@ The `experimental/` directory provides alternative implementations of set algebr
 ```bash
 cmake --preset experimental-serial      # Serial backend
 cmake --preset experimental-openmp      # OpenMP backend
-cmake --preset experimental-cuda-gcc12  # CUDA backend
+cmake --preset experimental-cuda-gcc14  # CUDA backend
 cmake --preset experimental-asan        # Serial + sanitizers
 ```
 
@@ -239,7 +239,7 @@ Experimental tests are separate executables from stable tests:
 # After enabling experimental module and building
 ctest --preset experimental-serial  # Runs all experimental tests
 ctest --preset experimental-openmp  # Runs with OpenMP backend
-ctest --preset experimental-cuda-gcc12  # Runs with CUDA backend
+ctest --preset experimental-cuda-gcc14  # Runs with CUDA backend
 
 # Run specific experimental test executables (serial preset)
 ./build-experimental-serial/experimental/tests/experimental_v1_unitary_test

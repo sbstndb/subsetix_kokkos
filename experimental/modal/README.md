@@ -71,8 +71,8 @@ Install Modal: `pip install modal`
 Run: `modal token new`
 
 ### Build fails
-Check that GCC 12 and CUDA toolkit are available in the container. The script installs:
-- `gcc-12`, `g++-12`
+Check that GCC 14 and CUDA toolkit are available in the container. The script installs:
+- `gcc-14`, `g++-14`
 - `cmake`, `ninja-build`
 - `libfmt-dev`, `libmpfr-dev`
 

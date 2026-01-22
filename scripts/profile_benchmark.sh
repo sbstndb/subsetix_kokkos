@@ -11,7 +11,7 @@
 # Examples:
 #   ./scripts/profile_benchmark.sh experimental-serial-profile kernel-timer "3D.*LargeConfig"
 #   ./scripts/profile_benchmark.sh experimental-openmp-profile chrome-tracing "V2.*2D.*MediumConfig"
-#   ./scripts/profile_benchmark.sh experimental-cuda-gcc12-profile space-time-stack ".*SmallConfig"
+#   ./scripts/profile_benchmark.sh experimental-cuda-gcc14-profile space-time-stack ".*SmallConfig"
 #
 # Available tools: kernel-timer, chrome-tracing, space-time-stack
 
@@ -72,7 +72,7 @@ ${BLUE}Examples:${NC}
     $(basename "$0") experimental-openmp-profile chrome-tracing "2D.*MediumConfig" -t 22 -s 10
 
     # Profile SmallConfig with space-time-stack (CUDA), 5% sampling
-    $(basename "$0") experimental-cuda-gcc12-profile space-time-stack ".*SmallConfig" -s 5
+    $(basename "$0") experimental-cuda-gcc14-profile space-time-stack ".*SmallConfig" -s 5
 
 ${BLUE}Available tools:${NC}
     kernel-timer     - Simple kernel timing (.dat output, use with kp_json_writer)

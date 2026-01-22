@@ -8,7 +8,7 @@
 #   ./run_nsys.sh [OPTIONS]
 #
 # Options:
-#   --preset PRESET        CMake preset to use (default: profiling-nsight-cuda-gcc12)
+#   --preset PRESET        CMake preset to use (default: profiling-nsight-cuda-gcc14)
 #   --benchmark FILTER     Benchmark filter (default: LargeConfig)
 #   --output-dir DIR       Output directory for profiling results (default: profiling_output)
 #   --nsys-opts OPTS       Extra options to pass to nsys (default: see NSYS_DEFAULT_OPTS)
@@ -29,7 +29,7 @@
 set -euo pipefail
 
 # Default values
-PRESET="profiling-nsight-cuda-gcc12"
+PRESET="profiling-nsight-cuda-gcc14"
 BENCHMARK_FILTER="LargeConfig"
 OUTPUT_DIR="profiling_output"
 BUILD_ONLY=0
@@ -83,7 +83,7 @@ done
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-BUILD_DIR="${PROJECT_ROOT}/build-profiling-nsight-cuda-gcc12"
+BUILD_DIR="${PROJECT_ROOT}/build-profiling-nsight-cuda-gcc14"
 BENCHMARK_BIN="${BUILD_DIR}/experimental/benchmarks/experimental_comparison_benchmark"
 
 # Create output directory

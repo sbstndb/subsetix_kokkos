@@ -14,7 +14,7 @@ find_path(KOKKOS_TOOLS_INCLUDE_DIR
     PATHS
         ${CMAKE_CURRENT_SOURCE_DIR}/../../build-experimental-serial-profile/_deps/kokkos_tools-src
         ${CMAKE_CURRENT_SOURCE_DIR}/../../build-experimental-openmp-profile/_deps/kokkos_tools-src
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../build-experimental-cuda-gcc12-profile/_deps/kokkos_tools-src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../build-experimental-cuda-gcc14-profile/_deps/kokkos_tools-src
     PATH_SUFFIXES profiling/all
     NO_DEFAULT_PATH
 )
