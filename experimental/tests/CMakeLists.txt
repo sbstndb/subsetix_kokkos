@@ -130,7 +130,24 @@ target_link_libraries(experimental_cross_version_test
 
 add_test(NAME ExperimentalCrossVersionTest COMMAND experimental_cross_version_test)
 
+# Random mesh generator test - validates sparsity-based unique sampling
+add_executable(experimental_random_mesh_generator_test
+  test_main.cpp
+  set_algebra/test_random_mesh_generator.cpp
+)
+
+target_link_libraries(experimental_random_mesh_generator_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalRandomMeshGeneratorTest COMMAND experimental_random_mesh_generator_test)
+
 message(STATUS "  - experimental_v1_unitary_test")
 message(STATUS "  - experimental_v2_unitary_test")
 message(STATUS "  - experimental_v3_unitary_test")
 message(STATUS "  - experimental_cross_version_test")
+message(STATUS "  - experimental_random_mesh_generator_test")
