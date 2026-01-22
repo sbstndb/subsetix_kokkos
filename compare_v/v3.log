@@ -1,0 +1,53 @@
+Error processing line 1 of /home/sbstndbs/miniforge3/lib/python3.12/site-packages/sampai-editable.pth:
+
+  Traceback (most recent call last):
+    File "<frozen site>", line 206, in addpackage
+    File "<string>", line 1, in <module>
+    File "/home/sbstndbs/miniforge3/lib/python3.12/site-packages/_sampai_editable_loader.py", line 18, in <module>
+      import subprocess
+    File "/home/sbstndbs/miniforge3/lib/python3.12/subprocess.py", line 104, in <module>
+      from _posixsubprocess import fork_exec as _fork_exec
+  ImportError: /home/sbstndbs/miniforge3/lib/python3.12/lib-dynload/_posixsubprocess.cpython-312-x86_64-linux-gnu.so: undefined symbol: _Py_write_noraise
+
+Remainder of file ignored
+==PROF== Connected to process 736257 (/home/sbstndbs/subsetix_kokkos_agent3/build-profiling-cuda-gcc12/experimental/benchmarks/experimental_comparison_benchmark)
+==PROF== Profiling "query_cuda_kernel_arch" - 0: 0%....50%....100% - 8 passes
+==PROF== Profiling "init_lock_arrays_cuda_kernel" - 1: 0%....50%....100% - 8 passes
+2026-01-22T02:13:49+01:00
+Running /home/sbstndbs/subsetix_kokkos_agent3/build-profiling-cuda-gcc12/experimental/benchmarks/experimental_comparison_benchmark
+Run on (22 X 4700 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x11)
+  L1 Instruction 64 KiB (x11)
+  L2 Unified 2048 KiB (x11)
+  L3 Unified 24576 KiB (x1)
+Load Average: 2.53, 2.32, 1.64
+***WARNING*** CPU scaling is enabled, the benchmark real time measurements may be noisy and will incur extra overhead.
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 2: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 3: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 4: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 5: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 6: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 7: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 8: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 9: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 10: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 11: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 12: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 13: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 14: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 15: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 16: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 17: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 18: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 19: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 20: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 21: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 22: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 23: 0%....50%....100% - 8 passes
+==PROF== Profiling "cuda_parallel_launch_local_me..." - 24: 0%....50%....100% - 8 passes
+--------------------------------------------------------------------------------------------------------------------
+Benchmark                                                          Time             CPU   Iterations UserCounters...
+--------------------------------------------------------------------------------------------------------------------
+V3RandomMeshBenchmark3D<GetLargeConfig>/V3_3D_LargeConfig 5108261365 ns   4967502518 ns            1 bytes_per_second=38.3971Mi/s items_per_second=5.03279M/s
+==PROF== Report: /home/sbstndbs/subsetix_kokkos_agent3/compare_v/v3.ncu-rep
