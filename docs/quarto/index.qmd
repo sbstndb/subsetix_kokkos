@@ -1,0 +1,71 @@
+---
+title: "Subsetix Kokkos"
+---
+
+```{r}
+#| echo: false
+#| message: false
+knitr::include_graphics("logo.png")
+```
+
+# Subsetix Kokkos
+
+**Subsetix Kokkos** is a C++20 library for finite volume discretization on sparse adaptive geometries using Kokkos for performance portability.
+
+## Overview
+
+Subsetix Kokkos implements a novel **Compressed Sparse Row (CSR) of Intervals** data structure for 2D sparse domains, enabling:
+
+- **Memory-efficient storage** of irregular 2D/3D geometries
+- **Fast set algebra operations** (union, intersection, difference)
+- **GPU compatibility** via Kokkos parallel framework
+- **Adaptive mesh refinement** (AMR) support
+- **Finite volume discretization** (FVD) layer for hyperbolic PDEs
+
+## Key Features
+
+### Core Architecture
+
+- **CSR Interval Set** representation for sparse 2D domains
+- **Kokkos-based** parallel kernels for device execution
+- **Template-based design** for compile-time optimization
+
+### FVD Layer
+
+- **Policy-based design** (no runtime polymorphism for GPU)
+- **Multiple numerical fluxes**: Rusanov, HLLC, Roe
+- **MUSCL reconstruction** with limiters (Minmod, Superbee, etc.)
+- **Time integrators**: RK1, RK2, RK3
+- **MPI support** for distributed computing
+
+### Backends
+
+- Serial
+- OpenMP
+- CUDA (with GCC 12)
+
+## Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/sbstndb/subsetix_kokkos_agent3.git
+cd subsetix_kokkos_agent3
+
+# Configure and build (serial backend)
+cmake --preset serial
+cmake --build --preset serial
+
+# Run tests
+ctest --preset serial
+```
+
+## Documentation
+
+- [Quick Start Guide](quickstart.qmd)
+- [Build Configuration](user-guide/build-configuration.qmd)
+- [Architecture Overview](architecture/csr-geometry.qmd)
+- [FVD Layer Design](architecture/fvd-layer.qmd)
+
+## License
+
+MIT License - see LICENSE file for details.

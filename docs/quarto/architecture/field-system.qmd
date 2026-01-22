@@ -1,0 +1,38 @@
+---
+title: "Field System"
+---
+
+# Field System
+
+The field system provides storage and operations for data defined on CSR geometries.
+
+## Field2D Template
+
+```cpp
+template <typename T, class MemorySpace>
+struct Field2D {
+  IntervalSet2D<MemorySpace> geometry;  // Associated geometry
+  Kokkos::View<T*, MemorySpace> data;   // Field values (size = total_cells)
+};
+```
+
+## Operations
+
+- `field_transform()` - Apply element-wise transformations
+- `field_copy()` - Copy fields between memory spaces
+- `field_fill()` - Initialize with constant value
+
+## Host/Device Synchronization
+
+```cpp
+// Device → Host
+auto host_field = build_host_field_from_device(device_field);
+
+// Host → Device
+auto dev_field = build_device_field_from_host(host_field);
+```
+
+## Location
+
+- Header: `include/subsetix/field/field_2d.hpp`
+- Operations: `include/subsetix/csr_ops/field_*`

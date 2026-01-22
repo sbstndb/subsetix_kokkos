@@ -1,0 +1,76 @@
+---
+title: "Quick Start"
+---
+
+# Quick Start Guide
+
+This guide will help you get started with Subsetix Kokkos.
+
+## Prerequisites
+
+- C++20 compatible compiler (GCC 12+, Clang 15+, MSVC 2022+)
+- CMake 3.25+
+- Ninja build system
+- Kokkos (included via FetchContent)
+- Optional: CUDA Toolkit 12.x for CUDA backend
+- Optional: MPI implementation for MPI variants
+
+## Building the Project
+
+### Serial Backend
+
+```bash
+cmake --preset serial
+cmake --build --preset serial
+```
+
+### OpenMP Backend
+
+```bash
+cmake --preset openmp
+cmake --build --preset openmp
+```
+
+### CUDA Backend (requires GCC 12)
+
+```bash
+cmake --preset cuda-gcc12
+cmake --build --preset cuda-gcc12
+```
+
+### MPI Variants
+
+```bash
+cmake --preset mpi-serial
+cmake --build --preset mpi-serial
+```
+
+## Running Tests
+
+```bash
+# Run all tests
+ctest --preset serial
+
+# Run specific test executable
+./build-serial/tests/subsetix_test_core
+./build-serial/tests/subsetix_test_ops
+./build-serial/tests/subsetix_test_advanced
+./build-serial/tests/subsetix_test_amr
+```
+
+## Running Examples
+
+```bash
+# From build directory
+./build-serial/examples/<example_name>
+
+# Examples accept --output-dir <path> to override default output location
+# Most generate .vtk files in examples_output/<example_name>/
+```
+
+## Next Steps
+
+- [Build Configuration](user-guide/build-configuration.qmd) - Detailed CMake options
+- [Running Tests](user-guide/running-tests.qmd) - Test organization and execution
+- [Examples](user-guide/examples.qmd) - Example programs
+- [Architecture Overview](architecture/csr-geometry.qmd) - Core concepts and design

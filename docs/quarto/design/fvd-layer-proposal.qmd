@@ -1,0 +1,44 @@
+---
+title: "FVD Proposal v3.1"
+---
+
+# FVD Layer Proposal v3.1
+
+Detailed design specification for the Finite Volume Discretization layer.
+
+## Overview
+
+The FVD layer provides a high-level API for solving hyperbolic PDEs on sparse geometries using finite volume methods.
+
+## Key Components
+
+### System Concept
+
+- `FiniteVolumeSystem` concept requirements
+- Conserved and primitive variable types
+- Flux computation interfaces
+
+### Solver Design
+
+- Policy-based design (templates, no virtual functions)
+- Reconstruction schemes (MUSCL with limiters)
+- Numerical fluxes (Rusanov, HLLC, Roe)
+- Time integrators (RK1, RK2, RK3)
+
+### Geometry API
+
+- Fluent geometry builder
+- Support for complex shapes (cylinders, boxes)
+- Dynamic geometry modification
+
+## GPU Compatibility
+
+The design ensures GPU compatibility by avoiding:
+- Runtime polymorphism (virtual functions)
+- Dynamic memory allocation in kernels
+- Standard library containers on device
+
+## References
+
+- Full proposal: `/docs/fvd_layer_proposal_v3.1.md`
+- FVD architecture: [FVD Layer](../architecture/fvd-layer.qmd)

@@ -1,0 +1,47 @@
+---
+title: "Examples"
+---
+
+# Examples
+
+The project includes several example programs demonstrating key features.
+
+## Running Examples
+
+```bash
+# From build directory
+./build-serial/examples/<example_name>
+
+# Examples accept --output-dir <path> to override default output location
+# Most generate .vtk files in examples_output/<example_name>/
+```
+
+## Available Examples
+
+### Fluid Dynamics Examples
+
+- `mach2` - Mach 2 flow example with AMR
+- `euler_2d` - 2D Euler equations solver
+
+### Basic Examples
+
+- `interval_set_demo` - Demonstrates CSR interval set usage
+- `field_operations` - Field operations and transformations
+- `set_algebra_demo` - Union, intersection, difference operations
+
+## Output
+
+Examples generate VTK files for visualization in tools like:
+- ParaView
+- VisIt
+- VTK-based viewers
+
+## Example Usage
+
+```bash
+# Run Mach 2 example
+./build-serial/examples/mach2 --output-dir my_output
+
+# View results
+paraview my_output/mach2/*.vtk
+```

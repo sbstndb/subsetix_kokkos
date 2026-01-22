@@ -1,0 +1,58 @@
+project:
+  type: website
+
+website:
+  title: "Subsetix Kokkos"
+  site-url: "https://github.com/sbstndb/subsetix_kokkos_agent3"
+  repo-url: "https://github.com/sbstndb/subsetix_kokkos_agent3"
+
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      - section: "Getting Started"
+        contents:
+          - href: index.qmd
+            text: "Home"
+          - href: quickstart.qmd
+            text: "Quick Start"
+
+      - section: "User Guide"
+        contents:
+          - href: user-guide/overview.qmd
+            text: "Overview"
+          - href: user-guide/build-configuration.qmd
+            text: "Build Configuration"
+          - href: user-guide/running-tests.qmd
+            text: "Running Tests"
+          - href: user-guide/examples.qmd
+            text: "Examples"
+
+      - section: "Architecture"
+        contents:
+          - href: architecture/csr-geometry.qmd
+            text: "CSR Geometry"
+          - href: architecture/field-system.qmd
+            text: "Field System"
+          - href: architecture/fvd-layer.qmd
+            text: "FVD Layer"
+
+      - section: "Design Docs"
+        contents:
+          - href: design/3d-extension.qmd
+            text: "3D Extension"
+          - href: design/fvd-layer-proposal.qmd
+            text: "FVD Proposal v3.1"
+
+format:
+  html:
+    theme:
+      - cosmo
+      - assets/custom.scss
+    toc: true
+    code-copy: true
+    code-link: true
+    anchor-sections: true
+
+execute:
+  freeze: auto

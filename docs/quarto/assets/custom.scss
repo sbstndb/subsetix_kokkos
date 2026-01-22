@@ -1,0 +1,79 @@
+/* Custom styles for Subsetix Kokkos documentation */
+
+/* Primary color scheme */
+$primary: #2563eb;
+$secondary: #1e40af;
+
+/* Code block styling */
+pre {
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
+
+/* Sidebar styling */
+.sidebar-sidebar {
+  border-right: 1px solid #e5e7eb;
+}
+
+/* Navigation link hover effect */
+.nav-link:hover {
+  background-color: #f3f4f6;
+}
+
+/* Custom callout boxes */
+.callout {
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.callout-note {
+  background-color: #eff6ff;
+  border-left: 4px solid #3b82f6;
+}
+
+.callout-warning {
+  background-color: #fef3c7;
+  border-left: 4px solid #f59e0b;
+}
+
+.callout-important {
+  background-color: #fee2e2;
+  border-left: 4px solid #ef4444;
+}
+
+/* Table styling */
+.table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.table thead {
+  background-color: #f9fafb;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+}
+
+/* Code copy button styling */
+.btn-code-copy {
+  background-color: transparent;
+  border: none;
+  opacity: 0.6;
+}
+
+.btn-code-copy:hover {
+  opacity: 1;
+}
+
+/* Footer styling */
+footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  font-size: 0.875rem;
+  color: #6b7280;
+}

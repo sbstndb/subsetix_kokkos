@@ -1,0 +1,36 @@
+---
+title: "3D Extension"
+---
+
+# 3D Extension Design Notes
+
+This section contains design notes for extending Subsetix Kokkos to 3D domains.
+
+## Overview
+
+The current implementation focuses on 2D sparse domains using CSR interval sets. Extension to 3D requires careful consideration of:
+
+- Data structure design for 3D sparse domains
+- Efficient set algebra operations in 3D
+- GPU-compatible parallel kernels
+
+## Key Design Challenges
+
+### Memory Layout
+
+3D sparse domains require efficient representation of:
+- Z-coordinate intervals per row
+- Y-coordinate rows per z-level
+- Cell indexing and offsets
+
+### Set Algebra Operations
+
+Union, intersection, and difference operations must be extended to 3D:
+- Sweep-based algorithms
+- Efficient interval merging/splitting
+- Parallel kernel design
+
+## References
+
+- Full design document: `/3D.md` in the repository root
+- CSR geometry: [CSR Geometry](../architecture/csr-geometry.qmd)
