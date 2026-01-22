@@ -52,20 +52,26 @@ cat /tmp/*_results.txt
 
 ### GPU Support Matrix
 
-| GPU | Kokkos Arch | Compute Capability | Kokkos 4.5.0 | Kokkos 5.0.1+ |
-|-----|-------------|-------------------|-------------|---------------|
+| GPU | Kokkos Arch | Compute Capability | Kokkos 4.5.0<br/>+ CUDA 12.3 | Kokkos 5.0.1+<br/>+ CUDA 13.0 |
+|-----|-------------|-------------------|---------------------------|-------------------------------|
 | T4 | TURING75 | 7.5 | ✅ Working | ✅ Working |
 | A100 | AMPERE80 | 8.0 | ✅ Working | ✅ Working |
 | H100 | HOPPER90 | 9.0 | ✅ Working | ✅ Working |
-| B200 | BLACKWELL | 10.0 | ❌ Not supported | ✅ Supported |
+| B200 | BLACKWELL | 10.0 | ❌ Kokkos can't detect CC 10.0 | ✅ **Full support** |
+
+**B200 Requirements:**
+- Kokkos 5.0.1+ (to detect Compute Capability 10.0)
+- CUDA 13.0+ (nvcc must support `sm_100`)
 
 ### Container Image
 
 The Modal image is based on:
-- **Base**: `nvidia/cuda:12.3.2-devel-ubuntu22.04`
+- **Base**: `nvidia/cuda:13.0.0-devel-ubuntu22.04` (CUDA 13.0 required for sm_100/B200)
 - **Python**: 3.11
 - **Compiler**: GCC 12
 - **Build tools**: CMake, Ninja
+
+**Note:** For B200 (BLACKWELL), CUDA 13.0 is required because CUDA 12.x doesn't support `sm_100`.
 
 ### Build Configuration
 

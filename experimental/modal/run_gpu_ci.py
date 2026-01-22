@@ -19,12 +19,12 @@ import modal
 # -----------------------------------------------------------------------------
 
 # GPU architecture mapping for Kokkos
-# NOTE: This branch uses Kokkos 5.0.1 which supports Compute Capability 10.0 (BLACKWELL/B200)
+# NOTE: B200 requires Kokkos 5.0.1+ (detects CC 10.0) AND CUDA 13.0+ (can compile sm_100)
 GPU_ARCH_MAP = {
     "T4": "TURING75",
     "A100": "AMPERE80",
     "H100": "HOPPER90",
-    "B200": "BLACKWELL",  # Supported with Kokkos 5.0.1+
+    "B200": "BLACKWELL",  # Requires Kokkos 5.0.1+ and CUDA 13.0+
 }
 
 def create_image() -> modal.Image:
@@ -34,7 +34,7 @@ def create_image() -> modal.Image:
 
     return (
         modal.Image.from_registry(
-            "nvidia/cuda:12.3.2-devel-ubuntu22.04",
+            "nvidia/cuda:13.0.0-devel-ubuntu22.04",  # CUDA 13 required for sm_100 (B200/BLACKWELL)
             add_python="3.11",
         )
         .apt_install(

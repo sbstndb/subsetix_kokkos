@@ -81,11 +81,15 @@ Modal's NVIDIA driver version may differ. The script uses CUDA 12.3.2 from NVIDI
 
 ### B200 fails with "CUDA enabled but no NVIDIA GPU architecture"
 
-**On Kokkos 4.5.0:** This is expected - Kokkos 4.5.0 doesn't support Compute Capability 10.0 (BLACKWELL).
+**Root cause:** B200 requires both Kokkos 5.0.1+ AND CUDA 13.0+ to support Compute Capability 10.0 (sm_100).
 
-**Solution:** Switch to the `feat/modal-gpu-ci-kokkos-5` branch which uses Kokkos 5.0.1:
+**Solution:** Use the `feat/modal-gpu-ci-kokkos-5` branch which includes:
+- Kokkos 5.0.1 (supports CC 10.0 detection)
+- CUDA 13.0.0 (can compile for sm_100)
+
 ```bash
 git checkout feat/modal-gpu-ci-kokkos-5
+modal run experimental/modal/run_gpu_ci.py::run_b200_entry
 ```
 
 ## Cost Estimate
