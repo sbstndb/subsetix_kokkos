@@ -7,6 +7,7 @@
 #
 # Usage:
 #   ./scripts/profiling/analyze_traces.sh <trace_dir>
+#   ./scripts/profiling/analyze_traces.sh --help
 
 set -e
 
@@ -24,17 +25,29 @@ usage() {
     cat << EOF
 ${BLUE}Usage:${NC}
     $(basename "$0") <trace_directory>
+    $(basename "$0") [${YELLOW}-h${NC}|${YELLOW}--help${NC}]
 
 ${BLUE}Description:${NC}
     Analyze Kokkos profiling traces and generate human-readable reports.
 
+${BLUE}Arguments:${NC}
+    trace_directory    Path to the profiling output directory to analyze
+
+${BLUE}Options:${NC}
+    ${YELLOW}-h, --help${NC}     Show this help message
+
 ${BLUE}Examples:${NC}
     $(basename "$0") profiling_output/20250122-145000
 EOF
-    exit 1
+    exit 0
 }
 
 if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+# Check for help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     usage
 fi
 

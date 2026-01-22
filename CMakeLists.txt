@@ -227,20 +227,21 @@ if(SUBSETIX_ENABLE_PROFILING_KOKKOS)
   # Get the path to the built profiling library
   if(KokkosTools_ENABLE_SINGLE)
     # Find the profiling library in the build directory
-    # The library is typically in <build_dir>/lib/libkokkosp.so (or .dylib on macOS, .dll on Windows)
+    # The monolithic library is named libkokkostools.so (not libkokkosp.so)
     find_library(KOKKOS_PROFILE_LIB
-      NAMES kokkosp libkokkosp
+      NAMES kokkostools libkokkostools
       PATHS
+        "${CMAKE_BINARY_DIR}/_deps/kokkos_tools-build/profiling/all"
         "${CMAKE_BINARY_DIR}/_deps/kokkos_tools-build"
         "${CMAKE_BINARY_DIR}/_deps"
         "${CMAKE_BINARY_DIR}"
-      PATH_SUFFIXES lib lib64
+      PATH_SUFFIXES . lib lib64
       NO_DEFAULT_PATH
     )
 
     if(NOT KOKKOS_PROFILE_LIB)
-      # Fallback: try the build directory directly
-      set(KOKKOS_PROFILE_LIB "${CMAKE_BINARY_DIR}/_deps/lib/${CMAKE_SHARED_LIBRARY_PREFIX}kokkosp${CMAKE_SHARED_LIBRARY_SUFFIX}")
+      # Fallback: try the known monolithic library path
+      set(KOKKOS_PROFILE_LIB "${CMAKE_BINARY_DIR}/_deps/kokkos_tools-build/profiling/all/${CMAKE_SHARED_LIBRARY_PREFIX}kokkostools${CMAKE_SHARED_LIBRARY_SUFFIX}")
     endif()
 
     message(STATUS "Kokkos profiling library: ${KOKKOS_PROFILE_LIB}")

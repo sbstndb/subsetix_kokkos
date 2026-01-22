@@ -7,6 +7,7 @@
 #
 # Usage:
 #   ./scripts/profiling/compare_runs.sh <trace_dir1> <trace_dir2> ...
+#   ./scripts/profiling/compare_runs.sh --help
 
 set -e
 
@@ -25,9 +26,16 @@ usage() {
     cat << EOF
 ${BLUE}Usage:${NC}
     $(basename "$0") <trace_directory1> <trace_directory2> ...
+    $(basename "$0") [${YELLOW}-h${NC}|${YELLOW}--help${NC}]
 
 ${BLUE}Description:${NC}
     Compare benchmark results from multiple profiling runs.
+
+${BLUE}Arguments:${NC}
+    trace_directory    One or more profiling output directories to compare
+
+${BLUE}Options:${NC}
+    ${YELLOW}-h, --help${NC}     Show this help message
 
 ${BLUE}Examples:${NC}
     # Compare Serial vs OpenMP profiling runs
@@ -40,10 +48,15 @@ ${BLUE}Output:${NC}
     - Comparison table of benchmark times
     - Ranking of fastest/slowest runs
 EOF
-    exit 1
+    exit 0
 }
 
 if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+# Check for help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     usage
 fi
 

@@ -9,27 +9,73 @@
 #
 # Usage:
 #   ./analyze_results.sh [PROFILING_DIR]
+#   ./analyze_results.sh --help
 #
 # If no directory is specified, it will use the most recent profiling output.
 
 set -euo pipefail
+
+# Colors for help output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+usage() {
+    cat << EOF
+${BLUE}Usage:${NC}
+    $(basename "$0") [PROFILING_DIR]
+    $(basename "$0") [${YELLOW}-h${NC}|${YELLOW}--help${NC}]
+
+${BLUE}Description:${NC}
+    Analyze and summarize Nsight profiling results (ncu/nsys output files).
+
+${BLUE}Arguments:${NC}
+    PROFILING_DIR     Path to profiling output directory (optional)
+                       If omitted, uses the most recent profiling_output*
+
+${BLUE}Options:${NC}
+    ${YELLOW}-h, --help${NC}     Show this help message
+
+${BLUE}Examples:${NC}
+    # Analyze most recent profiling output
+    $(basename "$0")
+
+    # Analyze specific directory
+    $(basename "$0") profiling_output_ncu
+
+    # Analyze nsys results
+    $(basename "$0") profiling_output/20250122-150000
+
+${BLUE}Supported Files:${NC}
+    - *.ncu-rep   Nsight Compute reports
+    - *.nsys-rep Nsight Systems reports
+    - *.log      Benchmark log files
+EOF
+    exit 0
+}
+
+# Check for help flag
+if [ $# -ge 1 ] && ([ "$1" == "-h" ] || [ "$1" == "--help" ]); then
+  usage
+fi
 
 # Find the profiling directory
 if [ $# -eq 0 ]; then
   # Find most recent profiling output
   PROFILING_DIR=$(find . -maxdepth 2 -type d -name "profiling_output*" 2>/dev/null | sort -r | head -1)
   if [ -z "${PROFILING_DIR}" ]; then
-    echo "Error: No profiling output directories found"
+    echo -e "${RED}Error: No profiling output directories found${NC}"
     echo ""
-    echo "Usage: $0 [PROFILING_DIR]"
-    exit 1
+    usage
   fi
 else
   PROFILING_DIR="$1"
 fi
 
 if [ ! -d "${PROFILING_DIR}" ]; then
-  echo "Error: Directory not found: ${PROFILING_DIR}"
+  echo -e "${RED}Error: Directory not found: ${PROFILING_DIR}${NC}"
   exit 1
 fi
 
