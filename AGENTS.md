@@ -15,6 +15,8 @@
 
 Use CMake presets - see **CLAUDE.md** for complete reference.
 
+For documentation (Quarto), see **QUARTO.md**.
+
 ### Common Presets
 
 | Category | Preset | Backend | Build dir |
