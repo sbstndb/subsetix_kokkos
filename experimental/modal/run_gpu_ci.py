@@ -137,19 +137,19 @@ FULL BENCHMARK OUTPUT:
 """
 
 
-@app.function(gpu="T4", timeout=1200)
+@app.function(gpu="T4", cpu=16.0, timeout=1200)
 def run_t4() -> str:
     return run_benchmarks("T4", "TURING75")
 
-@app.function(gpu="A100", timeout=1200)
+@app.function(gpu="A100", cpu=16.0, timeout=1200)
 def run_a100() -> str:
     return run_benchmarks("A100", "AMPERE80")
 
-@app.function(gpu="H100", timeout=1200)
+@app.function(gpu="H100", cpu=16.0, timeout=1200)
 def run_h100() -> str:
     return run_benchmarks("H100", "HOPPER90")
 
-@app.function(gpu="B200", timeout=1200)
+@app.function(gpu="B200", cpu=16.0, timeout=1200)
 def run_b200() -> str:
     return run_benchmarks("B200", "BLACKWELL")
 
