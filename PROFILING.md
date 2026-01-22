@@ -58,6 +58,66 @@ readelf -S ./build-experimental-perf-serial/experimental/tests/experimental_v1_u
 # Should show .debug_info, .debug_line, etc.
 ```
 
+## Convenience Scripts
+
+The `scripts/` directory provides several scripts to simplify profiling workflows:
+
+### Script Overview
+
+| Script | Purpose |
+|--------|---------|
+| `perf_profile.sh` | Generic profiling for any executable |
+| `profile_benchmark.sh` | Profile specific benchmark configurations |
+| `profile_all_benchmarks.sh` | Profile all benchmark configurations |
+| `compare_perf.sh` | Compare two perf data files |
+| `generate_perf_report.sh` | Generate consolidated report from multiple files |
+
+### Profile a Specific Benchmark
+
+```bash
+# Profile Small 2D benchmarks with serial backend
+./scripts/profile_benchmark.sh experimental-perf-serial Small 2D
+
+# Profile Medium 2D benchmarks with OpenMP
+./scripts/profile_benchmark.sh experimental-perf-openmp Medium 2D
+
+# Profile Large 3D benchmarks with custom output directory
+./scripts/profile_benchmark.sh experimental-perf-serial Large 3D -o ./my_perf
+
+# Use perf stat for real-time statistics
+./scripts/profile_benchmark.sh experimental-perf-serial Small 2D --stat
+```
+
+### Profile All Benchmarks
+
+```bash
+# Profile all benchmarks (Small/Medium/Large × 2D/3D = 6 combinations)
+./scripts/profile_all_benchmarks.sh experimental-perf-serial
+
+# Profile all with OpenMP
+./scripts/profile_all_benchmarks.sh experimental-perf-openmp -o ./perf_all
+```
+
+### Compare Performance Results
+
+```bash
+# Compare before/after optimization
+./scripts/compare_perf.sh perf_before.data perf_after.data
+
+# Compare different algorithm versions
+./scripts/compare_perf.sh perf_v1.data perf_v2.data -o ./comparison
+```
+
+### Generate Consolidated Report
+
+```bash
+# Generate summary report from all perf data in a directory
+./scripts/generate_perf_report.sh ./perf_output
+
+# Generate report with custom output
+./scripts/generate_perf_report.sh ./perf_output -o ./my_report
+```
+
 ## Perf Commands
 
 ### Basic Commands
