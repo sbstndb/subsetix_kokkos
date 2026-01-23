@@ -54,6 +54,15 @@ ctest --preset serial
 
 Prefer presets over direct `make` calls.
 
+### GPU Architecture (CUDA)
+
+CUDA builds require `-DKokkos_ARCH_<NAME>=ON`. Find your GPU: `nvidia-smi -L`
+
+```bash
+cmake --preset cuda -DKokkos_ARCH_ADA89=ON  # Ada (RTX 40xx)
+cmake --preset cuda -DKokkos_ARCH_AMPERE86=ON  # Ampere (RTX 30xx)
+```
+
 ## Coding Style & Naming Conventions
 
 - Language: C++20, Kokkos-first for parallel code (no raw CUDA/OpenMP loops).

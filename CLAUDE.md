@@ -81,6 +81,16 @@ The default presets use the generic `g++` compiler (system default). To override
 
 **Note**: `CMakeUserPresets.json` is gitignored and never committed.
 
+### GPU Architecture (CUDA)
+
+CUDA builds require `-DKokkos_ARCH_<NAME>=ON`. Find your GPU: `nvidia-smi -L`
+
+```bash
+cmake --preset cuda -DKokkos_ARCH_ADA89=ON  # Ada (RTX 40xx, RTX 1000 Ada)
+cmake --preset cuda -DKokkos_ARCH_AMPERE86=ON  # Ampere (RTX 30xx, A100)
+cmake --preset cuda -DKokkos_ARCH_HOPPER90=ON  # Hopper (H100)
+```
+
 ## CMake Options Reference
 
 All available CMake options and their default values:
