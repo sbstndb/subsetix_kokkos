@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Repository Guidelines
 
 ## Project Structure & Module Organization
@@ -209,6 +213,17 @@ When modifying CMake configuration or adding new options, refer to **CLAUDE.md**
 - **Experimental mode** requires disabling stable components to avoid linking errors
 - **Execution/Memory space** flags are mutually exclusive (CMake will error if multiple are set)
 - See `CLAUDE.md` → "CMake Options Reference" for full documentation
+
+## Copyright & License Headers
+
+All source files (`.hpp`, `.cpp`) must include the following header:
+
+```cpp
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+```
+
+This SPDX identifier replaces the full Apache-2.0 license text; see `LICENSE` in the root directory for complete terms.
 
 ## Agent-Specific Instructions
 

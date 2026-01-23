@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Modal GPU CI for Experimental Module
 
 This directory contains Modal scripts to run the experimental subsetix_kokkos tests and benchmarks on NVIDIA GPUs.

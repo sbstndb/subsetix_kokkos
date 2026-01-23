@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+
+
 /**
  * @file fvd_mach2_cylinder_example.cpp
  * @brief Example: Mach 2 flow over a cylinder using FVD high-level API

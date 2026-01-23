@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -400,6 +404,19 @@ CMake INTERFACE targets (link via `target_link_libraries`):
 - `subsetix::core` - Aggregate target (includes all above)
 
 ## Additional Guidelines
+
+### Copyright & License Headers
+
+All source files (`.hpp`, `.cpp`) must include the following header:
+
+```cpp
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+```
+
+This SPDX identifier replaces the full Apache-2.0 license text; see `LICENSE` in the root directory for complete terms.
+
+### Other Documentation
 
 See **AGENTS.md** for:
 - Coding style (C++20, 2-space indentation, naming conventions)

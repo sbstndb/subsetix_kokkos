@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Proposal: Finite Volume Dynamics (FVD) Layer for Subsetix
 ## Version 3: Generic, AMR-Complete, Kokkos-Native
 
