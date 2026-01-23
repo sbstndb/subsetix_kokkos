@@ -69,7 +69,7 @@ message(STATUS "  - experimental_large_mesh_test")
 # baseline unitary tests - comprehensive baseline-specific tests
 add_executable(experimental_baseline_unitary_test
   test_main.cpp
-  set_algebra/test_v1_unitary.cpp
+  set_algebra/test_baseline_unitary.cpp
 )
 
 target_link_libraries(experimental_baseline_unitary_test
@@ -85,7 +85,7 @@ add_test(NAME ExperimentalBaselineUnitaryTest COMMAND experimental_baseline_unit
 # optimized unitary tests - optimized-specific tests
 add_executable(experimental_optimized_unitary_test
   test_main.cpp
-  set_algebra/test_v2_unitary.cpp
+  set_algebra/test_optimized_unitary.cpp
 )
 
 target_link_libraries(experimental_optimized_unitary_test
