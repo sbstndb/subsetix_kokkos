@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ccache
+          sudo apt-get install -y cmake ninja-build ccache libbenchmark-dev
 
       - name: Configure with playground enabled
         run: cmake --preset playground-serial
@@ -57,7 +57,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ccache
+          sudo apt-get install -y cmake ninja-build ccache libbenchmark-dev
 
       - name: Configure with playground and OpenMP
         run: cmake --preset playground-openmp
@@ -80,7 +80,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ccache
+          sudo apt-get install -y cmake ninja-build ccache libbenchmark-dev
 
       - name: Configure with playground and sanitizers
         run: cmake --preset playground-asan
