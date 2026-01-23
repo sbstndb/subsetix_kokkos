@@ -4,12 +4,12 @@
 #ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include <gtest/gtest.h>
-#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
 #include <playground/subsetix/csr/intersection/types.hpp>
 #include <Kokkos_Core.hpp>
 
 using namespace playground::subsetix::csr::intersection;
-using namespace playground::subsetix::csr::intersection::v1;
+using namespace playground::subsetix::csr::intersection::baseline;
 
 // Type aliases for convenience
 using Coord = int32_t;

@@ -98,7 +98,7 @@ target_link_libraries(playground_intersection_optimized_unitary_test
 
 add_test(NAME PlaygroundIntersectionOptimizedUnitaryTest COMMAND playground_intersection_optimized_unitary_test)
 
-# Cross-version test - compares v1/v2/v3 using random geometries
+# Cross-version test - compares baseline/optimized using random geometries
 add_executable(playground_intersection_cross_version_test
   test_main.cpp
   test_cross_version.cpp

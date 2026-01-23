@@ -4,13 +4,12 @@
 #ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include <gtest/gtest.h>
-#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
 #include <playground/subsetix/csr/intersection/types.hpp>
 #include <Kokkos_Core.hpp>
 
 using namespace playground::subsetix::csr::intersection;
-using namespace playground::subsetix::csr::intersection::v1;
+using namespace playground::subsetix::csr::intersection::baseline;
 
 // Type aliases for convenience
 using Coord = int32_t;
@@ -21,8 +20,8 @@ using RowKey2DType = RowKey2D<Coord>;
 // Test each overlap pattern individually
 // ============================================================================
 
-v1::Mesh2DDevice generate_mesh_2d_pattern(int n, int pattern, int offset_shift) {
-  v1::Mesh2DDevice mesh;
+baseline::Mesh2DDevice generate_mesh_2d_pattern(int n, int pattern, int offset_shift) {
+  baseline::Mesh2DDevice mesh;
   mesh.num_rows = n;
   mesh.num_intervals = n;
   mesh.row_keys = Kokkos::View<RowKey2DType*, Kokkos::DefaultExecutionSpace::memory_space>("gen_row_keys", n);
@@ -71,7 +70,7 @@ TEST(OverlapPatternTest, FullOverlapWorks) {
   auto mesh_a = generate_mesh_2d_pattern(n, 0, 0);  // FULL_OVERLAP
   auto mesh_b = generate_mesh_2d_pattern(n, 0, 0);
 
-  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_2d(mesh_a, mesh_b);
 
   EXPECT_GT(result.num_rows, 0);
   EXPECT_GT(result.num_intervals, 0);
@@ -84,7 +83,7 @@ TEST(OverlapPatternTest, PartialOverlapWorks) {
   auto mesh_a = generate_mesh_2d_pattern(n, 1, 0);  // PARTIAL_OVERLAP
   auto mesh_b = generate_mesh_2d_pattern(n, 1, 1);
 
-  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_2d(mesh_a, mesh_b);
 
   EXPECT_GT(result.num_rows, 0);
   EXPECT_GT(result.num_intervals, 0);
@@ -98,7 +97,7 @@ TEST(OverlapPatternTest, MinimalOverlapWorks) {
   auto mesh_a = generate_mesh_2d_pattern(n, 2, 0);  // MINIMAL_OVERLAP
   auto mesh_b = generate_mesh_2d_pattern(n, 2, 1);
 
-  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_2d(mesh_a, mesh_b);
 
   EXPECT_GT(result.num_rows, 0);
   EXPECT_GT(result.num_intervals, 0);
@@ -112,7 +111,7 @@ TEST(OverlapPatternTest, NoOverlapWorks) {
   auto mesh_a = generate_mesh_2d_pattern(n, 3, 0);  // NO_OVERLAP
   auto mesh_b = generate_mesh_2d_pattern(n, 3, 1);
 
-  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_2d(mesh_a, mesh_b);
 
   EXPECT_EQ(result.num_rows, 0);
   EXPECT_EQ(result.num_intervals, 0);

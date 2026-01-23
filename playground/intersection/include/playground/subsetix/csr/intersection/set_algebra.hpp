@@ -17,21 +17,20 @@
  * - Extensible framework for comparing different algorithms
  *
  * Version summary:
- * - v1: Baseline intersection algorithm (5-phase: map, count, scan, fill, compact)
- * - v2: Research slot (currently identical to v1)
- * - v3: Research slot (currently identical to v1)
+ * - baseline: Baseline intersection algorithm (5-phase: map, count, scan, fill, compact)
+ * - optimized: Optimized intersection algorithm (currently identical to baseline)
  *
  * Usage:
  * @code
  *   #ifdef SUBSETIX_ENABLE_PLAYGROUND
  *   #include <playground/subsetix/csr/intersection/set_algebra.hpp>
  *
- *   using namespace playground::subsetix::csr::intersection::v1;
+ *   using namespace playground::subsetix::csr::intersection::baseline;
  *   auto result = intersect_meshes_2d(mesh_a, mesh_b);
  *
  *   // With custom coordinate/index types:
- *   using Mesh16 = v1::Mesh2D<int16_t, uint32_t>;
- *   auto result = v1::intersect_meshes<2, int16_t, uint32_t>(mesh_a, mesh_b);
+ *   using Mesh16 = baseline::Mesh2D<int16_t, uint32_t>;
+ *   auto result = baseline::intersect_meshes<2, int16_t, uint32_t>(mesh_a, mesh_b);
  *   #endif
  * @endcode
  */
@@ -42,11 +41,8 @@
 // Utility functions
 #include <playground/subsetix/csr/intersection/detail/utils.hpp>
 
-// v1: Baseline intersection algorithm
-#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
+// baseline: Baseline intersection algorithm
+#include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
 
-// v2: Research slot
-#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
-
-// v3: Research slot
-#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
+// optimized: Optimized intersection algorithm
+#include <playground/subsetix/csr/intersection/algorithm/optimized.hpp>

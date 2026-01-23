@@ -4,9 +4,8 @@
 #ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include <gtest/gtest.h>
-#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/optimized.hpp>
 #include <playground/subsetix/csr/intersection/types.hpp>
 #include <Kokkos_Core.hpp>
 
@@ -52,21 +51,17 @@ MeshType generate_mesh_2d_partial_impl(int n, int offset_shift) {
 }
 
 // Version-specific wrappers
-inline v1::Mesh2DDevice generate_mesh_2d_partial_v1(int n, int offset_shift) {
-  return generate_mesh_2d_partial_impl<v1::Mesh2DDevice>(n, offset_shift);
+inline baseline::Mesh2DDevice generate_mesh_2d_partial_baseline(int n, int offset_shift) {
+  return generate_mesh_2d_partial_impl<baseline::Mesh2DDevice>(n, offset_shift);
 }
 
-inline v2::Mesh2DDevice generate_mesh_2d_partial_v2(int n, int offset_shift) {
-  return generate_mesh_2d_partial_impl<v2::Mesh2DDevice>(n, offset_shift);
+inline optimized::Mesh2DDevice generate_mesh_2d_partial_optimized(int n, int offset_shift) {
+  return generate_mesh_2d_partial_impl<optimized::Mesh2DDevice>(n, offset_shift);
 }
 
-inline v3::Mesh2DDevice generate_mesh_2d_partial_v3(int n, int offset_shift) {
-  return generate_mesh_2d_partial_impl<v3::Mesh2DDevice>(n, offset_shift);
-}
-
-// For backward compatibility with existing v1 tests
-inline v1::Mesh2DDevice generate_mesh_2d_partial(int n, int offset_shift) {
-  return generate_mesh_2d_partial_v1(n, offset_shift);
+// For backward compatibility with existing baseline tests
+inline baseline::Mesh2DDevice generate_mesh_2d_partial(int n, int offset_shift) {
+  return generate_mesh_2d_partial_baseline(n, offset_shift);
 }
 
 // ============================================================================
@@ -78,7 +73,7 @@ TEST(LargeMeshTest, PartialOverlap_2D_n64) {
   auto mesh_a = generate_mesh_2d_partial(n, 0);
   auto mesh_b = generate_mesh_2d_partial(n, 1);
 
-  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_2d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
@@ -87,7 +82,7 @@ TEST(LargeMeshTest, PartialOverlap_2D_n512) {
   auto mesh_a = generate_mesh_2d_partial(n, 0);
   auto mesh_b = generate_mesh_2d_partial(n, 1);
 
-  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_2d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
@@ -96,7 +91,7 @@ TEST(LargeMeshTest, PartialOverlap_2D_n4096) {
   auto mesh_a = generate_mesh_2d_partial(n, 0);
   auto mesh_b = generate_mesh_2d_partial(n, 1);
 
-  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_2d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
@@ -105,25 +100,16 @@ TEST(LargeMeshTest, PartialOverlap_2D_n8192) {
   auto mesh_a = generate_mesh_2d_partial(n, 0);
   auto mesh_b = generate_mesh_2d_partial(n, 1);
 
-  auto result = v1::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_2d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
-TEST(LargeMeshTest, PartialOverlap_2D_n8192_v2) {
+TEST(LargeMeshTest, PartialOverlap_2D_n8192_optimized) {
   const int n = 8192;
-  auto mesh_a = generate_mesh_2d_partial_v2(n, 0);
-  auto mesh_b = generate_mesh_2d_partial_v2(n, 1);
+  auto mesh_a = generate_mesh_2d_partial_optimized(n, 0);
+  auto mesh_b = generate_mesh_2d_partial_optimized(n, 1);
 
-  auto result = v2::intersect_meshes_2d(mesh_a, mesh_b);
-  EXPECT_GT(result.num_rows, 0);
-}
-
-TEST(LargeMeshTest, PartialOverlap_2D_n8192_v3) {
-  const int n = 8192;
-  auto mesh_a = generate_mesh_2d_partial_v3(n, 0);
-  auto mesh_b = generate_mesh_2d_partial_v3(n, 1);
-
-  auto result = v3::intersect_meshes_2d(mesh_a, mesh_b);
+  auto result = optimized::intersect_meshes_2d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
@@ -163,21 +149,17 @@ MeshType generate_mesh_3d_partial_impl(int n, int offset_shift) {
 }
 
 // Version-specific wrappers
-inline v1::Mesh3DDevice generate_mesh_3d_partial_v1(int n, int offset_shift) {
-  return generate_mesh_3d_partial_impl<v1::Mesh3DDevice>(n, offset_shift);
+inline baseline::Mesh3DDevice generate_mesh_3d_partial_baseline(int n, int offset_shift) {
+  return generate_mesh_3d_partial_impl<baseline::Mesh3DDevice>(n, offset_shift);
 }
 
-inline v2::Mesh3DDevice generate_mesh_3d_partial_v2(int n, int offset_shift) {
-  return generate_mesh_3d_partial_impl<v2::Mesh3DDevice>(n, offset_shift);
+inline optimized::Mesh3DDevice generate_mesh_3d_partial_optimized(int n, int offset_shift) {
+  return generate_mesh_3d_partial_impl<optimized::Mesh3DDevice>(n, offset_shift);
 }
 
-inline v3::Mesh3DDevice generate_mesh_3d_partial_v3(int n, int offset_shift) {
-  return generate_mesh_3d_partial_impl<v3::Mesh3DDevice>(n, offset_shift);
-}
-
-// For backward compatibility with existing v1 tests
-inline v1::Mesh3DDevice generate_mesh_3d_partial(int n, int offset_shift) {
-  return generate_mesh_3d_partial_v1(n, offset_shift);
+// For backward compatibility with existing baseline tests
+inline baseline::Mesh3DDevice generate_mesh_3d_partial(int n, int offset_shift) {
+  return generate_mesh_3d_partial_baseline(n, offset_shift);
 }
 
 TEST(LargeMeshTest, PartialOverlap_3D_n64) {
@@ -185,7 +167,7 @@ TEST(LargeMeshTest, PartialOverlap_3D_n64) {
   auto mesh_a = generate_mesh_3d_partial(n, 0);
   auto mesh_b = generate_mesh_3d_partial(n, 1);
 
-  auto result = v1::intersect_meshes_3d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_3d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
@@ -194,7 +176,7 @@ TEST(LargeMeshTest, PartialOverlap_3D_n512) {
   auto mesh_a = generate_mesh_3d_partial(n, 0);
   auto mesh_b = generate_mesh_3d_partial(n, 1);
 
-  auto result = v1::intersect_meshes_3d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_3d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
@@ -203,7 +185,7 @@ TEST(LargeMeshTest, PartialOverlap_3D_n4096) {
   auto mesh_a = generate_mesh_3d_partial(n, 0);
   auto mesh_b = generate_mesh_3d_partial(n, 1);
 
-  auto result = v1::intersect_meshes_3d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_3d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
@@ -212,25 +194,16 @@ TEST(LargeMeshTest, PartialOverlap_3D_n8192) {
   auto mesh_a = generate_mesh_3d_partial(n, 0);
   auto mesh_b = generate_mesh_3d_partial(n, 1);
 
-  auto result = v1::intersect_meshes_3d(mesh_a, mesh_b);
+  auto result = baseline::intersect_meshes_3d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
-TEST(LargeMeshTest, PartialOverlap_3D_n8192_v2) {
+TEST(LargeMeshTest, PartialOverlap_3D_n8192_optimized) {
   const int n = 8192;
-  auto mesh_a = generate_mesh_3d_partial_v2(n, 0);
-  auto mesh_b = generate_mesh_3d_partial_v2(n, 1);
+  auto mesh_a = generate_mesh_3d_partial_optimized(n, 0);
+  auto mesh_b = generate_mesh_3d_partial_optimized(n, 1);
 
-  auto result = v2::intersect_meshes_3d(mesh_a, mesh_b);
-  EXPECT_GT(result.num_rows, 0);
-}
-
-TEST(LargeMeshTest, PartialOverlap_3D_n8192_v3) {
-  const int n = 8192;
-  auto mesh_a = generate_mesh_3d_partial_v3(n, 0);
-  auto mesh_b = generate_mesh_3d_partial_v3(n, 1);
-
-  auto result = v3::intersect_meshes_3d(mesh_a, mesh_b);
+  auto result = optimized::intersect_meshes_3d(mesh_a, mesh_b);
   EXPECT_GT(result.num_rows, 0);
 }
 
