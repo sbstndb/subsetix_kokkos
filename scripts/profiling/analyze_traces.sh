@@ -1,6 +1,6 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: 2025 Subsetix Kokkos Contributors
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
 #
 # analyze_traces.sh - Analyze Kokkos profiling traces

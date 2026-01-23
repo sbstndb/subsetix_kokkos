@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Subsetix Kokkos
 
 > **Sparse Finite Volume Discretization on Complex 2D Geometries with GPU Acceleration**

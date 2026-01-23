@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Modal GPU CI Documentation
 
 This document describes how to use Modal for GPU-based CI/CD of the experimental subsetix_kokkos module.

@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # FVD API Graph Integration - Concret Implementation Guide
 
 ## API Changes Required for Graph Support

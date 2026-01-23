@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Towards a Kokkos‑First Design
 
 This document proposes a roadmap to make the whole subsetix core "Kokkos‑first":  

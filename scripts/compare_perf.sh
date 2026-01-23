@@ -1,6 +1,6 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: 2025 Subsetix Kokkos Contributors
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
 # Script to compare perf results between two runs
 # Usage: ./scripts/compare_perf.sh <perf_data_1> <perf_data_2>

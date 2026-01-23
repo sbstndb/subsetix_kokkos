@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Implémentation de l'API MPI FVD - Résumé
 
 ## Date: 31 Décembre 2024
