@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The project uses CMake Presets with Ninja generator:
 
 ```bash
-# Non-MPI variants
+# Available presets
 cmake --preset serial              # Serial backend
 cmake --build --preset serial
 
@@ -22,11 +22,6 @@ cmake --build --preset openmp
 
 cmake --preset cuda                # CUDA + Serial
 cmake --build --preset cuda
-
-# MPI variants
-cmake --preset mpi-serial          # MPI + Serial
-cmake --preset mpi-openmp          # MPI + OpenMP
-cmake --preset mpi-cuda            # MPI + CUDA
 
 # Debug with sanitizers
 cmake --preset serial-asan         # Address + UB sanitizer
@@ -163,9 +158,9 @@ cmake --preset experimental-serial
 | `experimental-perf-openmp` | Linux perf | OpenMP |
 | `experimental-serial-profile` | Kokkos tools | Serial |
 | `experimental-openmp-profile` | Kokkos tools | OpenMP |
-| `experimental-cuda-gcc12-profile` | Kokkos tools | CUDA |
-| `profiling-nsight-cuda-gcc12` | Nsight | CUDA |
-| `profiling-nsight-cuda-gcc12-release` | Nsight (Release) | CUDA |
+| `experimental-cuda-profile` | Kokkos tools | CUDA |
+| `profiling-nsight-cuda` | Nsight | CUDA |
+| `profiling-nsight-cuda-release` | Nsight (Release) | CUDA |
 
 ### Running Tests
 

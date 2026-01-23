@@ -52,39 +52,6 @@
       }
     },
     {
-      "name": "mpi-serial",
-      "displayName": "MPI + Kokkos SERIAL",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-mpi-serial",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_USE_MPI": "ON"
-      }
-    },
-    {
-      "name": "mpi-openmp",
-      "displayName": "MPI + Kokkos OPENMP",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-mpi-openmp",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_KOKKOS_OPENMP": "ON",
-        "SUBSETIX_USE_MPI": "ON"
-      }
-    },
-    {
-      "name": "mpi-cuda",
-      "displayName": "MPI + Kokkos CUDA",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-mpi-cuda",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++",
-        "SUBSETIX_USE_MPI": "ON"
-      }
-    },
-    {
       "name": "coverage",
       "displayName": "Code Coverage (Serial, Debug)",
       "generator": "Ninja",
@@ -290,18 +257,6 @@
       "configurePreset": "serial-asan"
     },
     {
-      "name": "mpi-serial",
-      "configurePreset": "mpi-serial"
-    },
-    {
-      "name": "mpi-openmp",
-      "configurePreset": "mpi-openmp"
-    },
-    {
-      "name": "mpi-cuda",
-      "configurePreset": "mpi-cuda"
-    },
-    {
       "name": "coverage",
       "configurePreset": "coverage"
     },
@@ -366,18 +321,6 @@
     {
       "name": "serial-asan",
       "configurePreset": "serial-asan"
-    },
-    {
-      "name": "mpi-serial",
-      "configurePreset": "mpi-serial"
-    },
-    {
-      "name": "mpi-openmp",
-      "configurePreset": "mpi-openmp"
-    },
-    {
-      "name": "mpi-cuda",
-      "configurePreset": "mpi-cuda"
     },
     {
       "name": "coverage",

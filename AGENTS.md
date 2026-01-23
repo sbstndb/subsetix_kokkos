@@ -35,9 +35,9 @@ Use CMake presets - see **CLAUDE.md** for complete reference.
 | | `experimental-perf-openmp` | OpenMP + Linux perf | `build-experimental-perf-openmp` |
 | | `experimental-serial-profile` | Serial + Kokkos tools | `build-experimental-serial-profile` |
 | | `experimental-openmp-profile` | OpenMP + Kokkos tools | `build-experimental-openmp-profile` |
-| | `experimental-cuda-gcc12-profile` | CUDA + Kokkos tools | `build-experimental-cuda-gcc12-profile` |
-| | `profiling-nsight-cuda-gcc12` | CUDA + Nsight | `build-profiling-nsight-cuda-gcc12` |
-| | `profiling-nsight-cuda-gcc12-release` | CUDA + Nsight (Release) | `build-profiling-nsight-cuda-gcc12-release` |
+| | `experimental-cuda-profile` | CUDA + Kokkos tools | `build-experimental-cuda-profile` |
+| | `profiling-nsight-cuda` | CUDA + Nsight | `build-profiling-nsight-cuda` |
+| | `profiling-nsight-cuda-release` | CUDA + Nsight (Release) | `build-profiling-nsight-cuda-release` |
 
 ### Quick Start
 
@@ -109,8 +109,8 @@ cmake --build --preset experimental-perf-serial
 ./scripts/perf_profile.sh ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark
 
 # Nsight GPU profiling (CUDA)
-cmake --preset profiling-nsight-cuda-gcc12
-cmake --build --preset profiling-nsight-cuda-gcc12
+cmake --preset profiling-nsight-cuda
+cmake --build --preset profiling-nsight-cuda
 ./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
 
 # Kokkos profiling tools (All backends)
