@@ -66,13 +66,13 @@ message(STATUS "  - playground_intersection_large_mesh_test")
 # New Architecture Tests with Common Format and Random Generation
 # ============================================================================
 
-# v1 unitary tests - comprehensive v1-specific tests
-add_executable(playground_intersection_v1_unitary_test
+# baseline unitary tests - comprehensive baseline-specific tests
+add_executable(playground_intersection_baseline_unitary_test
   test_main.cpp
-  test_v1_unitary.cpp
+  test_baseline_unitary.cpp
 )
 
-target_link_libraries(playground_intersection_v1_unitary_test
+target_link_libraries(playground_intersection_baseline_unitary_test
   PRIVATE
     playground_subsetix_csr_intersection
     gtest
@@ -80,15 +80,15 @@ target_link_libraries(playground_intersection_v1_unitary_test
     Kokkos::kokkos
 )
 
-add_test(NAME PlaygroundIntersectionV1UnitaryTest COMMAND playground_intersection_v1_unitary_test)
+add_test(NAME PlaygroundIntersectionBaselineUnitaryTest COMMAND playground_intersection_baseline_unitary_test)
 
-# v2 unitary tests - v2-specific tests
-add_executable(playground_intersection_v2_unitary_test
+# optimized unitary tests - optimized-specific tests
+add_executable(playground_intersection_optimized_unitary_test
   test_main.cpp
-  test_v2_unitary.cpp
+  test_optimized_unitary.cpp
 )
 
-target_link_libraries(playground_intersection_v2_unitary_test
+target_link_libraries(playground_intersection_optimized_unitary_test
   PRIVATE
     playground_subsetix_csr_intersection
     gtest
@@ -96,23 +96,7 @@ target_link_libraries(playground_intersection_v2_unitary_test
     Kokkos::kokkos
 )
 
-add_test(NAME PlaygroundIntersectionV2UnitaryTest COMMAND playground_intersection_v2_unitary_test)
-
-# v3 unitary tests - v3-specific tests
-add_executable(playground_intersection_v3_unitary_test
-  test_main.cpp
-  test_v3_unitary.cpp
-)
-
-target_link_libraries(playground_intersection_v3_unitary_test
-  PRIVATE
-    playground_subsetix_csr_intersection
-    gtest
-    gmock
-    Kokkos::kokkos
-)
-
-add_test(NAME PlaygroundIntersectionV3UnitaryTest COMMAND playground_intersection_v3_unitary_test)
+add_test(NAME PlaygroundIntersectionOptimizedUnitaryTest COMMAND playground_intersection_optimized_unitary_test)
 
 # Cross-version test - compares v1/v2/v3 using random geometries
 add_executable(playground_intersection_cross_version_test
@@ -146,8 +130,7 @@ target_link_libraries(playground_intersection_random_mesh_generator_test
 
 add_test(NAME PlaygroundIntersectionRandomMeshGeneratorTest COMMAND playground_intersection_random_mesh_generator_test)
 
-message(STATUS "  - playground_intersection_v1_unitary_test")
-message(STATUS "  - playground_intersection_v2_unitary_test")
-message(STATUS "  - playground_intersection_v3_unitary_test")
+message(STATUS "  - playground_intersection_baseline_unitary_test")
+message(STATUS "  - playground_intersection_optimized_unitary_test")
 message(STATUS "  - playground_intersection_cross_version_test")
 message(STATUS "  - playground_intersection_random_mesh_generator_test")
