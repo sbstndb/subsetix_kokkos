@@ -20,13 +20,13 @@ cmake --build --preset serial
 cmake --preset openmp              # OpenMP + Serial
 cmake --build --preset openmp
 
-cmake --preset cuda                # CUDA + Serial (requires GCC 14)
+cmake --preset cuda                # CUDA + Serial
 cmake --build --preset cuda
 
 # MPI variants
 cmake --preset mpi-serial          # MPI + Serial
 cmake --preset mpi-openmp          # MPI + OpenMP
-cmake --preset mpi-cuda            # MPI + CUDA (GCC 14)
+cmake --preset mpi-cuda            # MPI + CUDA
 
 # Debug with sanitizers
 cmake --preset serial-asan         # Address + UB sanitizer
@@ -49,9 +49,42 @@ cmake --preset experimental-perf-openmp       # Linux perf + OpenMP
 cmake --build --preset experimental-perf-openmp
 cmake --preset experimental-serial-profile    # Kokkos profiling tools
 cmake --build --preset experimental-serial-profile
-cmake --preset profiling-nsight-cuda-gcc12    # Nsight GPU profiling
-cmake --build --preset profiling-nsight-cuda-gcc12
+cmake --preset profiling-nsight-cuda        # Nsight GPU profiling
+cmake --build --preset profiling-nsight-cuda
+cmake --preset profiling-nsight-cuda-release # Nsight with Release + symbols
+cmake --build --preset profiling-nsight-cuda-release
 ```
+
+### Machine-Specific Overrides
+
+The default presets use the generic `g++` compiler (system default). To override compiler or CUDA settings for your machine:
+
+1. **Copy the example template:**
+   ```bash
+   cp CMakeUserPresets.json.example CMakeUserPresets.json
+   ```
+
+2. **Edit `CMakeUserPresets.json`** with your local configuration:
+   ```json
+   {
+     "configurePresets": [
+       {
+         "name": "cuda-gcc14",
+         "inherits": "cuda",
+         "cacheVariables": {
+           "CMAKE_CXX_COMPILER": "g++-14"
+         }
+       }
+     ]
+   }
+   ```
+
+3. **Use your custom preset:**
+   ```bash
+   cmake --preset cuda-gcc14
+   ```
+
+**Note**: `CMakeUserPresets.json` is gitignored and never committed.
 
 ## CMake Options Reference
 

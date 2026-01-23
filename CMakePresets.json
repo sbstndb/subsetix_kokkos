@@ -29,13 +29,13 @@
     },
     {
       "name": "cuda",
-      "displayName": "Kokkos CUDA + SERIAL backends (GCC 14)",
+      "displayName": "Kokkos CUDA + SERIAL backends",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-14",
+        "CMAKE_CXX_COMPILER": "g++",
         "SUBSETIX_USE_MPI": "OFF"
       }
     },
@@ -74,13 +74,13 @@
     },
     {
       "name": "mpi-cuda",
-      "displayName": "MPI + Kokkos CUDA (GCC 14)",
+      "displayName": "MPI + Kokkos CUDA",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-mpi-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-14",
+        "CMAKE_CXX_COMPILER": "g++",
         "SUBSETIX_USE_MPI": "ON"
       }
     },
@@ -143,7 +143,7 @@
     },
     {
       "name": "experimental-cuda",
-      "displayName": "Experimental module only (CUDA + GCC 14)",
+      "displayName": "Experimental module only (CUDA)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-experimental-cuda",
       "cacheVariables": {
@@ -153,7 +153,7 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-14",
+        "CMAKE_CXX_COMPILER": "g++",
         "SUBSETIX_USE_MPI": "OFF"
       }
     },
@@ -221,7 +221,7 @@
     },
     {
       "name": "experimental-cuda-profile",
-      "displayName": "Experimental module only (CUDA + GCC 14 + Kokkos profiling tools)",
+      "displayName": "Experimental module only (CUDA + Kokkos profiling tools)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-experimental-cuda-profile",
       "cacheVariables": {
@@ -231,14 +231,14 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-14",
+        "CMAKE_CXX_COMPILER": "g++",
         "SUBSETIX_ENABLE_PROFILING_KOKKOS": "ON",
         "SUBSETIX_USE_MPI": "OFF"
       }
     },
     {
       "name": "profiling-nsight-cuda",
-      "displayName": "Profiling preset (CUDA + GCC 14 + Nsight, experimental only)",
+      "displayName": "Profiling preset (CUDA + Nsight, experimental only)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-profiling-nsight-cuda",
       "cacheVariables": {
@@ -249,13 +249,13 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-14",
+        "CMAKE_CXX_COMPILER": "g++",
         "SUBSETIX_USE_MPI": "OFF"
       }
     },
     {
       "name": "profiling-nsight-cuda-release",
-      "displayName": "Profiling preset (CUDA + GCC 14 + Nsight, Release with symbols, experimental only)",
+      "displayName": "Profiling preset (CUDA + Nsight, Release with symbols, experimental only)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-release",
       "cacheVariables": {
@@ -267,7 +267,7 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-14",
+        "CMAKE_CXX_COMPILER": "g++",
         "SUBSETIX_USE_MPI": "OFF"
       }
     }

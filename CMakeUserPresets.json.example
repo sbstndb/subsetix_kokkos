@@ -1,0 +1,87 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "cuda-gcc14",
+      "displayName": "CUDA with GCC 14",
+      "inherits": "cuda",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-14"
+      }
+    },
+    {
+      "name": "cuda-gcc13",
+      "displayName": "CUDA with GCC 13",
+      "inherits": "cuda",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-13"
+      }
+    },
+    {
+      "name": "cuda-gcc12",
+      "displayName": "CUDA with GCC 12",
+      "inherits": "cuda",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-12"
+      }
+    },
+    {
+      "name": "cuda-custom",
+      "displayName": "CUDA with custom toolkit path",
+      "inherits": "cuda",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_CUDA_COMPILER": "/opt/cuda/bin/nvcc"
+      }
+    },
+    {
+      "name": "mpi-cuda-gcc14",
+      "displayName": "MPI + CUDA with GCC 14",
+      "inherits": "mpi-cuda",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-14"
+      }
+    },
+    {
+      "name": "experimental-cuda-gcc14",
+      "displayName": "Experimental CUDA with GCC 14",
+      "inherits": "experimental-cuda",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-14"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "cuda-gcc14",
+      "configurePreset": "cuda-gcc14"
+    },
+    {
+      "name": "cuda-gcc13",
+      "configurePreset": "cuda-gcc13"
+    },
+    {
+      "name": "cuda-gcc12",
+      "configurePreset": "cuda-gcc12"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "cuda-gcc14",
+      "configurePreset": "cuda-gcc14"
+    },
+    {
+      "name": "cuda-gcc13",
+      "configurePreset": "cuda-gcc13"
+    },
+    {
+      "name": "cuda-gcc12",
+      "configurePreset": "cuda-gcc12"
+    }
+  ]
+}
