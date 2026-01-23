@@ -24,7 +24,7 @@ cmake --preset experimental-perf-serial && cmake --build --preset experimental-p
 ./scripts/perf_profile.sh ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark
 
 # Nsight (CUDA)
-cmake --preset profiling-nsight-cuda-gcc12 && cmake --build --preset profiling-nsight-cuda-gcc12
+cmake --preset profiling-nsight-cuda && cmake --build --preset profiling-nsight-cuda
 ./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
 
 # Kokkos profiling tools (All backends)
@@ -85,14 +85,14 @@ cmake --build --preset experimental-perf-serial
 - Warp efficiency and occupancy metrics
 
 **Build presets**:
-- `profiling-nsight-cuda-gcc12` - RelWithDebInfo build
-- `profiling-nsight-cuda-gcc12-release` - Release with debug symbols
+- `profiling-nsight-cuda` - RelWithDebInfo build
+- `profiling-nsight-cuda-release` - Release with debug symbols
 
 **Usage**:
 ```bash
 # Configure and build
-cmake --preset profiling-nsight-cuda-gcc12
-cmake --build --preset profiling-nsight-cuda-gcc12
+cmake --preset profiling-nsight-cuda
+cmake --build --preset profiling-nsight-cuda
 
 # Run Nsight Compute (detailed kernel profiling)
 ./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
@@ -132,7 +132,7 @@ cmake --build --preset profiling-nsight-cuda-gcc12
 **Build presets**:
 - `experimental-serial-profile` - Serial + Kokkos tools
 - `experimental-openmp-profile` - OpenMP + Kokkos tools
-- `experimental-cuda-gcc12-profile` - CUDA + Kokkos tools
+- `experimental-cuda-profile` - CUDA + Kokkos tools
 
 **Usage**:
 ```bash
@@ -230,9 +230,9 @@ The unified branch uses **Kokkos 5.0.1** (upgraded from 4.5.00) for B200/BLACKWE
 | `experimental-perf-openmp` | OpenMP | `build-experimental-perf-openmp` | `SUBSETIX_ENABLE_PROFILING_PERF=ON` |
 | `experimental-serial-profile` | Serial | `build-experimental-serial-profile` | `SUBSETIX_ENABLE_PROFILING_KOKKOS=ON` |
 | `experimental-openmp-profile` | OpenMP | `build-experimental-openmp-profile` | `SUBSETIX_ENABLE_PROFILING_KOKKOS=ON` |
-| `experimental-cuda-gcc12-profile` | CUDA | `build-experimental-cuda-gcc12-profile` | `SUBSETIX_ENABLE_PROFILING_KOKKOS=ON` |
-| `profiling-nsight-cuda-gcc12` | CUDA | `build-profiling-nsight-cuda-gcc12` | `SUBSETIX_ENABLE_PROFILING_CUDA=ON` |
-| `profiling-nsight-cuda-gcc12-release` | CUDA | `build-profiling-nsight-cuda-gcc12-release` | `SUBSETIX_ENABLE_PROFILING_CUDA=ON` |
+| `experimental-cuda-profile` | CUDA | `build-experimental-cuda-profile` | `SUBSETIX_ENABLE_PROFILING_KOKKOS=ON` |
+| `profiling-nsight-cuda` | CUDA | `build-profiling-nsight-cuda` | `SUBSETIX_ENABLE_PROFILING_CUDA=ON` |
+| `profiling-nsight-cuda-release` | CUDA | `build-profiling-nsight-cuda-release` | `SUBSETIX_ENABLE_PROFILING_CUDA=ON` |
 
 All profiling presets:
 - Enable experimental module only (`SUBSETIX_ENABLE_EXPERIMENTAL=ON`)

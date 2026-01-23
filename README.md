@@ -89,9 +89,9 @@ ctest --preset serial
 | `experimental-perf-openmp` | OpenMP + Linux perf | CPU performance analysis |
 | `experimental-serial-profile` | Serial + Kokkos tools | Kernel-level profiling |
 | `experimental-openmp-profile` | OpenMP + Kokkos tools | Kernel-level profiling |
-| `experimental-cuda-gcc12-profile` | CUDA + Kokkos tools | GPU kernel profiling |
-| `profiling-nsight-cuda-gcc12` | CUDA + Nsight | Detailed GPU analysis |
-| `profiling-nsight-cuda-gcc12-release` | CUDA + Nsight (Release) | Production GPU analysis |
+| `experimental-cuda-profile` | CUDA + Kokkos tools | GPU kernel profiling |
+| `profiling-nsight-cuda` | CUDA + Nsight | Detailed GPU analysis |
+| `profiling-nsight-cuda-release` | CUDA + Nsight (Release) | Production GPU analysis |
 
 ### Experimental Algorithms
 
@@ -141,8 +141,8 @@ cmake --build --preset experimental-perf-serial
 ./scripts/perf_profile.sh ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark
 
 # Nsight (GPU profiling)
-cmake --preset profiling-nsight-cuda-gcc12
-cmake --build --preset profiling-nsight-cuda-gcc12
+cmake --preset profiling-nsight-cuda
+cmake --build --preset profiling-nsight-cuda
 ./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
 
 # Kokkos profiling tools

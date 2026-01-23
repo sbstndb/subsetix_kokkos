@@ -1,6 +1,10 @@
 build/
 build-*/
 
+# CMake user presets (machine-specific local overrides)
+CMakeUserPresets.json
+*.backup
+
 examples_output/
 
 # Local artifacts and profiling outputs

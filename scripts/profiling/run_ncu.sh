@@ -11,7 +11,7 @@
 #   ./run_ncu.sh [OPTIONS]
 #
 # Options:
-#   --preset PRESET        CMake preset to use (default: profiling-nsight-cuda-gcc12)
+#   --preset PRESET        CMake preset to use (default: profiling-nsight-cuda)
 #   --benchmark FILTER     Benchmark filter (default: 3D_LargeConfig)
 #   --output-dir DIR       Output directory for profiling results (default: profiling_output_ncu)
 #   --ncu-opts OPTS        Extra options to pass to ncu
@@ -37,7 +37,7 @@
 set -euo pipefail
 
 # Default values
-PRESET="profiling-nsight-cuda-gcc12"
+PRESET="profiling-nsight-cuda"
 BENCHMARK_FILTER="3D_LargeConfig"
 OUTPUT_DIR="profiling_output_ncu"
 BUILD_ONLY=0
@@ -48,14 +48,13 @@ EXTRA_SECTIONS="WarpStateStats,InstructionStats"  # Additional detailed sections
 # Find ncu - check multiple common paths
 find_ncu() {
   local ncu_paths=(
-    "/usr/local/cuda-12.8/bin/ncu"
-    "/usr/local/cuda/bin/ncu"
+    "ncu"  # Try PATH first
     "/opt/nvidia/nsight-compute/ncu"
-    "ncu"
+    "/usr/local/cuda/bin/ncu"
   )
 
   for path in "${ncu_paths[@]}"; do
-    if [[ -x "$path" ]] || command -v "$path" &> /dev/null; then
+    if command -v "$path" &> /dev/null; then
       echo "$path"
       return 0
     fi
@@ -67,14 +66,12 @@ find_ncu() {
 NCU_BIN=$(find_ncu)
 
 if [[ -z "$NCU_BIN" ]]; then
-  echo "Error: ncu not found in standard locations"
-  echo "Searched paths:"
-  echo "  - /usr/local/cuda-12.8/bin/ncu"
-  echo "  - /usr/local/cuda/bin/ncu"
-  echo "  - /opt/nvidia/nsight-compute/ncu"
+  echo "Error: ncu not found"
   echo ""
   echo "Install Nsight Compute from:"
   echo "  https://developer.nvidia.com/nsight-compute"
+  echo ""
+  echo "Or ensure ncu is in your PATH"
   exit 1
 fi
 
@@ -124,7 +121,7 @@ done
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-BUILD_DIR="${PROJECT_ROOT}/build-profiling-nsight-cuda-gcc12"
+BUILD_DIR="${PROJECT_ROOT}/build-profiling-nsight-cuda"
 BENCHMARK_BIN="${BUILD_DIR}/experimental/benchmarks/experimental_comparison_benchmark"
 
 # Create output directory
