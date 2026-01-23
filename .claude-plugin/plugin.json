@@ -86,7 +86,6 @@
     }
   ],
   "documentation": {
-    "readme": "docs/ORCHESTRATOR_SPECS_V2.md",
     "personas": "docs/AGENT_PERSONA_SYSTEM.md",
     "specialized": "docs/SPECIALIZED_AGENTS.md"
   },
