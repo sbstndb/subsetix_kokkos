@@ -28,14 +28,14 @@
       }
     },
     {
-      "name": "cuda-gcc12",
-      "displayName": "Kokkos CUDA + SERIAL backends (GCC 12)",
+      "name": "cuda",
+      "displayName": "Kokkos CUDA + SERIAL backends (GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-cuda-gcc12",
+      "binaryDir": "${sourceDir}/build-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "SUBSETIX_USE_MPI": "OFF"
       }
     },
@@ -73,14 +73,14 @@
       }
     },
     {
-      "name": "mpi-cuda-gcc12",
-      "displayName": "MPI + Kokkos CUDA (GCC 12)",
+      "name": "mpi-cuda",
+      "displayName": "MPI + Kokkos CUDA (GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-mpi-cuda-gcc12",
+      "binaryDir": "${sourceDir}/build-mpi-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "SUBSETIX_USE_MPI": "ON"
       }
     },
@@ -142,10 +142,10 @@
       }
     },
     {
-      "name": "experimental-cuda-gcc12",
-      "displayName": "Experimental module only (CUDA + GCC 12)",
+      "name": "experimental-cuda",
+      "displayName": "Experimental module only (CUDA + GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc12",
+      "binaryDir": "${sourceDir}/build-experimental-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
@@ -153,7 +153,7 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "SUBSETIX_USE_MPI": "OFF"
       }
     }
@@ -168,8 +168,8 @@
       "configurePreset": "openmp"
     },
     {
-      "name": "cuda-gcc12",
-      "configurePreset": "cuda-gcc12"
+      "name": "cuda",
+      "configurePreset": "cuda"
     },
     {
       "name": "serial-asan",
@@ -184,8 +184,8 @@
       "configurePreset": "mpi-openmp"
     },
     {
-      "name": "mpi-cuda-gcc12",
-      "configurePreset": "mpi-cuda-gcc12"
+      "name": "mpi-cuda",
+      "configurePreset": "mpi-cuda"
     },
     {
       "name": "coverage",
@@ -204,8 +204,8 @@
       "configurePreset": "experimental-openmp"
     },
     {
-      "name": "experimental-cuda-gcc12",
-      "configurePreset": "experimental-cuda-gcc12"
+      "name": "experimental-cuda",
+      "configurePreset": "experimental-cuda"
     }
   ],
   "testPresets": [
@@ -218,8 +218,8 @@
       "configurePreset": "openmp"
     },
     {
-      "name": "cuda-gcc12",
-      "configurePreset": "cuda-gcc12"
+      "name": "cuda",
+      "configurePreset": "cuda"
     },
     {
       "name": "serial-asan",
@@ -234,8 +234,8 @@
       "configurePreset": "mpi-openmp"
     },
     {
-      "name": "mpi-cuda-gcc12",
-      "configurePreset": "mpi-cuda-gcc12"
+      "name": "mpi-cuda",
+      "configurePreset": "mpi-cuda"
     },
     {
       "name": "coverage",
@@ -254,8 +254,8 @@
       "configurePreset": "experimental-openmp"
     },
     {
-      "name": "experimental-cuda-gcc12",
-      "configurePreset": "experimental-cuda-gcc12"
+      "name": "experimental-cuda",
+      "configurePreset": "experimental-cuda"
     }
   ]
 }

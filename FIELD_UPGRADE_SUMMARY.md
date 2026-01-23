@@ -160,7 +160,7 @@ All changes maintain backward compatibility:
 ✅ All tests pass on:
 - Serial backend
 - OpenMP backend
-- CUDA backend (GCC 12)
+- CUDA backend (GCC 14)
 
 Total: 2 new test files, 22 new test cases.
 
