@@ -58,3 +58,6 @@
 
 // v3: Research slot
 #include <experimental/subsetix/csr/set_algebra/v3.hpp>
+
+// Successive intersection (N-way intersection with multiple strategies)
+#include <experimental/subsetix/csr/set_algebra/successive_intersection.hpp>

@@ -134,3 +134,25 @@ message(STATUS "  - experimental_baseline_unitary_test")
 message(STATUS "  - experimental_optimized_unitary_test")
 message(STATUS "  - experimental_cross_version_test")
 message(STATUS "  - experimental_random_mesh_generator_test")
+
+# ============================================================================
+# Successive Intersection Tests
+# ============================================================================
+
+# Successive intersection cross-validation test - validates naive/workspace/graph approaches
+add_executable(experimental_successive_intersection_test
+  test_main.cpp
+  set_algebra/test_successive_intersection.cpp
+)
+
+target_link_libraries(experimental_successive_intersection_test
+  PRIVATE
+    experimental_subsetix_csr
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME ExperimentalSuccessiveIntersectionTest COMMAND experimental_successive_intersection_test)
+
+message(STATUS "  - experimental_successive_intersection_test")

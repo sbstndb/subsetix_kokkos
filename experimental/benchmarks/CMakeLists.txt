@@ -45,3 +45,22 @@ target_link_libraries(experimental_regular_mesh_benchmark
 )
 
 message(STATUS "  - experimental_regular_mesh_benchmark")
+
+# Successive intersection benchmark (compares naive/workspace/graph approaches)
+add_executable(experimental_successive_intersection_benchmark
+  set_algebra/successive_intersection_benchmark.cpp
+)
+
+target_include_directories(experimental_successive_intersection_benchmark
+  PRIVATE
+    ${EXPERIMENTAL_ROOT}/tests
+)
+
+target_link_libraries(experimental_successive_intersection_benchmark
+  PRIVATE
+    experimental_subsetix_csr
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
+message(STATUS "  - experimental_successive_intersection_benchmark")
