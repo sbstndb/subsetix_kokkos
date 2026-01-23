@@ -23,3 +23,9 @@ viz_output/
 # Profiling output directories
 perf_output/
 profiling_output/
+
+# Optimization logs and sessions
+optim_logs/
+test_logs/
+*.log
+session_*/

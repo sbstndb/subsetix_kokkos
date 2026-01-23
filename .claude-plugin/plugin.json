@@ -1,0 +1,104 @@
+{
+  "name": "subsetix-optim",
+  "version": "1.0.0",
+  "description": "GPU optimization orchestration system for Kokkos CUDA. Automates parallel optimization agents with random personas, GPU benchmarking, and anti-triche verification.",
+  "author": "Sebastien DUBOIS & HPC@Maths Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/sbstndbs/subsetix_kokkos",
+  "repository": "https://github.com/sbstndbs/subsetix_kokkos",
+  "tags": ["gpu", "kokkos", "cuda", "optimization", "parallel"],
+  "claude": {
+    "min_version": "1.0.33"
+  },
+  "requires": [
+    {
+      "tool": "cmake",
+      "version": ">=3.20"
+    },
+    {
+      "tool": "git",
+      "version": ">=2.0"
+    },
+    {
+      "tool": "nvidia-smi",
+      "description": "GPU detection and architecture detection"
+    }
+  ],
+  "skills": [
+    {
+      "name": "orchestrator",
+      "description": "Main orchestrator for GPU optimization. Launches N agents with random personas in chunks, manages logging, and coordinates the optimization pipeline.",
+      "file": "skills/optim-orchestrator/SKILL.md"
+    },
+    {
+      "name": "benchmark",
+      "description": "Specialized benchmark agent. Runs sequential GPU benchmarks to avoid interference, with support for custom filters and output formats.",
+      "file": "skills/optim-benchmark/SKILL.md"
+    },
+    {
+      "name": "antitriche",
+      "description": "Anti-triche specialist. Verifies baseline integrity, analyzes git diffs, and performs semantic analysis to ensure optimization results are valid.",
+      "file": "skills/optim-antitriche/SKILL.md"
+    },
+    {
+      "name": "profile",
+      "description": "GPU profiling specialist using existing CMake presets (Nsight, Kokkos tools, Linux perf). Analyzes top optimization candidates for bottlenecks.",
+      "file": "skills/optim-profile/SKILL.md"
+    },
+    {
+      "name": "combine",
+      "description": "Optimization combination specialist. Analyzes successful optimizations and proposes compatible combinations to maximize cumulative speedup.",
+      "file": "skills/optim-combine/SKILL.md"
+    },
+    {
+      "name": "report",
+      "description": "Final report generation specialist. Aggregates benchmark results, anti-triche analysis, and agent summaries into comprehensive markdown report.",
+      "file": "skills/optim-report/SKILL.md"
+    }
+  ],
+  "scripts": {
+    "full-pipeline": "scripts/optimization_pipeline.sh"
+  },
+  "examples": [
+    {
+      "name": "Basic usage - 24 optimization agents",
+      "command": "/subsetix-optim:orchestrator 24"
+    },
+    {
+      "name": "Full pipeline - 40 agents with custom settings",
+      "command": "./scripts/optimization_pipeline.sh 40 4 8 600 ./logs 15 3 \"3D_Large,2D_Large\" 6"
+    },
+    {
+      "name": "Benchmarking with filter",
+      "command": "/subsetix-optim:benchmark 24 10 3 \"3D_Large\" json"
+    },
+    {
+      "name": "Profiling top candidates",
+      "command": "/subsetix-optim:profile 24 5 profiling-nsight-cuda"
+    },
+    {
+      "name": "Combining optimizations",
+      "command": "/subsetix-optim:combine 24 6 1.10"
+    },
+    {
+      "name": "Generating final report",
+      "command": "/subsetix-optim:report 24 ./logs"
+    }
+  ],
+  "documentation": {
+    "personas": "docs/AGENT_PERSONA_SYSTEM.md",
+    "specialized": "docs/SPECIALIZED_AGENTS.md"
+  },
+  "changelog": {
+    "1.0.0": [
+      "Initial release with 6 optimization skills",
+      "Support for paramétrizable N agents, chunking, and build jobs",
+      "Sequential GPU benchmark specialist with filter support",
+      "Anti-triche specialist with git diff analysis",
+      "GPU profiling specialist using CMake presets",
+      "Optimization combination specialist with compatibility analysis",
+      "Final report generation specialist with markdown output",
+      "Wrapper script for complete pipeline coordination"
+    ]
+  }
+}
