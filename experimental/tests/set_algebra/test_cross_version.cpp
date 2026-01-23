@@ -87,8 +87,8 @@ TEST_F(RandomComparisonTest, AllVersions2D_RandomBounds) {
     // Build config from MediumConfig baseline
     RandomMeshConfig config = MediumConfig();
     config.seed = seed;
-    config.num_rows_min = num_rows;
-    config.num_rows_max = num_rows + 1;  // Exact row count
+    // Calculate sparsity for desired row count
+    config.sparsity = static_cast<double>(num_rows) / (config.y_max - config.y_min);
     config.intervals_per_row_min = min_intervals;
     config.intervals_per_row_max = max_intervals;
     config.interval_length_max = max_length;
@@ -138,11 +138,14 @@ TEST_F(RandomComparisonTest, AllVersions3D_RandomBounds) {
     int seed = seed_dist(seed_gen);
     int max_length = length_dist(seed_gen);
 
-    // Build config from MediumConfig baseline (includes proper z_max=1024)
+    // Build config from MediumConfig baseline (includes proper z_max=512)
     RandomMeshConfig config = MediumConfig();
     config.seed = seed;
-    config.num_rows_min = num_rows;
-    config.num_rows_max = num_rows + 1;
+    // Calculate sparsity for desired row count
+    // For 3D: num_rows = sparsity * y_extent * z_extent
+    int y_extent = config.y_max - config.y_min;
+    int z_extent = config.z_max - config.z_min;
+    config.sparsity = static_cast<double>(num_rows) / (y_extent * z_extent);
     config.intervals_per_row_min = min_intervals;
     config.intervals_per_row_max = max_intervals;
     config.interval_length_max = max_length;
@@ -193,11 +196,11 @@ TEST_F(RandomComparisonTest, AllVersions_MathProperties_Random) {
 
     RandomMeshConfig config;
     config.seed = seed;
-    config.num_rows_min = num_rows;
-    config.num_rows_max = num_rows + 1;
+    // Calculate sparsity for desired row count
+    config.y_max = 10000;  // High y_max ensures unique row keys for math properties
+    config.sparsity = static_cast<double>(num_rows) / (config.y_max - config.y_min);
     config.intervals_per_row_min = min_intervals;
     config.intervals_per_row_max = max_intervals;
-    config.y_max = 10000;  // High y_max ensures unique row keys for math properties
 
     // Generate three random meshes
     DefaultCommonMesh2D mesh_a = RandomMeshGenerator::generate_2d(config);

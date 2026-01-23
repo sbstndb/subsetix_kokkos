@@ -28,14 +28,14 @@
       }
     },
     {
-      "name": "cuda-gcc12",
-      "displayName": "Kokkos CUDA + SERIAL backends (GCC 12)",
+      "name": "cuda-gcc14",
+      "displayName": "Kokkos CUDA + SERIAL backends (GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-cuda-gcc12",
+      "binaryDir": "${sourceDir}/build-cuda-gcc14",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "SUBSETIX_USE_MPI": "OFF"
       }
     },
@@ -73,14 +73,14 @@
       }
     },
     {
-      "name": "mpi-cuda-gcc12",
-      "displayName": "MPI + Kokkos CUDA (GCC 12)",
+      "name": "mpi-cuda-gcc14",
+      "displayName": "MPI + Kokkos CUDA (GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-mpi-cuda-gcc12",
+      "binaryDir": "${sourceDir}/build-mpi-cuda-gcc14",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "SUBSETIX_USE_MPI": "ON"
       }
     },
@@ -142,10 +142,10 @@
       }
     },
     {
-      "name": "experimental-cuda-gcc12",
-      "displayName": "Experimental module only (CUDA + GCC 12)",
+      "name": "experimental-cuda-gcc14",
+      "displayName": "Experimental module only (CUDA + GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc12",
+      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc14",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
@@ -153,8 +153,9 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
-        "SUBSETIX_USE_MPI": "OFF"
+        "CMAKE_CXX_COMPILER": "g++-14",
+        "SUBSETIX_USE_MPI": "OFF",
+        "Kokkos_ARCH_ADA89": "ON"
       }
     },
     {
@@ -220,10 +221,10 @@
       }
     },
     {
-      "name": "experimental-cuda-gcc12-profile",
-      "displayName": "Experimental module only (CUDA + GCC 12 + Kokkos profiling tools)",
+      "name": "experimental-cuda-gcc14-profile",
+      "displayName": "Experimental module only (CUDA + GCC 14 + Kokkos profiling tools)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc12-profile",
+      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc14-profile",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
@@ -231,16 +232,16 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "SUBSETIX_ENABLE_PROFILING_KOKKOS": "ON",
         "SUBSETIX_USE_MPI": "OFF"
       }
     },
     {
-      "name": "profiling-nsight-cuda-gcc12",
-      "displayName": "Profiling preset (CUDA + GCC 12 + Nsight, experimental only)",
+      "name": "profiling-nsight-cuda-gcc14",
+      "displayName": "Profiling preset (CUDA + GCC 14 + Nsight, experimental only)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-gcc12",
+      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-gcc14",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
@@ -249,15 +250,15 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "SUBSETIX_USE_MPI": "OFF"
       }
     },
     {
-      "name": "profiling-nsight-cuda-gcc12-release",
-      "displayName": "Profiling preset (CUDA + GCC 12 + Nsight, Release with symbols, experimental only)",
+      "name": "profiling-nsight-cuda-gcc14-release",
+      "displayName": "Profiling preset (CUDA + GCC 14 + Nsight, Release with symbols, experimental only)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-gcc12-release",
+      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-gcc14-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_FLAGS": "-g",
@@ -267,7 +268,7 @@
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
-        "CMAKE_CXX_COMPILER": "g++-12",
+        "CMAKE_CXX_COMPILER": "g++-14",
         "SUBSETIX_USE_MPI": "OFF"
       }
     }
@@ -282,8 +283,8 @@
       "configurePreset": "openmp"
     },
     {
-      "name": "cuda-gcc12",
-      "configurePreset": "cuda-gcc12"
+      "name": "cuda-gcc14",
+      "configurePreset": "cuda-gcc14"
     },
     {
       "name": "serial-asan",
@@ -298,8 +299,8 @@
       "configurePreset": "mpi-openmp"
     },
     {
-      "name": "mpi-cuda-gcc12",
-      "configurePreset": "mpi-cuda-gcc12"
+      "name": "mpi-cuda-gcc14",
+      "configurePreset": "mpi-cuda-gcc14"
     },
     {
       "name": "coverage",
@@ -318,8 +319,8 @@
       "configurePreset": "experimental-openmp"
     },
     {
-      "name": "experimental-cuda-gcc12",
-      "configurePreset": "experimental-cuda-gcc12"
+      "name": "experimental-cuda-gcc14",
+      "configurePreset": "experimental-cuda-gcc14"
     },
     {
       "name": "experimental-perf-serial",
@@ -338,16 +339,16 @@
       "configurePreset": "experimental-openmp-profile"
     },
     {
-      "name": "experimental-cuda-gcc12-profile",
-      "configurePreset": "experimental-cuda-gcc12-profile"
+      "name": "experimental-cuda-gcc14-profile",
+      "configurePreset": "experimental-cuda-gcc14-profile"
     },
     {
-      "name": "profiling-nsight-cuda-gcc12",
-      "configurePreset": "profiling-nsight-cuda-gcc12"
+      "name": "profiling-nsight-cuda-gcc14",
+      "configurePreset": "profiling-nsight-cuda-gcc14"
     },
     {
-      "name": "profiling-nsight-cuda-gcc12-release",
-      "configurePreset": "profiling-nsight-cuda-gcc12-release"
+      "name": "profiling-nsight-cuda-gcc14-release",
+      "configurePreset": "profiling-nsight-cuda-gcc14-release"
     }
   ],
   "testPresets": [
@@ -360,8 +361,8 @@
       "configurePreset": "openmp"
     },
     {
-      "name": "cuda-gcc12",
-      "configurePreset": "cuda-gcc12"
+      "name": "cuda-gcc14",
+      "configurePreset": "cuda-gcc14"
     },
     {
       "name": "serial-asan",
@@ -376,8 +377,8 @@
       "configurePreset": "mpi-openmp"
     },
     {
-      "name": "mpi-cuda-gcc12",
-      "configurePreset": "mpi-cuda-gcc12"
+      "name": "mpi-cuda-gcc14",
+      "configurePreset": "mpi-cuda-gcc14"
     },
     {
       "name": "coverage",
@@ -396,8 +397,8 @@
       "configurePreset": "experimental-openmp"
     },
     {
-      "name": "experimental-cuda-gcc12",
-      "configurePreset": "experimental-cuda-gcc12"
+      "name": "experimental-cuda-gcc14",
+      "configurePreset": "experimental-cuda-gcc14"
     },
     {
       "name": "experimental-perf-serial",
@@ -416,16 +417,16 @@
       "configurePreset": "experimental-openmp-profile"
     },
     {
-      "name": "experimental-cuda-gcc12-profile",
-      "configurePreset": "experimental-cuda-gcc12-profile"
+      "name": "experimental-cuda-gcc14-profile",
+      "configurePreset": "experimental-cuda-gcc14-profile"
     },
     {
-      "name": "profiling-nsight-cuda-gcc12",
-      "configurePreset": "profiling-nsight-cuda-gcc12"
+      "name": "profiling-nsight-cuda-gcc14",
+      "configurePreset": "profiling-nsight-cuda-gcc14"
     },
     {
-      "name": "profiling-nsight-cuda-gcc12-release",
-      "configurePreset": "profiling-nsight-cuda-gcc12-release"
+      "name": "profiling-nsight-cuda-gcc14-release",
+      "configurePreset": "profiling-nsight-cuda-gcc14-release"
     }
   ]
 }
