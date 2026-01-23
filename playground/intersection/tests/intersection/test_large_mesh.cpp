@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
-#ifdef SUBSETIX_ENABLE_EXPERIMENTAL
+#ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include <gtest/gtest.h>
-#include <experimental/subsetix/csr/set_algebra/v1.hpp>
-#include <experimental/subsetix/csr/set_algebra/v2.hpp>
-#include <experimental/subsetix/csr/set_algebra/v3.hpp>
-#include <experimental/subsetix/csr/types.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
+#include <playground/subsetix/csr/intersection/types.hpp>
 #include <Kokkos_Core.hpp>
 
-using namespace experimental::subsetix::csr;
+using namespace playground::subsetix::csr::intersection;
 
 // Type aliases for convenience
 using Coord = int32_t;

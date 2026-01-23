@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
-#ifdef SUBSETIX_ENABLE_EXPERIMENTAL
+#ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include <gtest/gtest.h>
 #include <set>
 #include "test_random_mesh_generator.hpp"
 
-using namespace experimental::subsetix::csr::test;
+using namespace playground::subsetix::csr::intersection::test;
 
 // ============================================================================
 // 2D Uniqueness Tests
@@ -354,4 +354,4 @@ TEST(RandomMeshGeneratorTest, Determinism_DifferentSeeds_2D) {
   EXPECT_FALSE(all_same) << "Different seeds should produce different meshes";
 }
 
-#endif // SUBSETIX_ENABLE_EXPERIMENTAL
+#endif // SUBSETIX_ENABLE_PLAYGROUND

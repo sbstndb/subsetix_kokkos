@@ -64,13 +64,13 @@
       }
     },
     {
-      "name": "experimental-serial",
-      "displayName": "Experimental module only (Serial)",
+      "name": "playground-serial",
+      "displayName": "Playground module only (Serial)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-serial",
+      "binaryDir": "${sourceDir}/build-playground-serial",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -78,15 +78,15 @@
       }
     },
     {
-      "name": "experimental-asan",
-      "displayName": "Experimental module only (Serial + Sanitizers)",
+      "name": "playground-asan",
+      "displayName": "Playground module only (Serial + Sanitizers)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-asan",
+      "binaryDir": "${sourceDir}/build-playground-asan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_CXX_FLAGS": "-g -O1 -fsanitize=address,undefined",
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -94,13 +94,13 @@
       }
     },
     {
-      "name": "experimental-openmp",
-      "displayName": "Experimental module only (OpenMP)",
+      "name": "playground-openmp",
+      "displayName": "Playground module only (OpenMP)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-openmp",
+      "binaryDir": "${sourceDir}/build-playground-openmp",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -109,13 +109,13 @@
       }
     },
     {
-      "name": "experimental-cuda",
-      "displayName": "Experimental module only (CUDA)",
+      "name": "playground-cuda",
+      "displayName": "Playground module only (CUDA)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-cuda",
+      "binaryDir": "${sourceDir}/build-playground-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -125,13 +125,13 @@
       }
     },
     {
-      "name": "experimental-perf-serial",
-      "displayName": "Experimental module only (Serial + Linux perf profiling)",
+      "name": "playground-perf-serial",
+      "displayName": "Playground module only (Serial + Linux perf profiling)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-perf-serial",
+      "binaryDir": "${sourceDir}/build-playground-perf-serial",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -140,13 +140,13 @@
       }
     },
     {
-      "name": "experimental-perf-openmp",
-      "displayName": "Experimental module only (OpenMP + Linux perf profiling)",
+      "name": "playground-perf-openmp",
+      "displayName": "Playground module only (OpenMP + Linux perf profiling)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-perf-openmp",
+      "binaryDir": "${sourceDir}/build-playground-perf-openmp",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -156,13 +156,13 @@
       }
     },
     {
-      "name": "experimental-serial-profile",
-      "displayName": "Experimental module only (Serial + Kokkos profiling tools)",
+      "name": "playground-serial-profile",
+      "displayName": "Playground module only (Serial + Kokkos profiling tools)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-serial-profile",
+      "binaryDir": "${sourceDir}/build-playground-serial-profile",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -171,13 +171,13 @@
       }
     },
     {
-      "name": "experimental-openmp-profile",
-      "displayName": "Experimental module only (OpenMP + Kokkos profiling tools)",
+      "name": "playground-openmp-profile",
+      "displayName": "Playground module only (OpenMP + Kokkos profiling tools)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-openmp-profile",
+      "binaryDir": "${sourceDir}/build-playground-openmp-profile",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -187,13 +187,13 @@
       }
     },
     {
-      "name": "experimental-cuda-profile",
-      "displayName": "Experimental module only (CUDA + Kokkos profiling tools)",
+      "name": "playground-cuda-profile",
+      "displayName": "Playground module only (CUDA + Kokkos profiling tools)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-cuda-profile",
+      "binaryDir": "${sourceDir}/build-playground-cuda-profile",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
@@ -205,12 +205,12 @@
     },
     {
       "name": "profiling-nsight-cuda",
-      "displayName": "Profiling preset (CUDA + Nsight, experimental only)",
+      "displayName": "Profiling preset (CUDA + Nsight, playground only)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-profiling-nsight-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_ENABLE_PROFILING_CUDA": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
@@ -222,13 +222,13 @@
     },
     {
       "name": "profiling-nsight-cuda-release",
-      "displayName": "Profiling preset (CUDA + Nsight, Release with symbols, experimental only)",
+      "displayName": "Profiling preset (CUDA + Nsight, Release with symbols, playground only)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_FLAGS": "-g",
-        "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
+        "SUBSETIX_ENABLE_PLAYGROUND": "ON",
         "SUBSETIX_ENABLE_PROFILING_CUDA": "ON",
         "SUBSETIX_BUILD_STABLE_LIBS": "OFF",
         "SUBSETIX_BUILD_STABLE_TESTS": "OFF",
@@ -261,40 +261,40 @@
       "configurePreset": "coverage"
     },
     {
-      "name": "experimental-serial",
-      "configurePreset": "experimental-serial"
+      "name": "playground-serial",
+      "configurePreset": "playground-serial"
     },
     {
-      "name": "experimental-asan",
-      "configurePreset": "experimental-asan"
+      "name": "playground-asan",
+      "configurePreset": "playground-asan"
     },
     {
-      "name": "experimental-openmp",
-      "configurePreset": "experimental-openmp"
+      "name": "playground-openmp",
+      "configurePreset": "playground-openmp"
     },
     {
-      "name": "experimental-cuda",
-      "configurePreset": "experimental-cuda"
+      "name": "playground-cuda",
+      "configurePreset": "playground-cuda"
     },
     {
-      "name": "experimental-perf-serial",
-      "configurePreset": "experimental-perf-serial"
+      "name": "playground-perf-serial",
+      "configurePreset": "playground-perf-serial"
     },
     {
-      "name": "experimental-perf-openmp",
-      "configurePreset": "experimental-perf-openmp"
+      "name": "playground-perf-openmp",
+      "configurePreset": "playground-perf-openmp"
     },
     {
-      "name": "experimental-serial-profile",
-      "configurePreset": "experimental-serial-profile"
+      "name": "playground-serial-profile",
+      "configurePreset": "playground-serial-profile"
     },
     {
-      "name": "experimental-openmp-profile",
-      "configurePreset": "experimental-openmp-profile"
+      "name": "playground-openmp-profile",
+      "configurePreset": "playground-openmp-profile"
     },
     {
-      "name": "experimental-cuda-profile",
-      "configurePreset": "experimental-cuda-profile"
+      "name": "playground-cuda-profile",
+      "configurePreset": "playground-cuda-profile"
     },
     {
       "name": "profiling-nsight-cuda",
@@ -327,40 +327,40 @@
       "configurePreset": "coverage"
     },
     {
-      "name": "experimental-serial",
-      "configurePreset": "experimental-serial"
+      "name": "playground-serial",
+      "configurePreset": "playground-serial"
     },
     {
-      "name": "experimental-asan",
-      "configurePreset": "experimental-asan"
+      "name": "playground-asan",
+      "configurePreset": "playground-asan"
     },
     {
-      "name": "experimental-openmp",
-      "configurePreset": "experimental-openmp"
+      "name": "playground-openmp",
+      "configurePreset": "playground-openmp"
     },
     {
-      "name": "experimental-cuda",
-      "configurePreset": "experimental-cuda"
+      "name": "playground-cuda",
+      "configurePreset": "playground-cuda"
     },
     {
-      "name": "experimental-perf-serial",
-      "configurePreset": "experimental-perf-serial"
+      "name": "playground-perf-serial",
+      "configurePreset": "playground-perf-serial"
     },
     {
-      "name": "experimental-perf-openmp",
-      "configurePreset": "experimental-perf-openmp"
+      "name": "playground-perf-openmp",
+      "configurePreset": "playground-perf-openmp"
     },
     {
-      "name": "experimental-serial-profile",
-      "configurePreset": "experimental-serial-profile"
+      "name": "playground-serial-profile",
+      "configurePreset": "playground-serial-profile"
     },
     {
-      "name": "experimental-openmp-profile",
-      "configurePreset": "experimental-openmp-profile"
+      "name": "playground-openmp-profile",
+      "configurePreset": "playground-openmp-profile"
     },
     {
-      "name": "experimental-cuda-profile",
-      "configurePreset": "experimental-cuda-profile"
+      "name": "playground-cuda-profile",
+      "configurePreset": "playground-cuda-profile"
     },
     {
       "name": "profiling-nsight-cuda",
