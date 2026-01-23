@@ -20,13 +20,13 @@ cmake --build --preset serial
 cmake --preset openmp              # OpenMP + Serial
 cmake --build --preset openmp
 
-cmake --preset cuda-gcc12          # CUDA + Serial (requires GCC 12)
-cmake --build --preset cuda-gcc12
+cmake --preset cuda                # CUDA + Serial (requires GCC 14)
+cmake --build --preset cuda
 
 # MPI variants
 cmake --preset mpi-serial          # MPI + Serial
 cmake --preset mpi-openmp          # MPI + OpenMP
-cmake --preset mpi-cuda-gcc12      # MPI + CUDA (GCC 12)
+cmake --preset mpi-cuda            # MPI + CUDA (GCC 14)
 
 # Debug with sanitizers
 cmake --preset serial-asan         # Address + UB sanitizer
@@ -37,8 +37,8 @@ cmake --preset experimental-serial      # Serial, experimental module only
 cmake --build --preset experimental-serial
 cmake --preset experimental-openmp      # OpenMP, experimental module only
 cmake --build --preset experimental-openmp
-cmake --preset experimental-cuda-gcc12  # CUDA, experimental module only
-cmake --build --preset experimental-cuda-gcc12
+cmake --preset experimental-cuda        # CUDA, experimental module only
+cmake --build --preset experimental-cuda
 cmake --preset experimental-asan        # Serial + sanitizers, experimental only
 cmake --build --preset experimental-asan
 
@@ -142,7 +142,7 @@ Tests are organized into 7 separate executables (to avoid ODR/CUDA linking issue
 # Run all tests
 ctest --preset serial
 ctest --preset openmp
-ctest --preset cuda-gcc12
+ctest --preset cuda
 
 # Run specific test executable
 ./build-serial/tests/subsetix_test_core          # Builders, basic data structures, VTK
@@ -222,7 +222,7 @@ The `experimental/` directory provides alternative implementations of set algebr
 ```bash
 cmake --preset experimental-serial      # Serial backend
 cmake --preset experimental-openmp      # OpenMP backend
-cmake --preset experimental-cuda-gcc12  # CUDA backend
+cmake --preset experimental-cuda        # CUDA backend
 cmake --preset experimental-asan        # Serial + sanitizers
 ```
 
@@ -243,7 +243,7 @@ Experimental tests are separate executables from stable tests:
 # After enabling experimental module and building
 ctest --preset experimental-serial  # Runs all experimental tests
 ctest --preset experimental-openmp  # Runs with OpenMP backend
-ctest --preset experimental-cuda-gcc12  # Runs with CUDA backend
+ctest --preset experimental-cuda    # Runs with CUDA backend
 
 # Run specific experimental test executables (serial preset)
 ./build-experimental-serial/experimental/tests/experimental_v1_unitary_test

@@ -28,10 +28,10 @@
       }
     },
     {
-      "name": "cuda-gcc14",
+      "name": "cuda",
       "displayName": "Kokkos CUDA + SERIAL backends (GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-cuda-gcc14",
+      "binaryDir": "${sourceDir}/build-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
@@ -73,10 +73,10 @@
       }
     },
     {
-      "name": "mpi-cuda-gcc14",
+      "name": "mpi-cuda",
       "displayName": "MPI + Kokkos CUDA (GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-mpi-cuda-gcc14",
+      "binaryDir": "${sourceDir}/build-mpi-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_KOKKOS_CUDA": "ON",
@@ -142,10 +142,10 @@
       }
     },
     {
-      "name": "experimental-cuda-gcc14",
+      "name": "experimental-cuda",
       "displayName": "Experimental module only (CUDA + GCC 14)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc14",
+      "binaryDir": "${sourceDir}/build-experimental-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
@@ -154,8 +154,7 @@
         "SUBSETIX_BUILD_STABLE_BENCHMARKS": "OFF",
         "SUBSETIX_KOKKOS_CUDA": "ON",
         "CMAKE_CXX_COMPILER": "g++-14",
-        "SUBSETIX_USE_MPI": "OFF",
-        "Kokkos_ARCH_ADA89": "ON"
+        "SUBSETIX_USE_MPI": "OFF"
       }
     },
     {
@@ -221,10 +220,10 @@
       }
     },
     {
-      "name": "experimental-cuda-gcc14-profile",
+      "name": "experimental-cuda-profile",
       "displayName": "Experimental module only (CUDA + GCC 14 + Kokkos profiling tools)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-experimental-cuda-gcc14-profile",
+      "binaryDir": "${sourceDir}/build-experimental-cuda-profile",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
@@ -238,10 +237,10 @@
       }
     },
     {
-      "name": "profiling-nsight-cuda-gcc14",
+      "name": "profiling-nsight-cuda",
       "displayName": "Profiling preset (CUDA + GCC 14 + Nsight, experimental only)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-gcc14",
+      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SUBSETIX_ENABLE_EXPERIMENTAL": "ON",
@@ -255,10 +254,10 @@
       }
     },
     {
-      "name": "profiling-nsight-cuda-gcc14-release",
+      "name": "profiling-nsight-cuda-release",
       "displayName": "Profiling preset (CUDA + GCC 14 + Nsight, Release with symbols, experimental only)",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-gcc14-release",
+      "binaryDir": "${sourceDir}/build-profiling-nsight-cuda-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_FLAGS": "-g",
@@ -283,8 +282,8 @@
       "configurePreset": "openmp"
     },
     {
-      "name": "cuda-gcc14",
-      "configurePreset": "cuda-gcc14"
+      "name": "cuda",
+      "configurePreset": "cuda"
     },
     {
       "name": "serial-asan",
@@ -299,8 +298,8 @@
       "configurePreset": "mpi-openmp"
     },
     {
-      "name": "mpi-cuda-gcc14",
-      "configurePreset": "mpi-cuda-gcc14"
+      "name": "mpi-cuda",
+      "configurePreset": "mpi-cuda"
     },
     {
       "name": "coverage",
@@ -319,8 +318,8 @@
       "configurePreset": "experimental-openmp"
     },
     {
-      "name": "experimental-cuda-gcc14",
-      "configurePreset": "experimental-cuda-gcc14"
+      "name": "experimental-cuda",
+      "configurePreset": "experimental-cuda"
     },
     {
       "name": "experimental-perf-serial",
@@ -339,16 +338,16 @@
       "configurePreset": "experimental-openmp-profile"
     },
     {
-      "name": "experimental-cuda-gcc14-profile",
-      "configurePreset": "experimental-cuda-gcc14-profile"
+      "name": "experimental-cuda-profile",
+      "configurePreset": "experimental-cuda-profile"
     },
     {
-      "name": "profiling-nsight-cuda-gcc14",
-      "configurePreset": "profiling-nsight-cuda-gcc14"
+      "name": "profiling-nsight-cuda",
+      "configurePreset": "profiling-nsight-cuda"
     },
     {
-      "name": "profiling-nsight-cuda-gcc14-release",
-      "configurePreset": "profiling-nsight-cuda-gcc14-release"
+      "name": "profiling-nsight-cuda-release",
+      "configurePreset": "profiling-nsight-cuda-release"
     }
   ],
   "testPresets": [
@@ -361,8 +360,8 @@
       "configurePreset": "openmp"
     },
     {
-      "name": "cuda-gcc14",
-      "configurePreset": "cuda-gcc14"
+      "name": "cuda",
+      "configurePreset": "cuda"
     },
     {
       "name": "serial-asan",
@@ -377,8 +376,8 @@
       "configurePreset": "mpi-openmp"
     },
     {
-      "name": "mpi-cuda-gcc14",
-      "configurePreset": "mpi-cuda-gcc14"
+      "name": "mpi-cuda",
+      "configurePreset": "mpi-cuda"
     },
     {
       "name": "coverage",
@@ -397,8 +396,8 @@
       "configurePreset": "experimental-openmp"
     },
     {
-      "name": "experimental-cuda-gcc14",
-      "configurePreset": "experimental-cuda-gcc14"
+      "name": "experimental-cuda",
+      "configurePreset": "experimental-cuda"
     },
     {
       "name": "experimental-perf-serial",
@@ -417,16 +416,16 @@
       "configurePreset": "experimental-openmp-profile"
     },
     {
-      "name": "experimental-cuda-gcc14-profile",
-      "configurePreset": "experimental-cuda-gcc14-profile"
+      "name": "experimental-cuda-profile",
+      "configurePreset": "experimental-cuda-profile"
     },
     {
-      "name": "profiling-nsight-cuda-gcc14",
-      "configurePreset": "profiling-nsight-cuda-gcc14"
+      "name": "profiling-nsight-cuda",
+      "configurePreset": "profiling-nsight-cuda"
     },
     {
-      "name": "profiling-nsight-cuda-gcc14-release",
-      "configurePreset": "profiling-nsight-cuda-gcc14-release"
+      "name": "profiling-nsight-cuda-release",
+      "configurePreset": "profiling-nsight-cuda-release"
     }
   ]
 }
