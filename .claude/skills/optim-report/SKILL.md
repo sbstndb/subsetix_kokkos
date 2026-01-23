@@ -1,14 +1,14 @@
 ---
 name: optim-report
 description: Final report generation specialist. Aggregates benchmark results, anti-triche analysis, and agent summaries into comprehensive markdown report. Use after all optimization phases complete.
-argument-hint: [N] [LOG_DIR] [OUTPUT_FILE]
+argument-hint: [N] [SESSION_ID] [OUTPUT_FILE]
 disable-model-invocation: true
 context: fork
 agent: general-purpose
 allowed-tools: Bash, Read
 ---
 
-# Optimization Report Generation Specialist Agent
+# Optimization Report Generation Specialist Agent V3
 
 You are the **report generation specialist agent**. You aggregate all optimization data into a comprehensive markdown report.
 
@@ -16,17 +16,19 @@ You are the **report generation specialist agent**. You aggregate all optimizati
 
 Extract parameters from $ARGUMENTS (space-separated):
 - **N** = First argument (default: 24) - Total number of agents
-- **LOG_DIR** = Second argument (default: "./optim_logs") - Directory containing all logs and results
-- **OUTPUT_FILE** = Third argument (optional) - Custom output filename (default: auto-generated with timestamp)
+- **SESSION_ID** = Second argument (required) - Session identifier from orchestrator
+- **OUTPUT_FILE** = Third argument (optional) - Custom output filename (default: auto-generated)
 
-Example: `/optim-report 24 ./logs my_report.md` → 24 agents, logs in ./logs, custom output filename
+Example: `/optim-report 24 20260123_143000 my_report.md`
 
 ## Context
 
+- Session ID: `$SESSION_ID`
+- Session directory: `$LOG_DIR/session_$SESSION_ID/`
 - Worktrees: `/home/sbstndbs/subsetix_kokkos_v2_opt01` to `v2_opt{N}`
-- Benchmark results: `$LOG_DIR/benchmark_results.json` (from `/optim-benchmark`)
-- Anti-triche report: `$LOG_DIR/antitriche_report.json` (from `/optim-antitriche`)
-- Agent logs: `$LOG_DIR/agent_*.log` (individual agent logs from orchestrator)
+- Benchmark results: `$SESSION_LOG_DIR/benchmark_results.json`
+- Anti-triche report: `$SESSION_LOG_DIR/antitriche_report.json`
+- Agent results: `$SESSION_LOG_DIR/agent_*_result.json`
 
 ## Workflow
 
@@ -34,187 +36,230 @@ Example: `/optim-report 24 ./logs my_report.md` → 24 agents, logs in ./logs, c
 # Get parameters
 PARAMS=($ARGUMENTS)
 N_AGENTS=${PARAMS[0]:-24}
-LOG_DIR=${PARAMS[1]:-"./optim_logs"}
+SESSION_ID=${PARAMS[1]}  # Required!
 OUTPUT_FILE=${PARAMS[2]:""}
 
+# Session directory
+SESSION_LOG_DIR="./optim_logs/session_${SESSION_ID}"
+
+if [ ! -d "$SESSION_LOG_DIR" ]; then
+  echo "ERROR: Session directory not found: $SESSION_LOG_DIR"
+  exit 1
+fi
+
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-REPORT_PATH="$LOG_DIR/optimization_report_${TIMESTAMP}.md"
+REPORT_PATH="$SESSION_LOG_DIR/optimization_report_${TIMESTAMP}.md"
 
 if [ -n "$OUTPUT_FILE" ]; then
-  REPORT_PATH="$LOG_DIR/$OUTPUT_FILE"
+  if [[ "$OUTPUT_FILE" != /* ]]; then
+    REPORT_PATH="$SESSION_LOG_DIR/$OUTPUT_FILE"
+  else
+    REPORT_PATH="$OUTPUT_FILE"
+  fi
 fi
 
 echo "=== Report Generation Specialist ==="
+echo "Session: $SESSION_ID"
 echo "Agents: $N_AGENTS"
-echo "Log directory: $LOG_DIR"
 echo "Output: $REPORT_PATH"
 echo "===================================="
 
 # Detect GPU
 GPU_INFO=$(nvidia-smi -L 2>/dev/null | head -1)
 GPU_NAME=$(echo "$GPU_INFO" | sed 's/GPU 0: //;s/(UUID.*//;s/ *$//')
-GPU_ARCH=$(echo "$GPU_INFO" | grep -oP 'NVIDIA \K[^ ]+' | tr '[:lower:]' '[:upper:]')
+
+# Read personas
+PERSONAS_FILE="$SESSION_LOG_DIR/personas.json"
+if [ -f "$PERSONAS_FILE" ]; then
+  PERSONAS=$(cat "$PERSONAS_FILE")
+else
+  PERSONAS="[]"
+fi
 
 # Step 1: Read benchmark results
-BENCHMARK_FILE="$LOG_DIR/benchmark_results.json"
+BENCHMARK_FILE="$SESSION_LOG_DIR/benchmark_results.json"
 if [ -f "$BENCHMARK_FILE" ]; then
   BENCHMARK_DATA=$(cat "$BENCHMARK_FILE")
 else
   echo "Warning: Benchmark results not found at $BENCHMARK_FILE"
-  BENCHMARK_DATA=""
+  BENCHMARK_DATA="{\"results\":[]}"
 fi
 
 # Step 2: Read anti-triche report
-ANTITRICHE_FILE="$LOG_DIR/antitriche_report.json"
+ANTITRICHE_FILE="$SESSION_LOG_DIR/antitriche_report.json"
 if [ -f "$ANTITRICHE_FILE" ]; then
   ANTITRICHE_DATA=$(cat "$ANTITRICHE_FILE")
 else
   echo "Warning: Anti-triche report not found at $ANTITRICHE_FILE"
-  ANTITRICHE_DATA=""
+  ANTITRICHE_DATA="{\"report\":[]}"
 fi
 
-# Step 3: Collect agent personas and summaries
-# Parse orchestrator log for agent assignments
-ORCHESTRATOR_LOG=$(ls -t "$LOG_DIR"/orchestrator_*.log 2>/dev/null | head -1)
+# Step 3: Collect agent results
+AGENT_RESULTS=()
+for i in $(seq -f "%02g" 1 $N_AGENTS); do
+  RESULT_FILE="$SESSION_LOG_DIR/agent_${i}_result.json"
+  if [ -f "$RESULT_FILE" ]; then
+    AGENT_RESULTS+=("$(cat "$RESULT_FILE")")
+  fi
+done
 
-# Step 4: Generate markdown report
-cat > "$REPORT_PATH" << 'REPORT_HEADER'
-# GPU Optimization Report
+# Generate markdown report
+cat > "$REPORT_PATH" << EOF
+# GPU Optimization Report - Session $SESSION_ID
 
-**Generated**: TIMESTAMP_PLACEHOLDER
-**GPU**: GPU_NAME_PLACEHOLDER (GPU_ARCH_PLACEHOLDER)
-**Total Agents**: N_AGENTS_PLACEHOLDER
+**Generated**: $(date)
+**GPU**: $GPU_NAME
+**Total Agents**: $N_AGENTS
 
 ## Executive Summary
 
-SUMMARY_PLACEHOLDER
+EOF
+
+# Calculate statistics
+SUCCESS_COUNT=$(echo "$AGENT_RESULTS" | jq -r '[.status] | select(. == "success") | length' 2>/dev/null || echo "0")
+TOTAL_COUNT=${#AGENT_RESULTS[@]}
+SPEEDUP_SUM=$(echo "$BENCHMARK_DATA" | jq -r '[.results[].speedup] | add' 2>/dev/null || echo "0")
+SPEEDUP_COUNT=$(echo "$BENCHMARK_DATA" | jq -r '[.results[].speedup] | length' 2>/dev/null || echo "1")
+
+if [ "$SPEEDUP_COUNT" -gt 0 ]; then
+  AVG_SPEEDUP=$(python3 -c "print(f'{$SPEEDUP_SUM/$SPEEDUP_COUNT:.2f}')")
+else
+  AVG_SPEEDUP="N/A"
+fi
+
+cat >> "$REPORT_PATH" << EOF
+| Metric | Value |
+|--------|-------|
+| Total Agents | $N_AGENTS |
+| Successful Optimizations | $SUCCESS_COUNT |
+| Completion Rate | $(python3 -c "print(f'{100*$SUCCESS_COUNT/$N_AGENTS:.1f}%')") |
+| Average Speedup | ${AVG_SPEEDUP}x |
 
 ## Configuration
 
 | Parameter | Value |
 |-----------|-------|
-| Total Agents | N_AGENTS_PLACEHOLDER |
-| GPU | GPU_NAME_PLACEHOLDER |
-| GPU Architecture | GPU_ARCH_PLACEHOLDER |
+| Session ID | \`$SESSION_ID\` |
+| Total Agents | $N_AGENTS |
+| GPU | $GPU_NAME |
 
-## Benchmark Results
+EOF
 
-BENCHMARK_SECTION_PLACEHOLDER
+# Benchmark Results Section
+echo "## Benchmark Results" >> "$REPORT_PATH"
+echo "" >> "$REPORT_PATH"
 
-## Anti-Triche Analysis
+# Extract benchmark results
+if [ -f "$BENCHMARK_FILE" ]; then
+  echo "| Agent | v1 (ms) | v2 (ms) | Speedup | Status |" >> "$REPORT_PATH"
+  echo "|-------|---------|---------|---------|--------|" >> "$REPORT_PATH"
 
-ANTITRICHE_SECTION_PLACEHOLDER
+  for i in $(seq -f "%02g" 1 $N_AGENTS); do
+    BENCH_FILE="$SESSION_LOG_DIR/benchmark_${i}.json"
+    if [ -f "$BENCH_FILE" ]; then
+      V1=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("V1_3D_Large")) | .mean' 2>/dev/null || echo "N/A")
+      V2=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("V2_3D_Large")) | .mean' 2>/dev/null || echo "N/A")
+      SPD=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("V2_3D_Large")) | .mean' | \
+        xargs -I {} python3 -c "print(f'{float($(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("V1_3D_Large")) | .mean')')/float({}):.2f}')" 2>/dev/null || echo "N/A")
+      echo "| $i | $V1 | $V2 | ${SPD}x | ✓ |" >> "$REPORT_PATH"
+    fi
+  done
+else
+  echo "No benchmark results available." >> "$REPORT_PATH"
+fi
 
-## Agent Details
+echo "" >> "$REPORT_PATH"
 
-AGENT_TABLE_PLACEHOLDER
+# Anti-Triche Section
+echo "## Anti-Triche Analysis" >> "$REPORT_PATH"
+echo "" >> "$REPORT_PATH"
 
-## Top Optimizations
+if [ -f "$ANTITRICHE_FILE" ]; then
+  TRUSTED_COUNT=$(cat "$ANTITRICHE_FILE" | jq -r '.trusted_count')
+  SUSPECTS_COUNT=$(cat "$ANTITRICHE_FILE" | jq -r '.suspects | length')
 
-TOP_OPTIMIZATIONS_PLACEHOLDER
+  echo "- **Trusted Agents**: $TRUSTED_COUNT / $N_AGENTS" >> "$REPORT_PATH"
+  echo "- **Suspect Agents**: $SUSPECTS_COUNT" >> "$REPORT_PATH"
 
-## Recommendations
+  if [ "$SUSPECTS_COUNT" -gt 0 ]; then
+    SUSPECTS=$(cat "$ANTITRICHE_FILE" | jq -r '.suspects[]')
+    echo "- **Suspect IDs**: $(echo $SUSPECTS | paste -sd,)" >> "$REPORT_PATH"
+  fi
+else
+  echo "No anti-triche analysis available." >> "$REPORT_PATH"
+fi
 
-RECOMMENDATIONS_PLACEHOLDER
+echo "" >> "$REPORT_PATH"
 
-## Appendix: Agent Logs
+# Agent Details Section
+echo "## Agent Details" >> "$REPORT_PATH"
+echo "" >> "$REPORT_PATH"
+echo "| Agent | Persona | Risk | Expertise | OptType | Status | Optimization |" >> "$REPORT_PATH"
+echo "|-------|---------|------|-----------|---------|--------|--------------|" >> "$REPORT_PATH"
 
-APPENDIX_PLACEHOLDER
-REPORT_HEADER
+for i in $(seq -f "%02g" 1 $N_AGENTS); do
+  # Get persona
+  PERSONA=$(echo "$PERSONAS" | jq -r ".[] | select(.agent_id == \"$i\")")
 
-# Step 5: Fill in placeholders with actual data
-sed -i "s/TIMESTAMP_PLACEHOLDER/$(date)/" "$REPORT_PATH"
-sed -i "s/GPU_NAME_PLACEHOLDER/$GPU_NAME/" "$REPORT_PATH"
-sed -i "s/GPU_ARCH_PLACEHOLDER/$GPU_ARCH/" "$REPORT_PATH"
-sed -i "s/N_AGENTS_PLACEHOLDER/$N_AGENTS/" "$REPORT_PATH"
+  # Get result
+  RESULT_FILE="$SESSION_LOG_DIR/agent_${i}_result.json"
+  if [ -f "$RESULT_FILE" ]; then
+    RESULT=$(cat "$RESULT_FILE")
+    STATUS=$(echo "$RESULT" | jq -r '.status')
+    OPT_NAME=$(echo "$RESULT" | jq -r '.optimization.name // "N/A"')
+    OPT_DESC=$(echo "$RESULT" | jq -r '.optimization.description // "N/A"')
+  else
+    STATUS="unknown"
+    OPT_NAME="N/A"
+    OPT_DESC="N/A"
+  fi
+
+  RISK=$(echo "$PERSONA" | jq -r '.risk // "N/A"')
+  EXPERTISE=$(echo "$PERSONA" | jq -r '.expertise // "N/A"')
+  OPT_TYPE=$(echo "$PERSONA" | jq -r '.opt_type // "N/A"')
+
+  if [ "$STATUS" = "success" ]; then
+    STATUS="✅"
+  elif [ "$STATUS" = "build_failed" ]; then
+    STATUS="❌ Build"
+  elif [ "$STATUS" = "tests_failed" ]; then
+    STATUS="⚠️  Tests"
+  else
+    STATUS="? $STATUS"
+  fi
+
+  echo "| $i | (persona) | $RISK | $EXPERTISE | $OPT_TYPE | $STATUS | $OPT_NAME |" >> "$REPORT_PATH"
+done
+
+# Recommendations
+echo "" >> "$REPORT_PATH"
+echo "## Recommendations" >> "$REPORT_PATH"
+echo "" >> "$REPORT_PATH"
+echo "1. Review the top performing optimizations above" >> "$REPORT_PATH"
+echo "2. Check agent logs for detailed implementation notes" >> "$REPORT_PATH"
+echo "3. Run anti-triche analysis if not already done" >> "$REPORT_PATH"
+echo "4. Consider combining compatible optimizations" >> "$REPORT_PATH"
+
+# Appendix
+echo "" >> "$REPORT_PATH"
+echo "## Appendix" >> "$REPORT_PATH"
+echo "" >> "$REPORT_PATH"
+echo "### Session Files" >> "$REPORT_PATH"
+echo "- Session directory: \`$SESSION_LOG_DIR\`" >> "$REPORT_PATH"
+echo "- Orchestrator log: \`orchestrator.log\`" >> "$REPORT_PATH"
+echo "- Personas: \`personas.json\`" >> "$REPORT_PATH"
+echo "- Benchmark results: \`benchmark_results.json\`" >> "$REPORT_PATH"
+echo "- Anti-triche report: \`antitriche_report.json\`" >> "$REPORT_PATH"
+echo "" >> "$REPORT_PATH"
+echo "### Agent Logs" >> "$REPORT_PATH"
+for i in $(seq -f "%02g" 1 $N_AGENTS); do
+  if [ -f "$SESSION_LOG_DIR/agent_${i}.log" ]; then
+    echo "- [Agent $i log](agent_${i}.log)" >> "$REPORT_PATH"
+  fi
+done
 
 echo "Report generated: $REPORT_PATH"
 ```
-
-## Report Sections
-
-### 1. Executive Summary
-- Total agents launched
-- Successful optimizations
-- Average speedup
-- Top performers
-
-### 2. Benchmark Results Table
-```markdown
-| Agent | v1 (ms) | v2 (ms) | Speedup | Valid |
-|-------|---------|---------|---------|-------|
-| 02    | 45.2    | 35.0    | 1.29x   | Yes   |
-| 15    | 45.2    | 32.8    | 1.38x   | Yes   |
-| ...
-```
-
-### 3. Anti-Triche Findings
-- Agents that modified v1.hpp (invalid)
-- Agents with suspicious patterns
-- Trusted vs untrusted agents
-
-### 4. Agent Details Table
-```markdown
-| Agent | Persona | Risk | Expertise | OptType | Result |
-|-------|---------|------|-----------|---------|--------|
-| 01    | Conservative Kernel Expert | Conservative | KokkosSpecialist | Memory | No speedup |
-| 02    | Experimental GPU Architect | Experimental | GPUArchitect | Algorithm | 1.29x |
-| ...
-```
-
-### 5. Top Optimizations
-- Top 5-10 best performing agents
-- Brief description of what they changed
-- Speedup achieved
-
-### 6. Recommendations
-- Which optimizations to apply
-- Which combinations to try
-- Warnings about untrusted agents
-
-### 7. Appendix
-- Links to individual agent logs
-- Git commit references
-
-## Data Sources
-
-The report agent reads from:
-
-1. **Benchmark JSON** (`$LOG_DIR/benchmark_results.json`):
-```json
-{
-  "results": [
-    {"agent_id": "02", "v1_mean_ms": 45.2, "v2_mean_ms": 35.0, "speedup": 1.29}
-  ],
-  "top_optimizations": ["02", "15", "08"]
-}
-```
-
-2. **Anti-Triche JSON** (`$LOG_DIR/antitriche_report.json`):
-```json
-{
-  "trusted_agents": ["02", "15", "08"],
-  "untrusted_agents": ["12"],
-  "v1_modified": ["12"],
-  "suspicious_patterns": []
-}
-```
-
-3. **Orchestrator Log** (`$LOG_DIR/orchestrator_*.log`):
-- Contains persona assignments for each agent
-- Contains build status (success/failure)
-
-4. **Individual Agent Logs** (`$LOG_DIR/agent_*.log`):
-- Detailed optimization descriptions
-- Code changes made
-
-## Important Notes
-
-1. **READ-ONLY**: You only read and aggregate data, never modify
-2. **FAIL GRACEFULLY**: If a data source is missing, note it and continue
-3. **MARKDOWN OUTPUT**: Always generate clean, readable markdown
-4. **SORTED RESULTS**: Present benchmark results sorted by speedup (descending)
-5. **CLEAR SECTIONS**: Use headers, tables, and bullet points for readability
 
 ## Output Format
 
@@ -222,12 +267,10 @@ Return confirmation:
 ```json
 {
   "report_agent": "specialized",
-  "report_path": "/path/to/optimization_report_20240123_153000.md",
-  "agents_analyzed": 24,
-  "successful_builds": 20,
-  "valid_benchmarks": 18,
-  "top_speedup": 1.38,
-  "avg_speedup": 1.12
+  "session_id": "$SESSION_ID",
+  "report_path": "$REPORT_PATH",
+  "agents_analyzed": $N_AGENTS,
+  "successful_builds": $SUCCESS_COUNT
 }
 ```
 

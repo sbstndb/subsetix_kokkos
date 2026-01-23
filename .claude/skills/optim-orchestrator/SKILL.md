@@ -8,7 +8,7 @@ agent: general-purpose
 allowed-tools: Bash(git, cmake, ctest), Read, Edit, Task, Write
 ---
 
-# GPU Optimization Orchestrator
+# GPU Optimization Orchestrator V3
 
 You are orchestrating **N optimization agents** for Kokkos CUDA GPU optimization.
 
@@ -18,16 +18,23 @@ Extract parameters from $ARGUMENTS (space-separated):
 - **N** = First argument (default: 24)
 - **CHUNK_SIZE** = Second argument (default: 4)
 - **BUILD_JOBS** = Third argument (default: 4) - Compile with `-j{BUILD_JOBS}`
-- **TIMEOUT** = Fourth argument (default: 300) - Per-agent timeout in seconds
-- **LOG_DIR** = Fifth argument (default: `/tmp/optim_logs`) - Directory for agent logs
+- **TIMEOUT** = Fourth argument (default: 1800) - Per-agent timeout in seconds (30 min default)
+- **LOG_DIR** = Fifth argument (default: `./optim_logs`) - Directory for agent logs
 
-Example: `/optim-orchestrator 24 4 8 600 ./logs` → 40 agents, chunks of 4, -j8, 10min timeout, custom logs
+Example: `/optim-orchestrator 24 4 4 1800 ./logs` → 24 agents, chunks of 4, -j4, 30min timeout, custom logs
+
+## Key Changes in V3
+
+1. **Session ID**: Unique timestamp per run for isolation
+2. **Build from Scratch**: Always clean build directories before starting
+3. **Smart Monitoring**: Progress checks every 60s, not on every action
+4. **Worktree Management**: Reset worktrees to clean state at session start
 
 ## Auto-detected
 
+- **SESSION_ID**: Unique timestamp for this run (e.g., `20260123_143000`)
 - **GPU_ARCH**: Auto-detected with `nvidia-smi -L`
 - **GPU_NAME**: Auto-detected for reporting
-- **TIMESTAMP**: For log filenames
 
 ## Context
 
@@ -36,7 +43,7 @@ Example: `/optim-orchestrator 24 4 8 600 ./logs` → 40 agents, chunks of 4, -j8
 - Baseline: `v1.hpp` (NEVER modify)
 - Benchmark target: 3D Large (~5M rows)
 
-## Phase 0: Setup & Logging
+## Phase 0: Setup & Session Initialization
 
 ```bash
 # Get parameters
@@ -44,124 +51,262 @@ PARAMS=($ARGUMENTS)
 N_AGENTS=${PARAMS[0]:-24}
 CHUNK_SIZE=${PARAMS[1]:-4}
 BUILD_JOBS=${PARAMS[2]:-4}
-TIMEOUT=${PARAMS[3]:-300}
-LOG_DIR=${PARAMS[4]:-"/tmp/optim_logs"}
+TIMEOUT=${PARAMS[3]:-1800}
+LOG_DIR=${PARAMS[4]:-"./optim_logs"}
 
-# Create log directory
-mkdir -p "$LOG_DIR"
+# Create session with unique ID
+SESSION_ID=$(date +%Y%m%d_%H%M%S)
+SESSION_LOG_DIR="$LOG_DIR/session_${SESSION_ID}"
+mkdir -p "$SESSION_LOG_DIR"
 
 # Detect GPU
 GPU_INFO=$(nvidia-smi -L 2>/dev/null | head -1)
-GPU_ARCH=$(echo "$GPU_INFO" | grep -oP 'NVIDIA \K[^ ]+' | tr '[:lower:]' '[:upper:]')
 GPU_NAME=$(echo "$GPU_INFO" | sed 's/GPU 0: //;s/(UUID.*//;s/ *$//')
 
-# Timestamp for this run
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+# Map GPU name to Kokkos architecture
+case "$GPU_NAME" in
+  *RTX*40*|*4070*|*4060*) GPU_ARCH="ADA89" ;;
+  *RTX*30*|*3050*) GPU_ARCH="AMPERE86" ;;
+  *RTX*20*|*2080*) GPU_ARCH="TURING75" ;;
+  *A100*) GPU_ARCH="AMPERE80" ;;
+  *H100*) GPU_ARCH="HOPPER90" ;;
+  *) GPU_ARCH="AMPERE86" ;;  # Default fallback
+esac
 
-# Log file
-LOG_FILE="$LOG_DIR/orchestrator_${TIMESTAMP}.log"
+# Session log file
+LOG_FILE="$SESSION_LOG_DIR/orchestrator.log"
 
-echo "=== GPU Optimization Orchestrator ===" | tee "$LOG_FILE"
+echo "=== GPU Optimization Orchestrator V3 ===" | tee "$LOG_FILE"
+echo "Session ID: $SESSION_ID" | tee -a "$LOG_FILE"
 echo "GPU: $GPU_NAME ($GPU_ARCH)" | tee -a "$LOG_FILE"
-echo "Agents: $N_AGENTS" | tee -a "$LOG_FILE"
-echo "Chunk size: $CHUNK_SIZE" | tee -a "$LOG_FILE"
-echo "Build jobs: $BUILD_JOBS" | tee -a "$LOG_FILE"
-echo "Timeout: ${TIMEOUT}s per agent" | tee -a "$LOG_FILE"
-echo "Log dir: $LOG_DIR" | tee -a "$LOG_FILE"
-echo "===================================" | tee -a "$LOG_FILE"
+echo "Agents: $N_AGENTS | Chunk: $CHUNK_SIZE | Jobs: $BUILD_JOBS" | tee -a "$LOG_FILE"
+echo "Session dir: $SESSION_LOG_DIR" | tee -a "$LOG_FILE"
+echo "=====================================" | tee -a "$LOG_FILE"
 ```
 
-## Phase 1: Create Worktrees
+## Phase 1: Prepare Worktrees (Reset to Clean State)
 
 ```bash
 cd /home/sbstndbs/subsetix_kokkos
 
+# Clean up worktrees from previous sessions
 for i in $(seq -f "%02g" 1 $N_AGENTS); do
-  if ! git worktree list | grep -q "v2_opt${i}"; then
-    echo "Creating worktree v2_opt${i}..." | tee -a "$LOG_FILE"
-    git worktree add ../subsetix_kokkos_v2_opt${i} -b feature/v2-opt${i} >> "$LOG_FILE" 2>&1
+  WORKTREE="../subsetix_kokkos_v2_opt${i}"
+
+  # Remove existing worktree
+  if git worktree list | grep -q "v2_opt${i}"; then
+    echo "Removing old worktree v2_opt${i}..." | tee -a "$LOG_FILE"
+    git worktree remove "$WORKTREE" --force 2>&1 | tee -a "$LOG_FILE" || true
+    git branch -D "feature/v2-opt${i}" 2>/dev/null || true
+  fi
+
+  # Create fresh worktree from current HEAD
+  echo "Creating fresh worktree v2_opt${i}..." | tee -a "$LOG_FILE"
+  git worktree add "$WORKTREE" -b "feature/v2-opt${i}-session-${SESSION_ID}" >> "$LOG_FILE" 2>&1
+
+  # Clean any existing builds
+  rm -rf "$WORKTREE/build-experimental-cuda"
+
+  # Verify v2.hpp exists
+  if [ ! -f "$WORKTREE/experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp" ]; then
+    echo "ERROR: v2.hpp not found in $WORKTREE" | tee -a "$LOG_FILE"
+    exit 1
   fi
 done
 
-WORKTREE_COUNT=$(git worktree list | grep v2_opt | wc -l)
-echo "Created/verified $WORKTREE_COUNT worktrees" | tee -a "$LOG_FILE"
+echo "✓ Prepared $N_AGENTS clean worktrees" | tee -a "$LOG_FILE"
 ```
 
 ## Phase 2: Generate N Personas
 
-For each agent, generate a random profile with 6 cursors. Generate a creative name based on risk + expertise.
+For each agent, generate a random profile with 6 cursors:
 
-See documentation in `docs/AGENT_PERSONA_SYSTEM.md` for cursor details.
+```python
+import random
+
+def generate_persona(agent_id: int) -> dict:
+    # Cursor 1: Risk (weighted)
+    risk = random.choices(
+        ["Conservative", "Moderate", "Aggressive", "Experimental"],
+        weights=[0.25, 0.40, 0.25, 0.10]
+    )[0]
+
+    # Cursor 2: Expertise
+    expertise = random.choice([
+        "KokkosSpecialist", "GPUArchitect", "AlgorithmExpert",
+        "MemoryArchitect", "SystemsThinker", "ParallelismExpert",
+        "DataStructureSpecialist"
+    ])
+
+    # Cursor 3: OptType
+    opt_type = random.choice([
+        "QuickWin", "KokkosPattern", "GPUHwSpecific",
+        "Algorithmic", "Structural", "MemoryLayout", "LatencyHiding"
+    ])
+
+    # Cursor 4: Style (weighted)
+    style = random.choices(
+        ["Analytical", "Experimental", "Incremental", "Hybrid"],
+        weights=[0.2, 0.3, 0.2, 0.3]
+    )[0]
+
+    # Cursor 5: Scope
+    scope = random.choice(["Local", "Regional", "Global"])
+
+    # Cursor 6: Innovation (weighted)
+    innovation = random.choices(
+        ["Proven", "Novel", "Wild"],
+        weights=[0.4, 0.4, 0.2]
+    )[0]
+
+    return {
+        "agent_id": f"{agent_id:02d}",
+        "risk": risk,
+        "expertise": expertise,
+        "opt_type": opt_type,
+        "style": style,
+        "scope": scope,
+        "innovation": innovation
+    }
+```
+
+Save personas to `$SESSION_LOG_DIR/personas.json`
 
 ## Phase 3: Launch Agents (Chunks)
 
 Launch N agents in chunks of CHUNK_SIZE using the Task tool.
 
-**CRITICAL COMPILE CONSTRAINT**: Use `-j${BUILD_JOBS}`
+**IMPORTANT - Build from Scratch:**
+Each agent MUST start with a clean build:
 ```bash
+# Before building, ensure clean state
+rm -rf build-experimental-cuda
+cmake --preset experimental-cuda -DKokkos_ARCH_${GPU_ARCH}=ON
 cmake --build --preset experimental-cuda -j${BUILD_JOBS}
 ```
 
-**CONTINUE_ON_ERROR**: If an agent fails, log the error and continue with next agent/chunk.
+**SMART MONITORING:**
+- Check progress every ~60 seconds (not on every action)
+- Look for heartbeat signals in logs
+- If no progress for 120s, consider agent stuck
 
-**TIMEOUT**: Each agent has TIMEOUT seconds. If exceeded, mark as failed and continue.
+**TIMEOUT HANDLING:**
+- Per-agent timeout is generous (default 30 min)
+- Check agent status periodically
+- If timeout exceeded, mark as failed and continue
 
-## Phase 4: Collect Results
+**AGENT TASK TEMPLATE:**
+```text
+You are optimization agent {agent_id} with persona:
+{persona_json}
 
-After all chunks complete, collect:
-- Successful agents count
-- Failed agents count
-- Optimization summaries
+WORKTREE: /home/sbstndbs/subsetix_kokkos_v2_opt{agent_id:02d}
+TARGET: experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp
+GPU: $GPU_ARCH
 
-Save results to `$LOG_DIR/results_${TIMESTAMP}.json`
+STEPS:
+1. Read v2.hpp and analyze according to your persona
+2. Find ONE optimization matching your profile
+3. Implement the optimization
+4. Clean build: rm -rf build-experimental-cuda
+5. Configure: cmake --preset experimental-cuda -DKokkos_ARCH_$GPU_ARCH=ON
+6. Build: cmake --build --preset experimental-cuda -j$BUILD_JOBS
+7. Test: ctest --preset experimental-cuda --output-on-failure
+8. Return JSON result
 
-## Phase 5: Next Steps
-
-Return summary with:
-- Parameters used
-- Success/failure counts
-- Log file location
-- Recommended next commands:
-  - `/optim-benchmark $N_AGENTS`
-  - `/optim-antitriche $N_AGENTS`
-  - `/optim-combine` (if enough successful agents)
-
-## Log File Structure
-
+Return ONLY this JSON format:
+{
+  "agent_id": "{agent_id:02d}",
+  "persona": {...},
+  "optimization": {"name": "...", "description": "..."},
+  "status": "success|build_failed|tests_failed",
+  "log_file": "..."
+}
 ```
-$LOG_DIR/
-├── orchestrator_20250123_123456.log      # Main orchestrator log
-├── results_20250123_123456.json          # Collected results
-├── agent_01.log                          # Individual agent logs
-├── agent_02.log
-└── ...
+
+## Phase 4: Monitor and Collect
+
+**Smart monitoring loop:**
+```bash
+# Check progress every 60 seconds
+while true; do
+  sleep 60
+
+  # Check for heartbeat (recent log activity)
+  for i in $(seq -f "%02g" 1 $N_AGENTS); do
+    LOG="$SESSION_LOG_DIR/agent_${i}.log"
+    if [ -f "$LOG" ]; then
+      LAST_ACTIVITY=$(stat -c %Y "$LOG")
+      NOW=$(date +%s)
+      ELAPSED=$((NOW - LAST_ACTIVITY))
+
+      # Alert if no activity for 2 minutes
+      if [ $ELAPSED -gt 120 ]; then
+        echo "⚠️  Agent $i appears stuck (no activity for ${ELAPSED}s)" | tee -a "$LOG_FILE"
+      fi
+    fi
+  done
+
+  # Check if all agents completed
+  PENDING=$(find "$SESSION_LOG_DIR" -name "agent_*_result.json" 2>/dev/null | wc -l)
+  if [ $PENDING -eq $N_AGENTS ]; then
+    break
+  fi
+done
 ```
 
-## Return Format
+## Phase 5: Final Summary
 
-Return JSON:
+Save results to `$SESSION_LOG_DIR/results.json`:
 
 ```json
 {
-  "orchestrator": "v2",
+  "session_id": "$SESSION_ID",
+  "orchestrator": "v3",
   "gpu_arch": "$GPU_ARCH",
   "n_agents": $N_AGENTS,
-  "chunk_size": $CHUNK_SIZE,
-  "build_jobs": $BUILD_JOBS,
-  "timeout": $TIMEOUT,
-  "log_dir": "$LOG_DIR",
-  "log_file": "$LOG_FILE",
-  "timestamp": "$TIMESTAMP",
-  "successful": 18,
-  "failed": 6,
-  "continue_on_error": true,
-  "results_file": "$LOG_DIR/results_${TIMESTAMP}.json",
-  "next_steps": [
-    "Run /optim-benchmark $N_AGENTS to get reliable GPU measurements",
-    "Run /optim-antitriche $N_AGENTS to verify integrity",
-    "Run /optim-combine to merge compatible optimizations"
+  "successful": 4,
+  "failed": 0,
+  "optimizations": [...],
+  "results": [
+    {"agent_id": "01", "status": "success", "optimization": {...}},
+    ...
   ]
 }
 ```
 
-For detailed documentation, see: `docs/ORCHESTRATOR_SPECS_V2.md`
+## Return Format
+
+```json
+{
+  "orchestrator": "v3",
+  "session_id": "$SESSION_ID",
+  "gpu_arch": "$GPU_ARCH",
+  "n_agents": $N_AGENTS,
+  "successful": N,
+  "failed": M,
+  "session_dir": "$SESSION_LOG_DIR",
+  "log_file": "$LOG_FILE",
+  "results_file": "$SESSION_LOG_DIR/results.json",
+  "next_steps": [
+    "Run benchmark specialist: /optim-benchmark $N_AGENTS $SESSION_ID",
+    "Run anti-triche: /optim-antitriche $N_AGENTS $SESSION_ID",
+    "Generate report: /optim-report $N_AGENTS $SESSION_LOG_DIR"
+  ]
+}
+```
+
+## Session Directory Structure
+
+```
+$LOG_DIR/
+└── session_20260123_143000/
+    ├── orchestrator.log           # Main orchestrator log
+    ├── personas.json              # Generated personas
+    ├── results.json               # Final results
+    ├── agent_01.log               # Individual agent logs
+    ├── agent_01_result.json       # Agent results
+    ├── agent_02.log
+    ├── agent_02_result.json
+    └── ...
+```
