@@ -39,8 +39,8 @@ Example: `/optim-orchestrator 24 4 4 1800 ./logs` → 24 agents, chunks of 4, -j
 ## Context
 
 - Repository: Current directory (must be subsetix_kokkos)
-- Target file: `experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp`
-- Baseline: `v1.hpp` (NEVER modify)
+- Target file: `experimental/include/experimental/subsetix/csr/set_algebra/optimized.hpp`
+- Baseline: `baseline.hpp` (NEVER modify)
 - Benchmark target: 3D Large (~5M rows)
 
 ## Phase 0: Setup & Session Initialization
@@ -91,25 +91,25 @@ cd /home/sbstndbs/subsetix_kokkos
 
 # Clean up worktrees from previous sessions
 for i in $(seq -f "%02g" 1 $N_AGENTS); do
-  WORKTREE="../subsetix_kokkos_v2_opt${i}"
+  WORKTREE="../subsetix_kokkos_optimized_opt${i}"
 
   # Remove existing worktree
-  if git worktree list | grep -q "v2_opt${i}"; then
-    echo "Removing old worktree v2_opt${i}..." | tee -a "$LOG_FILE"
+  if git worktree list | grep -q "optimized_opt${i}"; then
+    echo "Removing old worktree optimized_opt${i}..." | tee -a "$LOG_FILE"
     git worktree remove "$WORKTREE" --force 2>&1 | tee -a "$LOG_FILE" || true
-    git branch -D "feature/v2-opt${i}" 2>/dev/null || true
+    git branch -D "feature/optimized-opt${i}" 2>/dev/null || true
   fi
 
   # Create fresh worktree from current HEAD
-  echo "Creating fresh worktree v2_opt${i}..." | tee -a "$LOG_FILE"
-  git worktree add "$WORKTREE" -b "feature/v2-opt${i}-session-${SESSION_ID}" >> "$LOG_FILE" 2>&1
+  echo "Creating fresh worktree optimized_opt${i}..." | tee -a "$LOG_FILE"
+  git worktree add "$WORKTREE" -b "feature/optimized-opt${i}-session-${SESSION_ID}" >> "$LOG_FILE" 2>&1
 
   # Clean any existing builds
   rm -rf "$WORKTREE/build-experimental-cuda"
 
-  # Verify v2.hpp exists
-  if [ ! -f "$WORKTREE/experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp" ]; then
-    echo "ERROR: v2.hpp not found in $WORKTREE" | tee -a "$LOG_FILE"
+  # Verify optimized.hpp exists
+  if [ ! -f "$WORKTREE/experimental/include/experimental/subsetix/csr/set_algebra/optimized.hpp" ]; then
+    echo "ERROR: optimized.hpp not found in $WORKTREE" | tee -a "$LOG_FILE"
     exit 1
   fi
 done
@@ -200,12 +200,12 @@ cmake --build --preset experimental-cuda -j${BUILD_JOBS}
 You are optimization agent {agent_id} with persona:
 {persona_json}
 
-WORKTREE: /home/sbstndbs/subsetix_kokkos_v2_opt{agent_id:02d}
-TARGET: experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp
+WORKTREE: /home/sbstndbs/subsetix_kokkos_optimized_opt{agent_id:02d}
+TARGET: experimental/include/experimental/subsetix/csr/set_algebra/optimized.hpp
 GPU: $GPU_ARCH
 
 STEPS:
-1. Read v2.hpp and analyze according to your persona
+1. Read optimized.hpp and analyze according to your persona
 2. Find ONE optimization matching your profile
 3. Implement the optimization
 4. Clean build: rm -rf build-experimental-cuda

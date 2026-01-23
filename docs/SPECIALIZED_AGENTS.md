@@ -49,11 +49,11 @@ Tu es l'agent profiling. Tu analyses les hotspots GPU pour les optimisations les
 
 2. Pour chaque optimisation:
    ```bash
-   cd /home/sbstndbs/subsetix_kokkos_v2_opt{XX}
+   cd /home/sbstndbs/subsetix_kokkos_optimized_opt{XX}
 
    # Profiling avec Nsight Compute
    ncu --set full \
-       --export profile_v2_opt{XX} \
+       --export profile_optimized_opt{XX} \
        ./build-experimental-cuda/experimental/benchmarks/experimental_unified_comparison_benchmark \
          --benchmark_filter="3D_Large"
    ```
@@ -107,12 +107,12 @@ Tu es l'agent mémoire. Tu analyses les patterns d'accès mémoire pour identifi
 
 ## CONTEXTE
 
-- Fichier cible: v2.hpp (et v1.hpp pour comparaison)
+- Fichier cible: optimized.hpp (et baseline.hpp pour comparaison)
 - Focus: Accès mémoire non coalescés, cache misses
 
 ## WORKFLOW
 
-1. Lire v2.hpp et v1.hpp
+1. Lire optimized.hpp et baseline.hpp
 
 2. Analyser les patterns d'accès:
    - Accès aux row_keys (random ou séquentiel?)
@@ -172,12 +172,12 @@ Tu es l'agent fusion. Tu identifies les opportunités de fusionner des kernels p
 
 ## CONTEXTE
 
-- v2.hpp a 5 phases distinctes avec des kernels séparés
+- optimized.hpp a 5 phases distinctes avec des kernels séparés
 - Chaque kernel = overhead de lancement
 
 ## WORKFLOW
 
-1. Lire v2.hpp
+1. Lire optimized.hpp
 
 2. Analyser les dépendances entre phases:
    - Phase 1 → Phase 2 (dépendance: rows communs)
@@ -430,8 +430,8 @@ result = Kokkos::pair<CoordType, bool>(shfl(&result.first, 0), shfl(&result.seco
 
 ### Résultats
 
-| Benchmark | v1 (ms) | v2 (ms) | Speedup |
-|-----------|---------|---------|---------|
+| Benchmark | Baseline (ms) | Optimized (ms) | Speedup |
+|-----------|---------------|----------------|---------|
 | 3D Large  | 19.6    | 15.2    | 1.28x   |
 
 ### Recommandations

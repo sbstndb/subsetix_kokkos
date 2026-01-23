@@ -23,7 +23,7 @@ Example: `/optim-combine 24 6 1.10` → 24 agents, propose 6 combinations, only 
 
 ## Context
 
-- Worktrees: `/home/sbstndbs/subsetix_kokkos_v2_opt01` to `v2_opt{N}`
+- Worktrees: `/home/sbstndbs/subsetix_kokkos_optimized_opt01` to `optimized_opt{N}`
 - Benchmark results: Should be available from `/optim-benchmark`
 - Anti-triche report: Should be available from `/optim-antitriche`
 
@@ -56,7 +56,7 @@ done
 echo "Found ${#VALID_AGENTS[@]} valid agents with speedup > $MIN_SPEEDUP"
 
 # Step 2: Analyze each optimization for compatibility
-# Read v2.hpp from each worktree to understand what was changed
+# Read optimized.hpp from each worktree to understand what was changed
 
 COMPATIBILITY_MATRIX=()
 
@@ -66,11 +66,11 @@ for agent_a in "${VALID_AGENTS[@]}"; do
       continue  # Avoid duplicates
     fi
 
-    WORKTREE_A="/home/sbstndbs/subsetix_kokkos_v2_opt${agent_a}"
-    WORKTREE_B="/home/sbstndbs/subsetix_kokkos_v2_opt${agent_b}"
+    WORKTREE_A="/home/sbstndbs/subsetix_kokkos_optimized_opt${agent_a}"
+    WORKTREE_B="/home/sbstndbs/subsetix_kokkos_optimized_opt${agent_b}"
 
     # Analyze compatibility by examining the changes
-    # (In real scenario, would use git diff or read v2.hpp)
+    # (In real scenario, would use git diff or read optimized.hpp)
 
     # Determine if optimizations are orthogonal (can be applied together)
     # Examples of NON-compatible:

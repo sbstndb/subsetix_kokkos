@@ -204,19 +204,19 @@ Ton niveau d'innovation: {innovation}
 
 ## TON OBJECTIF
 
-Analyser le code v2.hpp et proposer une optimisation qui correspond à ton persona.
+Analyser le code optimized.hpp et proposer une optimisation qui correspond à ton persona.
 
 ## CONTRAINTES
 
-- Baseline: v1.hpp (ne pas modifier)
-- Target: v2.hpp
+- Baseline: baseline.hpp (ne pas modifier)
+- Target: optimized.hpp
 - Tests doivent passer
 - GPU: CUDA (détecter architecture avec nvidia-smi)
 - Focus: Benchmark 3D Large
 
 ## CONTEXTE CODE
 
-Le fichier v2.hpp implémente l'intersection de maillages CSR en 5 phases:
+Le fichier optimized.hpp implémente l'intersection de maillages CSR en 5 phases:
 1. Row mapping (recherche binaire)
 2. Count intervals
 3. Scan (row_ptr)
@@ -241,7 +241,7 @@ Le fichier v2.hpp implémente l'intersection de maillages CSR en 5 phases:
 
 ## WORKFLOW
 
-1. Lire v2.hpp
+1. Lire optimized.hpp
 2. Identifier les opportunités selon ton persona
 3. Implémenter l'optimisation
 4. Compiler et tester
@@ -255,8 +255,8 @@ Le fichier v2.hpp implémente l'intersection de maillages CSR en 5 phases:
   "persona": "...",
   "optimization_proposed": "...",
   "status": "success|failed",
-  "v1_time_ms": 0.0,
-  "v2_time_ms": 0.0,
+  "baseline_time_ms": 0.0,
+  "optimized_time_ms": 0.0,
   "speedup": 0.0,
   "notes": "..."
 }

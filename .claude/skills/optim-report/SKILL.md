@@ -25,7 +25,7 @@ Example: `/optim-report 24 20260123_143000 my_report.md`
 
 - Session ID: `$SESSION_ID`
 - Session directory: `$LOG_DIR/session_$SESSION_ID/`
-- Worktrees: `/home/sbstndbs/subsetix_kokkos_v2_opt01` to `v2_opt{N}`
+- Worktrees: `/home/sbstndbs/subsetix_kokkos_optimized_opt01` to `optimized_opt{N}`
 - Benchmark results: `$SESSION_LOG_DIR/benchmark_results.json`
 - Anti-triche report: `$SESSION_LOG_DIR/antitriche_report.json`
 - Agent results: `$SESSION_LOG_DIR/agent_*_result.json`
@@ -151,17 +151,17 @@ echo "" >> "$REPORT_PATH"
 
 # Extract benchmark results
 if [ -f "$BENCHMARK_FILE" ]; then
-  echo "| Agent | v1 (ms) | v2 (ms) | Speedup | Status |" >> "$REPORT_PATH"
-  echo "|-------|---------|---------|---------|--------|" >> "$REPORT_PATH"
+  echo "| Agent | Baseline (ms) | Optimized (ms) | Speedup | Status |" >> "$REPORT_PATH"
+  echo "|-------|---------------|----------------|---------|--------|" >> "$REPORT_PATH"
 
   for i in $(seq -f "%02g" 1 $N_AGENTS); do
     BENCH_FILE="$SESSION_LOG_DIR/benchmark_${i}.json"
     if [ -f "$BENCH_FILE" ]; then
-      V1=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("V1_3D_Large")) | .mean' 2>/dev/null || echo "N/A")
-      V2=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("V2_3D_Large")) | .mean' 2>/dev/null || echo "N/A")
-      SPD=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("V2_3D_Large")) | .mean' | \
-        xargs -I {} python3 -c "print(f'{float($(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("V1_3D_Large")) | .mean')')/float({}):.2f}')" 2>/dev/null || echo "N/A")
-      echo "| $i | $V1 | $V2 | ${SPD}x | ✓ |" >> "$REPORT_PATH"
+      BASELINE=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("Baseline_3D_Large")) | .mean' 2>/dev/null || echo "N/A")
+      OPTIMIZED=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("Optimized_3D_Large")) | .mean' 2>/dev/null || echo "N/A")
+      SPD=$(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("Optimized_3D_Large")) | .mean' | \
+        xargs -I {} python3 -c "print(f'{float($(cat "$BENCH_FILE" | jq -r '.benchmarks[] | select(.name | contains("Baseline_3D_Large")) | .mean')')/float({}):.2f}')" 2>/dev/null || echo "N/A")
+      echo "| $i | $BASELINE | $OPTIMIZED | ${SPD}x | ✓ |" >> "$REPORT_PATH"
     fi
   done
 else

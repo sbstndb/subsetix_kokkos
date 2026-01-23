@@ -25,7 +25,7 @@ Example: `/optim-antitriche 24 20260123_143000 strict`
 
 - Session ID: `$SESSION_ID` (e.g., "20260123_143000")
 - Session log directory: `./optim_logs/session_$SESSION_ID/`
-- Worktrees: `/home/sbstndbs/subsetix_kokkos_v2_opt01` to `v2_opt{N}`
+- Worktrees: `/home/sbstndbs/subsetix_kokkos_optimized_opt01` to `optimized_opt{N}`
 
 ## Workflow
 
@@ -56,11 +56,11 @@ REPORTS=()
 
 # Allowed files whitelist (only these can be modified)
 ALLOWED_FILES=(
-  "experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp"
+  "experimental/include/experimental/subsetix/csr/set_algebra/optimized.hpp"
 )
 
 for i in $(seq -f "%02g" 1 $N_AGENTS); do
-  WORKTREE="/home/sbstndbs/subsetix_kokkos_v2_opt${i}"
+  WORKTREE="/home/sbstndbs/subsetix_kokkos_optimized_opt${i}"
 
   if [ ! -d "$WORKTREE" ]; then
     continue
@@ -68,10 +68,10 @@ for i in $(seq -f "%02g" 1 $N_AGENTS); do
 
   cd "$WORKTREE"
 
-  # Check if v1 is modified
-  V1_MODIFIED=0
-  if git diff experimental/include/experimental/subsetix/csr/set_algebra/v1.hpp | grep -q .; then
-    V1_MODIFIED=1
+  # Check if baseline is modified
+  BASELINE_MODIFIED=0
+  if git diff experimental/include/experimental/subsetix/csr/set_algebra/baseline.hpp | grep -q .; then
+    BASELINE_MODIFIED=1
   fi
 
   # Get modified files
@@ -92,28 +92,28 @@ for i in $(seq -f "%02g" 1 $N_AGENTS); do
     fi
   done
 
-  # Semantic analysis of v2.hpp
+  # Semantic analysis of optimized.hpp
   SEMANTIC_ISSUES=()
 
   # Check for hardcoded speedup returns
-  if grep -qE "return.*speedup|return.*1\.[0-9]" experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp 2>/dev/null; then
+  if grep -qE "return.*speedup|return.*1\.[0-9]" experimental/include/experimental/subsetix/csr/set_algebra/optimized.hpp 2>/dev/null; then
     SEMANTIC_ISSUES+=("Hardcoded speedup detected")
   fi
 
   # Check for disabled code (commented out for fake speedup)
-  if grep -qE "\/\/.*TODO.*fake|\/\/.*FIXME.*speedup" experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp 2>/dev/null; then
+  if grep -qE "\/\/.*TODO.*fake|\/\/.*FIXME.*speedup" experimental/include/experimental/subsetix/csr/set_algebra/optimized.hpp 2>/dev/null; then
     SEMANTIC_ISSUES+=("Suspicious TODO comments")
   fi
 
   # Check for obvious cheat patterns
-  if grep -qE "skip_test|force_pass|always_return" experimental/include/experimental/subsetix/csr/set_algebra/v2.hpp 2>/dev/null; then
+  if grep -qE "skip_test|force_pass|always_return" experimental/include/experimental/subsetix/csr/set_algebra/optimized.hpp 2>/dev/null; then
     SEMANTIC_ISSUES+=("Obvious cheat patterns")
   fi
 
   # Determine trust status
   IS_SUSPICIOUS=false
 
-  if [ $V1_MODIFIED -eq 1 ]; then
+  if [ $BASELINE_MODIFIED -eq 1 ]; then
     IS_SUSPICIOUS=true
     NOTES="⚠️  BASELINE MODIFIED!"
   elif [ ${#SUSPICIOUS_FILES[@]} -gt 0 ]; then
@@ -125,7 +125,7 @@ for i in $(seq -f "%02g" 1 $N_AGENTS); do
     fi
     NOTES="⚠️  Semantic issues: ${SEMANTIC_ISSUES[*]}"
   else
-    NOTES="✅ Modifications propres dans v2.hpp uniquement"
+    NOTES="✅ Modifications propres dans optimized.hpp uniquement"
   fi
 
   # Create report entry
@@ -136,9 +136,9 @@ for i in $(seq -f "%02g" 1 $N_AGENTS); do
   fi
 
   FILES_JSON=$(printf '"%s",' "${FILES[@]}" | sed 's/,$//')
-  REPORTS+=("{\"agent_id\":\"$i\",\"v1_modified\":$V1_MODIFIED,\"files_modified\":[$FILES_JSON],\"suspicious\":$IS_SUSPICIOUS,\"notes\":\"$NOTES\"}")
+  REPORTS+=("{\"agent_id\":\"$i\",\"baseline_modified\":$BASELINE_MODIFIED,\"files_modified\":[$FILES_JSON],\"suspicious\":$IS_SUSPICIOUS,\"notes\":\"$NOTES\"}")
 
-  echo "v2_opt${i}: $NOTES"
+  echo "optimized_opt${i}: $NOTES"
 done
 
 # Compile final report
@@ -179,8 +179,8 @@ Return JSON:
 
 1. **READ-ONLY**: You never modify code, only analyze
 2. **SESSION ID**: All reports saved to session directory
-3. **BASELINE INTEGRITY**: v1.hpp must be untouched
-4. **WHITELIST**: Only v2.hpp should be modified in `set_algebra/`
+3. **BASELINE INTEGRITY**: baseline.hpp must be untouched
+4. **WHITELIST**: Only optimized.hpp should be modified in `set_algebra/`
 5. **SEMANTIC ANALYSIS**: Check for obvious cheating patterns
 6. **STRICT MODE**: If enabled, flag semantic issues as suspicious
 7. **NO EXECUTION**: You don't run tests or benchmarks

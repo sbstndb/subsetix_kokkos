@@ -28,7 +28,7 @@ Example: `/optim-benchmark 24 20260123_143000 15 3 "3D_Large,2D_Large" markdown`
 
 - Session ID: `$SESSION_ID` (e.g., "20260123_143000")
 - Session log directory: `./optim_logs/session_$SESSION_ID/`
-- Worktrees: `/home/sbstndbs/subsetix_kokkos_v2_opt01` to `v2_opt{N}`
+- Worktrees: `/home/sbstndbs/subsetix_kokkos_optimized_opt01` to `optimized_opt{N}`
 - Top K agents: Determined from agent results in session directory
 
 ## Workflow
@@ -64,16 +64,16 @@ RESULTS=()
 
 # For each worktree
 for i in $(seq -f "%02g" 1 $N_AGENTS); do
-  WORKTREE="/home/sbstndbs/subsetix_kokkos_v2_opt${i}"
+  WORKTREE="/home/sbstndbs/subsetix_kokkos_optimized_opt${i}"
 
   # Skip if build doesn't exist
   if [ ! -d "$WORKTREE/build-experimental-cuda" ]; then
-    echo "⚠️  Skipping v2_opt${i}: build not found"
+    echo "⚠️  Skipping optimized_opt${i}: build not found"
     RESULTS+=("{\"agent_id\":\"$i\",\"status\":\"skipped\",\"reason\":\"no_build\"}")
     continue
   fi
 
-  echo "=== Benchmarking v2_opt${i} ==="
+  echo "=== Benchmarking optimized_opt${i} ==="
   cd "$WORKTREE"
 
   # Run benchmark SEQUENTIALLY
@@ -84,14 +84,14 @@ for i in $(seq -f "%02g" 1 $N_AGENTS); do
     --benchmark_format=json > "$SESSION_LOG_DIR/benchmark_${i}.json" 2>&1
 
   # Extract results
-  V1_TIME=$(cat "$SESSION_LOG_DIR/benchmark_${i}.json" | jq -r '.benchmarks[] | select(.name | contains("V1_3D_Large")) | .mean' 2>/dev/null || echo "null")
-  V2_TIME=$(cat "$SESSION_LOG_DIR/benchmark_${i}.json" | jq -r '.benchmarks[] | select(.name | contains("V2_3D_Large")) | .mean' 2>/dev/null || echo "null")
+  BASELINE_TIME=$(cat "$SESSION_LOG_DIR/benchmark_${i}.json" | jq -r '.benchmarks[] | select(.name | contains("Baseline_3D_Large")) | .mean' 2>/dev/null || echo "null")
+  OPTIMIZED_TIME=$(cat "$SESSION_LOG_DIR/benchmark_${i}.json" | jq -r '.benchmarks[] | select(.name | contains("Optimized_3D_Large")) | .mean' 2>/dev/null || echo "null")
 
   # Calculate speedup
-  if [ "$V1_TIME" != "null" ] && [ "$V2_TIME" != "null" ] && [ "$V2_TIME" != "0" ]; then
-    SPEEDUP=$(python3 -c "print(f'{float($V1_TIME)/float($V2_TIME):.2f}')")
-    echo "v1: ${V1_TIME}ms, v2: ${V2_TIME}ms, speedup: ${SPEEDUP}x"
-    RESULTS+=("{\"agent_id\":\"$i\",\"v1_mean_ms\":$V1_TIME,\"v2_mean_ms\":$V2_TIME,\"speedup\":$SPEEDUP,\"status\":\"valid\"}")
+  if [ "$BASELINE_TIME" != "null" ] && [ "$OPTIMIZED_TIME" != "null" ] && [ "$OPTIMIZED_TIME" != "0" ]; then
+    SPEEDUP=$(python3 -c "print(f'{float($BASELINE_TIME)/float($OPTIMIZED_TIME):.2f}')")
+    echo "baseline: ${BASELINE_TIME}ms, optimized: ${OPTIMIZED_TIME}ms, speedup: ${SPEEDUP}x"
+    RESULTS+=("{\"agent_id\":\"$i\",\"baseline_mean_ms\":$BASELINE_TIME,\"optimized_mean_ms\":$OPTIMIZED_TIME,\"speedup\":$SPEEDUP,\"status\":\"valid\"}")
   else
     echo "⚠️  Could not extract timing data"
     RESULTS+=("{\"agent_id\":\"$i\",\"status\":\"error\",\"reason\":\"no_timing_data\"}")
@@ -106,21 +106,21 @@ echo "{\"results\":[$(echo "${RESULTS[@]}" | sed 's/ /,/g')],\"session_id\":\"$S
 
 # Output based on format
 if [ "$OUTPUT" = "csv" ]; then
-  echo "agent_id,v1_mean_ms,v2_mean_ms,speedup"
+  echo "agent_id,baseline_mean_ms,optimized_mean_ms,speedup"
   for r in "${RESULTS[@]}"; do
-    echo "$r" | jq -r '[.agent_id, .v1_mean_ms, .v2_mean_ms, .speedup] | @csv' 2>/dev/null || echo "$r"
+    echo "$r" | jq -r '[.agent_id, .baseline_mean_ms, .optimized_mean_ms, .speedup] | @csv' 2>/dev/null || echo "$r"
   done
 elif [ "$OUTPUT" = "markdown" ]; then
   echo "# Benchmark Results - Session $SESSION_ID"
   echo ""
-  echo "| Agent | v1 (ms) | v2 (ms) | Speedup |"
-  echo "|-------|---------|---------|---------|"
+  echo "| Agent | Baseline (ms) | Optimized (ms) | Speedup |"
+  echo "|-------|---------------|----------------|---------|"
   for r in "${RESULTS[@]}"; do
     ID=$(echo $r | jq -r '.agent_id')
-    V1=$(echo $r | jq -r '.v1_mean_ms // "N/A"')
-    V2=$(echo $r | jq -r '.v2_mean_ms // "N/A"')
+    BASELINE=$(echo $r | jq -r '.baseline_mean_ms // "N/A"')
+    OPTIMIZED=$(echo $r | jq -r '.optimized_mean_ms // "N/A"')
     SPD=$(echo $r | jq -r '.speedup // "N/A"')
-    echo "| $ID | $V1 | $V2 | ${SPD}x |"
+    echo "| $ID | $BASELINE | $OPTIMIZED | ${SPD}x |"
   done
 else
   # JSON (default)

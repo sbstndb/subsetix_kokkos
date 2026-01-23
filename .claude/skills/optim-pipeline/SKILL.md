@@ -159,7 +159,7 @@ echo "[3/4] 📊 Running GPU benchmarks..."
 # Find worktrees with successful builds
 SUCCESSFUL_AGENTS=()
 for i in $(seq -f "%02g" 1 $N_AGENTS); do
-  WORKTREE="/home/sbstndbs/subsetix_kokkos_v2_opt${i}"
+  WORKTREE="/home/sbstndbs/subsetix_kokkos_optimized_opt${i}"
   if [ -d "$WORKTREE/build-experimental-cuda" ]; then
     RESULT_FILE="$SESSION_LOG_DIR/agent_${i}_result.json"
     if [ -f "$RESULT_FILE" ]; then

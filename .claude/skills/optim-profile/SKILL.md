@@ -30,7 +30,7 @@ Example: `/optim-profile 24 3 profiling-nsight-cuda` → Profile top 3 agents wi
 
 ## Context
 
-- Worktrees: `/home/sbstndbs/subsetix_kokkos_v2_opt01` to `v2_opt{N}`
+- Worktrees: `/home/sbstndbs/subsetix_kokkos_optimized_opt01` to `optimized_opt{N}`
 - Top K agents: Determined from benchmark results (or agent IDs if specified)
 - Profiling builds require recompilation with specific preset
 
@@ -55,14 +55,14 @@ echo "=============================="
 # In a real scenario, this would read from benchmark results
 # For now, assume we profile the first TOP_K worktrees that have successful builds
 for i in $(seq -f "%02g" 1 $TOP_K); do
-  WORKTREE="/home/sbstndbs/subsetix_kokkos_v2_opt${i}"
+  WORKTREE="/home/sbstndbs/subsetix_kokkos_optimized_opt${i}"
 
   if [ ! -d "$WORKTREE" ]; then
-    echo "⚠️  Worktree v2_opt${i} not found, skipping"
+    echo "⚠️  Worktree optimized_opt${i} not found, skipping"
     continue
   fi
 
-  echo "=== Profiling v2_opt${i} ==="
+  echo "=== Profiling optimized_opt${i} ==="
   cd "$WORKTREE"
 
   # Clean previous build
@@ -78,25 +78,25 @@ for i in $(seq -f "%02g" 1 $TOP_K); do
   if [ "$PRESET" = "profiling-nsight-cuda" ]; then
     # Use Nsight Compute for kernel analysis
     ncu --set full \
-        --export profile_v2_opt${i} \
+        --export profile_optimized_opt${i} \
         ./experimental/benchmarks/experimental_unified_comparison_benchmark \
           --benchmark_filter="3D_Large" \
           --benchmark_repetitions=3
 
-    echo "Profile saved to profile_v2_opt${i}.ncu-rep"
+    echo "Profile saved to profile_optimized_opt${i}.ncu-rep"
   elif [ "$PRESET" = "profiling-nsight-cuda-release" ]; then
     # Release + symbols for better performance
     ncu --set full \
-        --export profile_v2_opt${i}_release \
+        --export profile_optimized_opt${i}_release \
         ./experimental/benchmarks/experimental_unified_comparison_benchmark \
           --benchmark_filter="3D_Large" \
           --benchmark_repetitions=3
 
-    echo "Profile saved to profile_v2_opt${i}_release.ncu-rep"
+    echo "Profile saved to profile_optimized_opt${i}_release.ncu-rep"
   fi
 
   # Extract key metrics from profile
-  echo "Key metrics for v2_opt${i}:"
+  echo "Key metrics for optimized_opt${i}:"
   # Parse ncu output to extract occupancy, memory bandwidth, etc.
   # (This would typically use ncu --csv to export metrics)
 
