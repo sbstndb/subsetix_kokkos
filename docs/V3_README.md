@@ -2,12 +2,29 @@
 
 Système d'orchestration d'optimisation GPU pour Kokkos CUDA avec agents parallèles et personas aléatoires.
 
+## 🚀 ONE COMMAND TO RULE THEM ALL
+
+```bash
+# UNE SEULE COMMANDE pour tout faire :
+/optim-pipeline 24 4 4 1800 ./optim_logs
+```
+
+Cette commande unique exécute automatiquement :
+1. ✅ Lance 24 agents d'optimisation avec personas aléatoires
+2. ⏳ Monitor la progression avec détection intelligente des agents bloqués
+3. 📊 Lance les benchmarks GPU sur les builds réussis
+4. 🔍 Vérifie l'intégrité (anti-triche)
+5. 📄 Génère le rapport markdown final
+
+**Plus besoin de taper 4 commandes différentes !**
+
 ## Nouveautés V3
 
-1. **Session ID unique** - Chaque run a un identifiant unique pour isoler les résultats
-2. **Build from scratch** - Les agents partent toujours d'un build propre (nettoyage automatique)
-3. **Worktrees gérés proprement** - Les worktrees sont reset à chaque session
-4. **Monitoring intelligent** - Vérification de la progression toutes les 60s (pas de spam)
+1. **Pipeline automatique** - Une seule commande pour tout le workflow
+2. **Session ID unique** - Chaque run a un identifiant unique pour isoler les résultats
+3. **Build from scratch** - Les agents partent toujours d'un build propre (nettoyage automatique)
+4. **Worktrees gérés proprement** - Les worktrees sont reset à chaque session
+5. **Monitoring intelligent** - Vérification de la progression toutes les 10s, affichage toutes les 60s
 
 ## Installation
 
@@ -18,35 +35,19 @@ Système d'orchestration d'optimisation GPU pour Kokkos CUDA avec agents parall�
 
 ## Quick Start
 
-### 1. Lancer l'orchestrateur
+### Option 1: Pipeline automatique (RECOMMANDÉ)
 
 ```bash
-# Lancer 24 agents avec configuration par défaut
-/optim-orchestrator 24
+# Lancer 24 agents avec tout le workflow automatique
+/optim-pipeline 24
 
 # Configuration personnalisée
-/optim-orchestrator 40 4 4 1800 ./my_logs
+/optim-pipeline 40 4 4 1800 ./my_logs
 ```
 
-Cela crée une session avec un ID unique (ex: `20260123_143000`) et les worktrees sont automatiquement préparés.
+### Option 2: Workflow manuel (usage avancé)
 
-### 2. Lancer les benchmarks
-
-```bash
-/optim-benchmark 24 20260123_143000 10 2 "3D_Large" json
-```
-
-### 3. Anti-triche
-
-```bash
-/optim-antitriche 24 20260123_143000
-```
-
-### 4. Générer le rapport
-
-```bash
-/optim-report 24 20260123_143000
-```
+Si tu veux contrôler chaque étape manuellement :
 
 ## Architecture
 
@@ -95,16 +96,19 @@ Cela crée une session avec un ID unique (ex: `20260123_143000`) et les worktree
 
 ## Skills Disponibles
 
-| Skill | Description | Arguments |
-|-------|-------------|------------|
-| `optim-orchestrator` | Orchestrateur principal | N CHUNK_SIZE BUILD_JOBS TIMEOUT LOG_DIR |
-| `optim-benchmark` | Benchmarks séquentiels GPU | N SESSION_ID REPEAT_COUNT COOLDOWN FILTER OUTPUT |
-| `optim-antitriche` | Vérification intégrité | N SESSION_ID STRICT_MODE |
-| `optim-report` | Génération rapport markdown | N SESSION_ID OUTPUT_FILE |
-| `optim-profile` | Profiling GPU (Nsight) | N TOP_K PRESET |
-| `optim-combine` | Combinaison optimisations | N MAX_COMBINATIONS MIN_SPEEDUP |
+| Skill | Description | Arguments | Usage |
+|-------|-------------|------------|-------|
+| `optim-pipeline` ⭐ | **Pipeline complet automatique** | N CHUNK_SIZE BUILD_JOBS TIMEOUT LOG_DIR | `/optim-pipeline 24` |
+| `optim-orchestrator` | Orchestrateur principal | N CHUNK_SIZE BUILD_JOBS TIMEOUT LOG_DIR | Workflow manuel |
+| `optim-benchmark` | Benchmarks séquentiels GPU | N SESSION_ID REPEAT_COUNT COOLDOWN FILTER OUTPUT | Workflow manuel |
+| `optim-antitriche` | Vérification intégrité | N SESSION_ID STRICT_MODE | Workflow manuel |
+| `optim-report` | Génération rapport markdown | N SESSION_ID OUTPUT_FILE | Workflow manuel |
+| `optim-profile` | Profiling GPU (Nsight) | N TOP_K PRESET | Usage avancé |
+| `optim-combine` | Combinaison optimisations | N MAX_COMBINATIONS MIN_SPEEDUP | Usage avancé |
 
-## Pipeline Complet
+⭐ = **RECOMMANDÉ pour la majorité des cas d'usage**
+
+## Pipeline Manuel (usage avancé)
 
 ```bash
 # 1. Orchestrator - Crée session et lance agents
@@ -121,11 +125,7 @@ Cela crée une session avec un ID unique (ex: `20260123_143000`) et les worktree
 /optim-report 24 20260123_143000
 ```
 
-## Workflow avec Script Wrapper
-
-```bash
-./scripts/optimization_pipeline.sh 24 4 4 1800 ./optim_logs 10 2 "3D_Large" 4
-```
+**Note:** Utilise `/optim-pipeline` à la place si tu veux que tout se fasse automatiquement.
 
 ## Dépannage
 
