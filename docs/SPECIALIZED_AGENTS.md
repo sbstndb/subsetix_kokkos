@@ -16,11 +16,16 @@ Document exploratoire sur les agents spécialisés qui pourraient enrichir le sy
 - **Pourquoi**: Garantir l'intégrité des résultats
 - **Sortie**: Rapport de confiance par agent
 
+### 3. Agent Report
+- **Rôle**: Générer le rapport final agrégant tous les résultats
+- **Pourquoi**: Synthétiser les données pour l'utilisateur final
+- **Sortie**: Rapport markdown complet avec tableaux et recommandations
+
 ---
 
 ## NOUVEAUX AGENTS PROPOSÉS
 
-### 3. Agent Profiling GPU
+### 4. Agent Profiling GPU
 
 **Rôle**: Analyser les hotspots GPU pour les top optimisations
 
@@ -88,7 +93,7 @@ Tu es l'agent profiling. Tu analyses les hotspots GPU pour les optimisations les
 
 ---
 
-### 4. Agent Mémoire
+### 5. Agent Mémoire
 
 **Rôle**: Analyser les patterns d'accès mémoire et proposer optimisations
 
@@ -153,7 +158,7 @@ Tu es l'agent mémoire. Tu analyses les patterns d'accès mémoire pour identifi
 
 ---
 
-### 5. Agent Fusion
+### 6. Agent Fusion
 
 **Rôle**: Identifier les opportunités de fusion de kernels
 
@@ -218,7 +223,7 @@ Tu es l'agent fusion. Tu identifies les opportunités de fusionner des kernels p
 
 ---
 
-### 6. Agent Corrélation
+### 7. Agent Corrélation
 
 **Rôle**: Analyser les corrélations entre personas et succès
 
@@ -289,7 +294,7 @@ Tu es l'agent corrélation. Tu analyses quels personas ont le plus de succès.
 
 ---
 
-### 7. Agent Combinaison
+### 8. Agent Combinaison
 
 **Rôle**: Proposer des combinaisons d'optimisations
 
@@ -361,7 +366,7 @@ Tu es l'agent combinaison. Tu proposes de combiner les meilleures optimisations.
 
 ---
 
-### 8. Agent Documentation
+### 9. Agent Documentation
 
 **Rôle**: Générer la documentation des optimisations
 
@@ -479,6 +484,7 @@ result = Kokkos::pair<CoordType, bool>(shfl(&result.first, 0), shfl(&result.seco
 |-------|----------------|----------|
 | Benchmark | Après tous les agents opt | **Obligatoire** |
 | Anti-Triche | Après tous les agents opt | **Obligatoire** |
+| Report | Après benchmark + antitriche | **Obligatoire** |
 | Profiling GPU | Après benchmark, top 5 | Optionnel |
 | Mémoire | Au début, pour identifier goulots | Optionnel |
 | Fusion | Après analyse des phases | Optionnel |
@@ -490,7 +496,7 @@ result = Kokkos::pair<CoordType, bool>(shfl(&result.first, 0), shfl(&result.seco
 
 ## PROCHAINES ÉTAPES
 
-1. Implémenter et tester les agents obligatoires (Benchmark, Anti-Triche)
+1. ~~Implémenter et tester les agents obligatoires (Benchmark, Anti-Triche, Report)~~ **FAIT**
 2. Expérimenter avec les agents optionnels
 3. Créer des templates de prompts réutilisables
 4. Intégrer dans l'orchestrateur principal

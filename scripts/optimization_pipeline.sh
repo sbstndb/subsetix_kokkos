@@ -6,7 +6,7 @@ set -e
 
 # =============================================================================
 # GPU Optimization Wrapper Script
-# Runs the complete optimization pipeline: orchestrator → benchmark → antitriche → combine
+# Runs the complete optimization pipeline: orchestrator → benchmark → antitriche → combine → report
 # =============================================================================
 
 usage() {
@@ -110,6 +110,7 @@ echo "After the orchestrator completes, the following phases will run automatica
 echo "  - Phase 2: Benchmark Specialist"
 echo "  - Phase 3: Anti-Triche Specialist"
 echo "  - Phase 4: Combination Specialist"
+echo "  - Phase 5: Report Generation"
 echo ""
 
 # Check if we should auto-run subsequent phases
@@ -138,6 +139,9 @@ echo "   /optim-antitriche $N_AGENTS"
 echo ""
 echo "4. Phase 4 - Run combination:"
 echo "   /optim-combine $N_AGENTS $COMBINATIONS"
+echo ""
+echo "5. Phase 5 - Generate final report:"
+echo "   /optim-report $N_AGENTS $LOG_DIR"
 echo ""
 echo "Or use this script which will invoke all phases automatically:"
 echo "   ./scripts/optimization_pipeline.sh $N_AGENTS $CHUNK_SIZE $BUILD_JOBS $TIMEOUT $LOG_DIR $REPEAT_COUNT $COOLDOWN \"$FILTER\" $COMBINATIONS"
