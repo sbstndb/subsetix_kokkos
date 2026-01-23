@@ -66,13 +66,13 @@ message(STATUS "  - experimental_large_mesh_test")
 # New Architecture Tests with Common Format and Random Generation
 # ============================================================================
 
-# v1 unitary tests - comprehensive v1-specific tests
-add_executable(experimental_v1_unitary_test
+# baseline unitary tests - comprehensive baseline-specific tests
+add_executable(experimental_baseline_unitary_test
   test_main.cpp
   set_algebra/test_v1_unitary.cpp
 )
 
-target_link_libraries(experimental_v1_unitary_test
+target_link_libraries(experimental_baseline_unitary_test
   PRIVATE
     experimental_subsetix_csr
     gtest
@@ -80,15 +80,15 @@ target_link_libraries(experimental_v1_unitary_test
     Kokkos::kokkos
 )
 
-add_test(NAME ExperimentalV1UnitaryTest COMMAND experimental_v1_unitary_test)
+add_test(NAME ExperimentalBaselineUnitaryTest COMMAND experimental_baseline_unitary_test)
 
-# v2 unitary tests - v2-specific tests
-add_executable(experimental_v2_unitary_test
+# optimized unitary tests - optimized-specific tests
+add_executable(experimental_optimized_unitary_test
   test_main.cpp
   set_algebra/test_v2_unitary.cpp
 )
 
-target_link_libraries(experimental_v2_unitary_test
+target_link_libraries(experimental_optimized_unitary_test
   PRIVATE
     experimental_subsetix_csr
     gtest
@@ -96,25 +96,9 @@ target_link_libraries(experimental_v2_unitary_test
     Kokkos::kokkos
 )
 
-add_test(NAME ExperimentalV2UnitaryTest COMMAND experimental_v2_unitary_test)
+add_test(NAME ExperimentalOptimizedUnitaryTest COMMAND experimental_optimized_unitary_test)
 
-# v3 unitary tests - v3-specific tests
-add_executable(experimental_v3_unitary_test
-  test_main.cpp
-  set_algebra/test_v3_unitary.cpp
-)
-
-target_link_libraries(experimental_v3_unitary_test
-  PRIVATE
-    experimental_subsetix_csr
-    gtest
-    gmock
-    Kokkos::kokkos
-)
-
-add_test(NAME ExperimentalV3UnitaryTest COMMAND experimental_v3_unitary_test)
-
-# Cross-version test - compares v1/v2/v3 using random geometries
+# Cross-version test - compares baseline/optimized using random geometries
 add_executable(experimental_cross_version_test
   test_main.cpp
   set_algebra/test_cross_version.cpp
@@ -146,8 +130,7 @@ target_link_libraries(experimental_random_mesh_generator_test
 
 add_test(NAME ExperimentalRandomMeshGeneratorTest COMMAND experimental_random_mesh_generator_test)
 
-message(STATUS "  - experimental_v1_unitary_test")
-message(STATUS "  - experimental_v2_unitary_test")
-message(STATUS "  - experimental_v3_unitary_test")
+message(STATUS "  - experimental_baseline_unitary_test")
+message(STATUS "  - experimental_optimized_unitary_test")
 message(STATUS "  - experimental_cross_version_test")
 message(STATUS "  - experimental_random_mesh_generator_test")
