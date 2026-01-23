@@ -12,9 +12,8 @@ message(STATUS "=== Configuring Playground Intersection Tests ===")
 # Create test executable
 add_executable(playground_intersection_tests
   intersection/test_main.cpp
-  intersection/test_v1_unitary.cpp
-  intersection/test_v2_unitary.cpp
-  intersection/test_v3_unitary.cpp
+  intersection/test_baseline_unitary.cpp
+  intersection/test_optimized_unitary.cpp
   intersection/test_cross_version.cpp
   intersection/test_overlap_patterns.cpp
   intersection/test_sorted_rows.cpp
