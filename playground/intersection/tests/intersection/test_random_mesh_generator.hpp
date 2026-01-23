@@ -3,31 +3,31 @@
 
 #pragma once
 
-#ifdef SUBSETIX_ENABLE_EXPERIMENTAL
+#ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include "test_common_format.hpp"
-#include <experimental/subsetix/csr/set_algebra.hpp>
-#include <experimental/subsetix/csr/set_algebra/v1.hpp>
-#include <experimental/subsetix/csr/set_algebra/v2.hpp>
-#include <experimental/subsetix/csr/set_algebra/v3.hpp>
+#include <playground/subsetix/csr/intersection/set_algebra.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
 #include <Kokkos_Random.hpp>
 #include <algorithm>
 #include <cmath>
 #include <random>
 
 // Convenience aliases for backward compatibility
-using DefaultInterval = experimental::subsetix::csr::Interval<int32_t>;
-using DefaultCommonRow2D = experimental::subsetix::csr::test::CommonRow2D<int32_t>;
-using DefaultCommonRow3D = experimental::subsetix::csr::test::CommonRow3D<int32_t>;
-using DefaultCommonMesh2D = experimental::subsetix::csr::test::CommonMesh2D<int32_t>;
-using DefaultCommonMesh3D = experimental::subsetix::csr::test::CommonMesh3D<int32_t>;
+using DefaultInterval = playground::subsetix::csr::intersection::Interval<int32_t>;
+using DefaultCommonRow2D = playground::subsetix::csr::intersection::test::CommonRow2D<int32_t>;
+using DefaultCommonRow3D = playground::subsetix::csr::intersection::test::CommonRow3D<int32_t>;
+using DefaultCommonMesh2D = playground::subsetix::csr::intersection::test::CommonMesh2D<int32_t>;
+using DefaultCommonMesh3D = playground::subsetix::csr::intersection::test::CommonMesh3D<int32_t>;
 
 // Bring version namespaces into scope for test helpers
-using namespace experimental::subsetix::csr::v1;
-using namespace experimental::subsetix::csr::v2;
-using namespace experimental::subsetix::csr::v3;
+using namespace playground::subsetix::csr::intersection::v1;
+using namespace playground::subsetix::csr::intersection::v2;
+using namespace playground::subsetix::csr::intersection::v3;
 
-namespace experimental::subsetix::csr::test {
+namespace playground::subsetix::csr::intersection::test {
 
 // ============================================================================
 // Configuration for Random Mesh Generation
@@ -833,6 +833,6 @@ inline DefaultCommonMesh3D intersect_v3_3d(const DefaultCommonMesh3D& a, const D
   return MeshConverter3D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
 }
 
-} // namespace experimental::subsetix::csr::test
+} // namespace playground::subsetix::csr::intersection::test
 
 #endif

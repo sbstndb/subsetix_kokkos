@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
-#ifdef SUBSETIX_ENABLE_EXPERIMENTAL
+#ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include <gtest/gtest.h>
-#include <experimental/subsetix/csr/set_algebra/v1.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
 #include "test_common_format.hpp"
 #include "test_random_mesh_generator.hpp"
 #include <Kokkos_Core.hpp>
 
 // Pull in test helpers
-using namespace experimental::subsetix::csr::test;
+using namespace playground::subsetix::csr::intersection::test;
 
 // ============================================================================
 // v1-Specific Tests with Common Format Conversion

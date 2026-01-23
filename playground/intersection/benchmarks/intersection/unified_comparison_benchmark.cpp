@@ -1,26 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
-#ifdef SUBSETIX_ENABLE_EXPERIMENTAL
-
 #include <benchmark/benchmark.h>
-#include <experimental/subsetix/csr/set_algebra/v1.hpp>
-#include <experimental/subsetix/csr/set_algebra/v2.hpp>
-#include <experimental/subsetix/csr/set_algebra/v3.hpp>
-#include <set_algebra/test_random_mesh_generator.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
+#include <intersection/test_random_mesh_generator.hpp>
 #include <Kokkos_Core.hpp>
 #include <vector>
 
 // Bring version namespaces into scope
-using namespace experimental::subsetix::csr;
-using namespace experimental::subsetix::csr::v1;
-using namespace experimental::subsetix::csr::v2;
-using namespace experimental::subsetix::csr::v3;
-using namespace experimental::subsetix::csr::test;
+using namespace playground::subsetix::csr::intersection;
+using namespace playground::subsetix::csr::intersection::v1;
+using namespace playground::subsetix::csr::intersection::v2;
+using namespace playground::subsetix::csr::intersection::v3;
+using namespace playground::subsetix::csr::intersection::test;
 
 // Type aliases for convenience
 using Coord = int32_t;
-using IntervalType = experimental::subsetix::csr::Interval<Coord>;
+using IntervalType = playground::subsetix::csr::intersection::Interval<Coord>;
 
 // ============================================================================
 // Conversion helpers for different versions
@@ -524,5 +522,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   std::_Exit(0);
 }
-
-#endif // SUBSETIX_ENABLE_EXPERIMENTAL
