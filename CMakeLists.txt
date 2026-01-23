@@ -31,17 +31,17 @@ option(SUBSETIX_ENABLE_PROFILING_CUDA "Enable CUDA profiling support (Nsight ncu
 option(SUBSETIX_ENABLE_PROFILING_KOKKOS "Enable Kokkos profiling tools support (kernel-timer, chrome-tracing, etc.)" OFF)
 
 # ========================================================================
-# Experimental Algorithms Configuration
+# Playground Algorithms Configuration
 # ========================================================================
 
-option(SUBSETIX_ENABLE_EXPERIMENTAL "Enable experimental set algebra algorithms" OFF)
+option(SUBSETIX_ENABLE_PLAYGROUND "Enable playground set algebra algorithms" OFF)
 
-if(SUBSETIX_ENABLE_EXPERIMENTAL)
-  message(STATUS "=== Experimental Algorithms Enabled ===")
-  add_compile_definitions(SUBSETIX_ENABLE_EXPERIMENTAL)
-  message(STATUS "Experimental algorithms will be compiled and tested")
+if(SUBSETIX_ENABLE_PLAYGROUND)
+  message(STATUS "=== Playground Algorithms Enabled ===")
+  add_compile_definitions(SUBSETIX_ENABLE_PLAYGROUND)
+  message(STATUS "Playground algorithms will be compiled and tested")
 else()
-  message(STATUS "Experimental algorithms disabled (default)")
+  message(STATUS "Playground algorithms disabled (default)")
 endif()
 
 # ========================================================================
@@ -312,20 +312,20 @@ FetchContent_MakeAvailable(googlebenchmark)
 
 enable_testing()
 
-# Stable libraries can be disabled to only build experimental
-option(SUBSETIX_BUILD_STABLE_LIBS "Build stable (non-experimental) libraries" ON)
+# Stable libraries can be disabled to only build playground
+option(SUBSETIX_BUILD_STABLE_LIBS "Build stable (non-playground) libraries" ON)
 if(SUBSETIX_BUILD_STABLE_LIBS)
   add_subdirectory(src)
 endif()
 
-# Stable tests can be disabled to only build experimental
-option(SUBSETIX_BUILD_STABLE_TESTS "Build stable (non-experimental) tests" ON)
+# Stable tests can be disabled to only build playground
+option(SUBSETIX_BUILD_STABLE_TESTS "Build stable (non-playground) tests" ON)
 if(SUBSETIX_BUILD_STABLE_TESTS)
   add_subdirectory(tests)
 endif()
 
-# Stable benchmarks can be disabled to only build experimental
-option(SUBSETIX_BUILD_STABLE_BENCHMARKS "Build stable (non-experimental) benchmarks" ON)
+# Stable benchmarks can be disabled to only build playground
+option(SUBSETIX_BUILD_STABLE_BENCHMARKS "Build stable (non-playground) benchmarks" ON)
 if(SUBSETIX_BUILD_STABLE_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
@@ -335,4 +335,4 @@ if(SUBSETIX_BUILD_STABLE_LIBS)
   add_subdirectory(examples)
 endif()
 
-add_subdirectory(experimental)
+add_subdirectory(playground)

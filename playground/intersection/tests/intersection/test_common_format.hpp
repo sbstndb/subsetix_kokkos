@@ -3,17 +3,17 @@
 
 #pragma once
 
-#ifdef SUBSETIX_ENABLE_EXPERIMENTAL
+#ifdef SUBSETIX_ENABLE_PLAYGROUND
 
-#include <experimental/subsetix/csr/types.hpp>
-#include <experimental/subsetix/csr/set_algebra/v1.hpp>
-#include <experimental/subsetix/csr/set_algebra/v2.hpp>
-#include <experimental/subsetix/csr/set_algebra/v3.hpp>
+#include <playground/subsetix/csr/intersection/types.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
 #include <Kokkos_Core.hpp>
 #include <vector>
 #include <cstdint>
 
-namespace experimental::subsetix::csr::test {
+namespace playground::subsetix::csr::intersection::test {
 
 // ============================================================================
 // Common Format: CPU-side simple struct for test data
@@ -31,7 +31,7 @@ template<class CoordType = int32_t>
 struct CommonRow2D {
   using coord_type = CoordType;
   CoordType y = 0;                              // Row key (Y coordinate)
-  std::vector<csr::Interval<CoordType>> intervals;   // X intervals in this row
+  std::vector<intersection::Interval<CoordType>> intervals;   // X intervals in this row
 
   bool operator==(const CommonRow2D& other) const {
     return y == other.y && intervals == other.intervals;
@@ -52,7 +52,7 @@ struct CommonRow3D {
   using coord_type = CoordType;
   CoordType y = 0;                              // Y coordinate
   CoordType z = 0;                              // Z coordinate
-  std::vector<csr::Interval<CoordType>> intervals;   // X intervals in this row
+  std::vector<intersection::Interval<CoordType>> intervals;   // X intervals in this row
 
   bool operator==(const CommonRow3D& other) const {
     return y == other.y && z == other.z && intervals == other.intervals;
@@ -161,8 +161,8 @@ struct MeshConverter2D {
   using DeviceMesh = MeshType<2, MemorySpace, CoordType, IndexType>;
   using CommonMesh = CommonMesh2D<CoordType>;
   using CommonRow = CommonRow2D<CoordType>;
-  using RowKey = csr::RowKey2D<CoordType>;
-  using Interval = csr::Interval<CoordType>;
+  using RowKey = intersection::RowKey2D<CoordType>;
+  using Interval = intersection::Interval<CoordType>;
 
   /**
    * @brief Convert from CommonMesh2D to DeviceMesh
@@ -258,8 +258,8 @@ struct MeshConverter3D {
   using DeviceMesh = MeshType<3, MemorySpace, CoordType, IndexType>;
   using CommonMesh = CommonMesh3D<CoordType>;
   using CommonRow = CommonRow3D<CoordType>;
-  using RowKey = csr::RowKey3D<CoordType>;
-  using Interval = csr::Interval<CoordType>;
+  using RowKey = intersection::RowKey3D<CoordType>;
+  using Interval = intersection::Interval<CoordType>;
 
   /**
    * @brief Convert from CommonMesh3D to DeviceMesh
@@ -346,28 +346,28 @@ struct MeshConverter3D {
 
 namespace v1_test {
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter2D = MeshConverter2D<experimental::subsetix::csr::v1::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter2D = MeshConverter2D<playground::subsetix::csr::intersection::v1::Mesh, MemorySpace, CoordType, IndexType>;
 
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter3D = MeshConverter3D<experimental::subsetix::csr::v1::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter3D = MeshConverter3D<playground::subsetix::csr::intersection::v1::Mesh, MemorySpace, CoordType, IndexType>;
 }
 
 namespace v2_test {
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter2D = MeshConverter2D<experimental::subsetix::csr::v2::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter2D = MeshConverter2D<playground::subsetix::csr::intersection::v2::Mesh, MemorySpace, CoordType, IndexType>;
 
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter3D = MeshConverter3D<experimental::subsetix::csr::v2::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter3D = MeshConverter3D<playground::subsetix::csr::intersection::v2::Mesh, MemorySpace, CoordType, IndexType>;
 }
 
 namespace v3_test {
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter2D = MeshConverter2D<experimental::subsetix::csr::v3::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter2D = MeshConverter2D<playground::subsetix::csr::intersection::v3::Mesh, MemorySpace, CoordType, IndexType>;
 
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter3D = MeshConverter3D<experimental::subsetix::csr::v3::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter3D = MeshConverter3D<playground::subsetix::csr::intersection::v3::Mesh, MemorySpace, CoordType, IndexType>;
 }
 
-} // namespace experimental::subsetix::csr::test
+} // namespace playground::subsetix::csr::intersection::test
 
 #endif

@@ -1,4 +1,4 @@
-name: Experimental CI
+name: Playground CI
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 jobs:
-  experimental-test:
+  playground-test:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
 
@@ -19,24 +19,26 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ccache
+          sudo apt-get install -y cmake ninja-build ccache libbenchmark-dev
 
-      - name: Configure with experimental enabled
-        run: cmake --preset experimental-serial
+      - name: Configure with playground enabled
+        run: cmake --preset playground-serial
 
       - name: Build
-        run: cmake --build --preset experimental-serial --parallel $(nproc)
+        run: cmake --build --preset playground-serial --parallel $(nproc)
 
-      - name: Run experimental tests
-        run: ctest --preset experimental-serial --output-on-failure
+      - name: Run playground tests
+        run: ctest --preset playground-serial --output-on-failure
 
       - name: Run benchmarks (sanity check only)
         run: |
-          ./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark \
+          ./build-playground-serial/playground/intersection/benchmarks/playground_intersection_comparison_benchmark \
+            --kokkos-num-threads=1 \
             --benchmark_min_time=0.01s \
             --benchmark_repetitions=1 \
             --benchmark_filter="SmallConfig|MediumConfig"
-          ./build-experimental-serial/experimental/benchmarks/experimental_regular_mesh_benchmark \
+          ./build-playground-serial/playground/intersection/benchmarks/playground_intersection_regular_benchmark \
+            --kokkos-num-threads=1 \
             --benchmark_min_time=0.01s \
             --benchmark_repetitions=1 \
             --benchmark_filter="SmallConfig|MediumConfig"
@@ -44,7 +46,7 @@ jobs:
       # Note: Filter matches SmallConfig and MediumConfig for fast but meaningful CI execution.
 
   # OpenMP backend check
-  experimental-openmp:
+  playground-openmp:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
 
@@ -55,19 +57,19 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ccache
+          sudo apt-get install -y cmake ninja-build ccache libbenchmark-dev
 
-      - name: Configure with experimental and OpenMP
-        run: cmake --preset experimental-openmp
+      - name: Configure with playground and OpenMP
+        run: cmake --preset playground-openmp
 
       - name: Build
-        run: cmake --build --preset experimental-openmp --parallel $(nproc)
+        run: cmake --build --preset playground-openmp --parallel $(nproc)
 
-      - name: Run experimental tests with OpenMP
-        run: ctest --preset experimental-openmp --output-on-failure
+      - name: Run playground tests with OpenMP
+        run: ctest --preset playground-openmp --output-on-failure
 
   # Debug build check with sanitizers
-  experimental-sanitizer:
+  playground-sanitizer:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
 
@@ -78,13 +80,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ccache
+          sudo apt-get install -y cmake ninja-build ccache libbenchmark-dev
 
-      - name: Configure with experimental and sanitizers
-        run: cmake --preset experimental-asan
+      - name: Configure with playground and sanitizers
+        run: cmake --preset playground-asan
 
       - name: Build
-        run: cmake --build --preset experimental-asan --parallel $(nproc)
+        run: cmake --build --preset playground-asan --parallel $(nproc)
 
-      - name: Run experimental tests with sanitizers
-        run: ctest --preset experimental-asan --output-on-failure
+      - name: Run playground tests with sanitizers
+        run: ctest --preset playground-asan --output-on-failure

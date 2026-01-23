@@ -27,23 +27,23 @@ cmake --build --preset cuda
 cmake --preset serial-asan         # Address + UB sanitizer
 cmake --build --preset serial-asan
 
-# Experimental-only builds (algorithm research)
-cmake --preset experimental-serial      # Serial, experimental module only
-cmake --build --preset experimental-serial
-cmake --preset experimental-openmp      # OpenMP, experimental module only
-cmake --build --preset experimental-openmp
-cmake --preset experimental-cuda        # CUDA, experimental module only
-cmake --build --preset experimental-cuda
-cmake --preset experimental-asan        # Serial + sanitizers, experimental only
-cmake --build --preset experimental-asan
+# Playground-only builds (algorithm research)
+cmake --preset playground-serial      # Serial, playground module only
+cmake --build --preset playground-serial
+cmake --preset playground-openmp      # OpenMP, playground module only
+cmake --build --preset playground-openmp
+cmake --preset playground-cuda        # CUDA, playground module only
+cmake --build --preset playground-cuda
+cmake --preset playground-asan        # Serial + sanitizers, playground only
+cmake --build --preset playground-asan
 
 # Profiling builds
-cmake --preset experimental-perf-serial       # Linux perf, experimental only
-cmake --build --preset experimental-perf-serial
-cmake --preset experimental-perf-openmp       # Linux perf + OpenMP
-cmake --build --preset experimental-perf-openmp
-cmake --preset experimental-serial-profile    # Kokkos profiling tools
-cmake --build --preset experimental-serial-profile
+cmake --preset playground-perf-serial       # Linux perf, playground only
+cmake --build --preset playground-perf-serial
+cmake --preset playground-perf-openmp       # Linux perf + OpenMP
+cmake --build --preset playground-perf-openmp
+cmake --preset playground-serial-profile    # Kokkos profiling tools
+cmake --build --preset playground-serial-profile
 cmake --preset profiling-nsight-cuda        # Nsight GPU profiling
 cmake --build --preset profiling-nsight-cuda
 cmake --preset profiling-nsight-cuda-release # Nsight with Release + symbols
@@ -83,7 +83,7 @@ The default presets use the generic `g++` compiler (system default). To override
 
 ### GPU Architecture (CUDA)
 
-**CRITICAL FOR AGENTS**: When running ANY CUDA preset (`cuda`, `experimental-cuda`, `*-cuda-*`, `profiling-nsight-cuda`):
+**CRITICAL FOR AGENTS**: When running ANY CUDA preset (`cuda`, `playground-cuda`, `*-cuda-*`, `profiling-nsight-cuda`):
 1. **FIRST** detect the GPU with `nvidia-smi -L`
 2. **THEN** add the appropriate `-DKokkos_ARCH_<NAME>=ON` flag to the cmake command
 
@@ -127,28 +127,28 @@ All available CMake options and their default values:
 
 **Important**: Only one of `SUBSETIX_MEMORYSPACE_FORCE_*` can be `ON` at a time.
 
-### Experimental Module
+### Playground Module
 | Option | Default | Description |
 |--------|---------|-------------|
-| `SUBSETIX_ENABLE_EXPERIMENTAL` | `OFF` | Enable experimental set algebra algorithms |
-| `SUBSETIX_BUILD_STABLE_LIBS` | `ON` | Build stable (non-experimental) libraries |
-| `SUBSETIX_BUILD_STABLE_TESTS` | `ON` | Build stable (non-experimental) tests |
-| `SUBSETIX_BUILD_STABLE_BENCHMARKS` | `ON` | Build stable (non-experimental) benchmarks |
+| `SUBSETIX_ENABLE_PLAYGROUND` | `OFF` | Enable playground set algebra algorithms |
+| `SUBSETIX_BUILD_STABLE_LIBS` | `ON` | Build stable (non-playground) libraries |
+| `SUBSETIX_BUILD_STABLE_TESTS` | `ON` | Build stable (non-playground) tests |
+| `SUBSETIX_BUILD_STABLE_BENCHMARKS` | `ON` | Build stable (non-playground) benchmarks |
 
-**Critical**: When `SUBSETIX_ENABLE_EXPERIMENTAL=ON`, you typically want to disable all stable components:
+**Critical**: When `SUBSETIX_ENABLE_PLAYGROUND=ON`, you typically want to disable all stable components:
 ```bash
 # Wrong - will cause linking errors
-cmake --preset serial -DSUBSETIX_ENABLE_EXPERIMENTAL=ON
+cmake --preset serial -DSUBSETIX_ENABLE_PLAYGROUND=ON
 
 # Correct - disables stable components
 cmake --preset serial \
-  -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+  -DSUBSETIX_ENABLE_PLAYGROUND=ON \
   -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
   -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
   -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
 
 # Best - use dedicated preset (sets all flags automatically)
-cmake --preset experimental-serial
+cmake --preset playground-serial
 ```
 
 ### Code Coverage
@@ -172,11 +172,11 @@ cmake --preset experimental-serial
 **Profiling presets:**
 | Preset | Tool | Backend |
 |--------|------|---------|
-| `experimental-perf-serial` | Linux perf | Serial |
-| `experimental-perf-openmp` | Linux perf | OpenMP |
-| `experimental-serial-profile` | Kokkos tools | Serial |
-| `experimental-openmp-profile` | Kokkos tools | OpenMP |
-| `experimental-cuda-profile` | Kokkos tools | CUDA |
+| `playground-perf-serial` | Linux perf | Serial |
+| `playground-perf-openmp` | Linux perf | OpenMP |
+| `playground-serial-profile` | Kokkos tools | Serial |
+| `playground-openmp-profile` | Kokkos tools | OpenMP |
+| `playground-cuda-profile` | Kokkos tools | CUDA |
 | `profiling-nsight-cuda` | Nsight | CUDA |
 | `profiling-nsight-cuda-release` | Nsight (Release) | CUDA |
 
@@ -251,72 +251,72 @@ include/subsetix/
     ├── time/        # RK1, RK2, RK3 integrators
     └── mpi/         # MPI support (optional, stub when disabled)
 
-experimental/        # Alternative algorithm implementations (disabled by default)
-├── include/experimental/subsetix/csr/
-│   ├── mesh.hpp     # Mesh<2>, Mesh<3> template specializations
-│   ├── detail/utils.hpp
-│   └── set_algebra/v1.hpp  # v1 intersection algorithm (subsetix_kokkos_2 port)
-├── tests/           # Experimental tests
-└── benchmarks/      # Experimental benchmarks
+playground/          # Algorithm research playground (disabled by default)
+├── intersection/               # Intersection algorithms playground
+│   ├── include/playground/subsetix/csr/intersection/
+│   ├── tests/intersection/
+│   └── benchmarks/intersection/
+├── modal/                      # Shared GPU CI scripts
+└── profiling_patches/          # Shared Kokkos tools fixes
 ```
 
-#### Experimental Module
+#### Playground Module
 
-The `experimental/` directory provides alternative implementations of set algebra algorithms for research and comparison. It is **completely isolated** from the stable codebase and disabled by default.
+The `playground/` directory provides alternative implementations of set algebra algorithms for research and comparison. It is **completely isolated** from the stable codebase and disabled by default.
 
 **Quick setup with dedicated presets:**
 ```bash
-cmake --preset experimental-serial      # Serial backend
-cmake --preset experimental-openmp      # OpenMP backend
-cmake --preset experimental-cuda        # CUDA backend
-cmake --preset experimental-asan        # Serial + sanitizers
+cmake --preset playground-serial      # Serial backend
+cmake --preset playground-openmp      # OpenMP backend
+cmake --preset playground-cuda        # CUDA backend
+cmake --preset playground-asan        # Serial + sanitizers
 ```
 
 **Manual setup (not recommended - use presets instead):**
 ```bash
 cmake --preset serial \
-  -DSUBSETIX_ENABLE_EXPERIMENTAL=ON \
+  -DSUBSETIX_ENABLE_PLAYGROUND=ON \
   -DSUBSETIX_BUILD_STABLE_LIBS=OFF \
   -DSUBSETIX_BUILD_STABLE_TESTS=OFF \
   -DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF
 ```
 
-### Running Experimental Tests
+### Running Playground Tests
 
-Experimental tests are separate executables from stable tests:
+Playground tests are separate executables from stable tests:
 
 ```bash
-# After enabling experimental module and building
-ctest --preset experimental-serial  # Runs all experimental tests
-ctest --preset experimental-openmp  # Runs with OpenMP backend
-ctest --preset experimental-cuda    # Runs with CUDA backend
+# After enabling playground module and building
+ctest --preset playground-serial  # Runs all playground tests
+ctest --preset playground-openmp  # Runs with OpenMP backend
+ctest --preset playground-cuda    # Runs with CUDA backend
 
-# Run specific experimental test executables (serial preset)
-./build-experimental-serial/experimental/tests/experimental_v1_unitary_test
-./build-experimental-serial/experimental/tests/experimental_v2_unitary_test
-./build-experimental-serial/experimental/tests/experimental_v3_unitary_test
-./build-experimental-serial/experimental/tests/experimental_cross_version_test  # Verifies v1/v2/v3 produce identical results
-./build-experimental-serial/experimental/tests/experimental_overlap_patterns_test
-./build-experimental-serial/experimental/tests/experimental_large_mesh_test
-./build-experimental-serial/experimental/tests/experimental_sorted_rows_test
+# Run specific playground test executables (serial preset)
+./build-playground-serial/playground/intersection/tests/playground_intersection_v1_unitary_test
+./build-playground-serial/playground/intersection/tests/playground_intersection_v2_unitary_test
+./build-playground-serial/playground/intersection/tests/playground_intersection_v3_unitary_test
+./build-playground-serial/playground/intersection/tests/playground_intersection_cross_version_test  # Verifies v1/v2/v3 produce identical results
+./build-playground-serial/playground/intersection/tests/playground_intersection_overlap_patterns_test
+./build-playground-serial/playground/intersection/tests/playground_intersection_large_mesh_test
+./build-playground-serial/playground/intersection/tests/playground_intersection_sorted_rows_test
 ```
 
-### Running Experimental Benchmarks
+### Running Playground Benchmarks
 
 ```bash
-# Run all experimental benchmarks (serial preset)
-./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark
+# Run all playground benchmarks (serial preset)
+./build-playground-serial/playground/intersection/benchmarks/playground_intersection_comparison_benchmark
 
 # Run specific size configurations
-./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=SmallConfig
-./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=MediumConfig
-./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter=LargeConfig
+./build-playground-serial/playground/intersection/benchmarks/playground_intersection_comparison_benchmark --benchmark_filter=SmallConfig
+./build-playground-serial/playground/intersection/benchmarks/playground_intersection_comparison_benchmark --benchmark_filter=MediumConfig
+./build-playground-serial/playground/intersection/benchmarks/playground_intersection_comparison_benchmark --benchmark_filter=LargeConfig
 
 # Run only 2D benchmarks
-./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="2D"
+./build-playground-serial/playground/intersection/benchmarks/playground_intersection_comparison_benchmark --benchmark_filter="2D"
 
 # Run only 3D benchmarks
-./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark --benchmark_filter="3D"
+./build-playground-serial/playground/intersection/benchmarks/playground_intersection_comparison_benchmark --benchmark_filter="3D"
 ```
 
 ### Execution Space Configuration
