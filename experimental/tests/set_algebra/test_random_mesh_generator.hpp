@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: 2025 Subsetix Kokkos Contributors
-// SPDX-License-Identifier: BSD-3-Clause
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
 #pragma once
 
@@ -12,6 +12,7 @@
 #include <experimental/subsetix/csr/set_algebra/v3.hpp>
 #include <Kokkos_Random.hpp>
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 // Convenience aliases for backward compatibility
@@ -34,11 +35,19 @@ namespace experimental::subsetix::csr::test {
 
 /**
  * @brief Configuration for random mesh generation
+ *
+ * Sparsity-based row count:
+ * - 2D: num_rows = round(sparsity * (y_max - y_min))
+ * - 3D: num_rows = round(sparsity * (y_max - y_min) * (z_max - z_min))
+ *
+ * The sparsity parameter represents the fraction of grid positions that are occupied.
+ * A sparsity of 1.0 means 100% dense (all grid positions), while 0.3 means 30% dense.
+ *
+ * Row keys (Y in 2D, (Y,Z) in 3D) are guaranteed to be unique through Fisher-Yates sampling.
  */
 struct RandomMeshConfig {
   int seed = 42;                      // Random seed for reproducibility
-  int num_rows_min = 10;              // Minimum number of rows
-  int num_rows_max = 100;             // Maximum number of rows
+  double sparsity = 0.3;              // Fraction of grid positions [0.0, 1.0]
   int intervals_per_row_min = 1;      // Minimum intervals per row
   int intervals_per_row_max = 10;     // Maximum intervals per row
   int interval_length_min = 1;        // Minimum interval length
@@ -68,15 +77,15 @@ struct RandomMeshConfig {
  * Parameters:
  * - Y scope: [0, 64]
  * - Z scope: [0, 64] (3D only)
+ * - Sparsity: 30%
+ * - 2D rows: ~19 (64 × 0.3)
+ * - 3D rows: ~1229 (64 × 64 × 0.3)
  * - Max intervals per row: 4
- * - Row count: 400-1250
- * - 3D sparsity: ~30% (1250 / (64×64) ≈ 30%)
  */
 inline RandomMeshConfig SmallConfig() {
   return RandomMeshConfig{
     .seed = 42,
-    .num_rows_min = 400,
-    .num_rows_max = 1250,
+    .sparsity = 0.3,
     .intervals_per_row_min = 1,
     .intervals_per_row_max = 4,
     .interval_length_min = 1,
@@ -103,15 +112,15 @@ inline RandomMeshConfig SmallConfig() {
  * Parameters:
  * - Y scope: [0, 512]
  * - Z scope: [0, 512] (3D only)
+ * - Sparsity: 30%
+ * - 2D rows: ~154 (512 × 0.3)
+ * - 3D rows: ~78643 (512 × 512 × 0.3)
  * - Max intervals per row: 4
- * - Row count: 40000-78643
- * - 3D sparsity: ~30% (78643 / (512×512) ≈ 30%)
  */
 inline RandomMeshConfig MediumConfig() {
   return RandomMeshConfig{
     .seed = 42,
-    .num_rows_min = 40000,
-    .num_rows_max = 78643,
+    .sparsity = 0.3,
     .intervals_per_row_min = 1,
     .intervals_per_row_max = 4,
     .interval_length_min = 1,
@@ -138,15 +147,15 @@ inline RandomMeshConfig MediumConfig() {
  * Parameters:
  * - Y scope: [0, 4096]
  * - Z scope: [0, 4096] (3D only)
+ * - Sparsity: 30%
+ * - 2D rows: ~1229 (4096 × 0.3)
+ * - 3D rows: ~5.0M (4096 × 4096 × 0.3)
  * - Max intervals per row: 4
- * - Row count: 2.5M-5M
- * - 3D sparsity: ~30% (5M / (4096×4096) ≈ 30%)
  */
 inline RandomMeshConfig LargeConfig() {
   return RandomMeshConfig{
     .seed = 42,
-    .num_rows_min = 2500000,
-    .num_rows_max = 5000000,
+    .sparsity = 0.3,
     .intervals_per_row_min = 1,
     .intervals_per_row_max = 4,
     .interval_length_min = 1,
@@ -162,50 +171,358 @@ inline RandomMeshConfig LargeConfig() {
   };
 }
 
+/**
+ * @brief Extra Large mesh configuration for extreme benchmarks
+ *
+ * Suitable for:
+ * - Extreme performance benchmarks
+ * - GPU stress tests (H100, B200)
+ * - Maximum scale validation
+ *
+ * Parameters:
+ * - Y scope: [0, 8192] (2x Large)
+ * - Z scope: [0, 8192] (3D only, 2x Large)
+ * - Sparsity: 15% (reduced from 30% to manage memory)
+ * - 2D rows: ~1229 (8192 × 0.15)
+ * - 3D rows: ~10M (8192 × 8192 × 0.15)
+ * - Max intervals per row: 4
+ *
+ * Memory estimate:
+ * - 2D: ~5K intervals × 16 bytes = ~80 KB input data
+ * - 3D: ~10M intervals × 24 bytes = ~240 MB input data
+ */
+inline RandomMeshConfig ExtraLargeConfig() {
+  return RandomMeshConfig{
+    .seed = 42,
+    .sparsity = 0.15,
+    .intervals_per_row_min = 1,
+    .intervals_per_row_max = 4,
+    .interval_length_min = 1,
+    .interval_length_max = 100,
+    .gap_min = 0,
+    .gap_max = 50,
+    .y_min = 0,
+    .y_max = 8192,
+    .z_min = 0,
+    .z_max = 8192,
+    .sorted_rows = true,
+    .overlap_probability = 0.5
+  };
+}
+
+// ============================================================================
+// Regular Mesh Configurations for Benchmarking
+// ============================================================================
+
+/**
+ * @brief Configuration for regular mesh generation
+ *
+ * Regular meshes represent "optimal" performance scenarios:
+ * - All rows are present (100% density, no gaps)
+ * - Each row has exactly one interval covering the full X range
+ * - Perfect alignment for set operations
+ *
+ * The parameters work as follows:
+ * - num_rows_2d: Direct number of rows for 2D (y = 0, 1, ..., num_rows_2d-1)
+ * - grid_size_3d: Size of ONE SIDE of the 3D grid (like y_max/z_max in random config)
+ *                Total rows = grid_size_3d * grid_size_3d
+ *
+ * This matches the random config semantics where y_max/z_max define the grid extent.
+ */
+struct RegularMeshConfig {
+  int num_rows_2d = 1250;   // Number of rows for 2D (y = 0, 1, ..., num_rows_2d-1)
+  int grid_size_3d = 64;    // Grid size for 3D (total rows = grid_size_3d²)
+};
+
+/**
+ * @brief Small regular mesh configuration (100% dense)
+ *
+ * Matches the random SmallConfig grid extent but with 100% density:
+ * - 2D: 64 rows (100% of y_max=64, random has ~19 at 30% sparsity)
+ * - 3D: grid_size=64 → 64×64=4096 rows (100% of random's y_max=64, z_max=64 range,
+ *   random has ~1229 at 30% sparsity)
+ *
+ * The regular mesh has more rows than random (100% vs 30% density), but with NO sparsity.
+ */
+inline RegularMeshConfig SmallRegularConfig() {
+  return RegularMeshConfig{.num_rows_2d = 64, .grid_size_3d = 64};
+}
+
+/**
+ * @brief Medium regular mesh configuration (100% dense)
+ *
+ * Matches the random MediumConfig grid extent but with 100% density:
+ * - 2D: 512 rows (100% of y_max=512, random has ~154 at 30% sparsity)
+ * - 3D: grid_size=512 → 512×512=262144 rows (100% of random's y_max=512, z_max=512 range,
+ *   random has ~78643 at 30% sparsity)
+ *
+ * The regular mesh has more rows than random (100% vs 30% density), but with NO sparsity.
+ */
+inline RegularMeshConfig MediumRegularConfig() {
+  return RegularMeshConfig{.num_rows_2d = 512, .grid_size_3d = 512};
+}
+
+/**
+ * @brief Large regular mesh configuration (100% dense)
+ *
+ * Matches the random LargeConfig grid extent but with 100% density:
+ * - 2D: 4096 rows (100% of y_max=4096, random has ~1229 at 30% sparsity)
+ * - 3D: grid_size=4096 → 4096×4096=16.8M rows (100% of random's y_max=4096, z_max=4096 range,
+ *   random has ~5.0M at 30% sparsity)
+ *
+ * The regular mesh has more rows than random (100% vs 30% density), but with NO sparsity.
+ */
+inline RegularMeshConfig LargeRegularConfig() {
+  return RegularMeshConfig{.num_rows_2d = 4096, .grid_size_3d = 4096};
+}
+
+/**
+ * @brief Extra Large regular mesh configuration (100% dense)
+ *
+ * Matches the random ExtraLargeConfig grid extent but with 100% density:
+ * - 2D: 8192 rows (100% of y_max=8192, random has ~1229 at 15% sparsity)
+ * - 3D: grid_size=8192 → 8192×8192=67M rows (100% of random's y_max=8192, z_max=8192 range,
+ *   random has ~10M at 15% sparsity)
+ *
+ * WARNING: 3D ExtraLarge requires >512MB GPU memory and will crash on most GPUs.
+ * - Use 3D ExtraLarge for CPU benchmarking only
+ * - 2D ExtraLarge is safe for GPU (8192 rows fits easily in GPU memory)
+ *
+ * NOTE: For CUDA, 3D benchmarks are limited to Large (16.8M rows) to avoid OOM.
+ */
+inline RegularMeshConfig ExtraLargeRegularConfig() {
+  return RegularMeshConfig{.num_rows_2d = 8192, .grid_size_3d = 8192};
+}
+
+// ============================================================================
+// Regular Mesh Generators
+// ============================================================================
+
+/**
+ * @brief Regular mesh generator for optimal performance benchmarking
+ *
+ * Generates fully dense meshes where:
+ * - All rows are present (no gaps)
+ * - Each row has exactly one interval [0, size)
+ * - Perfect alignment for self-intersection (A ∩ A = A)
+ *
+ * This provides the "best case" performance scenario:
+ * - No binary search misses
+ * - All rows match perfectly
+ * - All intervals match perfectly
+ * - Minimal memory overhead (1 interval per row)
+ *
+ * Note: Regular meshes are generated deterministically with guaranteed
+ * correctness (sorted rows, non-empty intervals, no overlaps), so
+ * validation is not required unlike random meshes.
+ */
+class RegularMeshGenerator {
+public:
+  /**
+   * @brief Generate a regular CommonMesh2D (100% dense)
+   *
+   * Creates a mesh where:
+   * - y = 0, 1, 2, ..., num_rows_2d-1 (ALL rows present, no gaps)
+   * - Each row has one interval [0, num_rows_2d) covering the full X range
+   *
+   * The generated mesh is guaranteed to be valid (sorted, non-overlapping).
+   *
+   * @param config Configuration containing num_rows_2d
+   * @return Regular CommonMesh2D with num_rows_2d rows
+   */
+  static DefaultCommonMesh2D generate_2d(const RegularMeshConfig& config = RegularMeshConfig{}) {
+    DefaultCommonMesh2D mesh;
+    mesh.rows.reserve(config.num_rows_2d);
+
+    for (int y = 0; y < config.num_rows_2d; ++y) {
+      DefaultCommonRow2D row;
+      row.y = static_cast<int32_t>(y);
+      // Single interval covering the entire X range [0, num_rows_2d)
+      row.intervals.push_back(DefaultInterval{0, static_cast<int32_t>(config.num_rows_2d)});
+      mesh.rows.push_back(std::move(row));
+    }
+
+    return mesh;
+  }
+
+  /**
+   * @brief Generate a regular CommonMesh3D (100% dense cube)
+   *
+   * Creates a mesh where all (y,z) combinations in a square grid are present:
+   * - (y, z) = (0,0), (0,1), ..., (0, grid_size-1), (1,0), ..., (grid_size-1, grid_size-1)
+   * - Total rows: grid_size_3d × grid_size_3d (perfect square grid)
+   * - Each row has one interval [0, grid_size_3d) covering the full X range
+   *
+   * @param config Configuration containing grid_size_3d (side length of the grid)
+   * @return Regular CommonMesh3D with grid_size_3d² rows
+   */
+  static DefaultCommonMesh3D generate_3d(const RegularMeshConfig& config = RegularMeshConfig{}) {
+    DefaultCommonMesh3D mesh;
+    int grid_size = config.grid_size_3d;
+    mesh.rows.reserve(static_cast<std::size_t>(grid_size) * static_cast<std::size_t>(grid_size));
+
+    for (int z = 0; z < grid_size; ++z) {
+      for (int y = 0; y < grid_size; ++y) {
+        DefaultCommonRow3D row;
+        row.y = static_cast<int32_t>(y);
+        row.z = static_cast<int32_t>(z);
+        // Single interval covering the entire X range [0, grid_size)
+        row.intervals.push_back(DefaultInterval{0, static_cast<int32_t>(grid_size)});
+        mesh.rows.push_back(std::move(row));
+      }
+    }
+
+    return mesh;
+  }
+};
+
 // ============================================================================
 // Random Mesh Generators
 // ============================================================================
 
 /**
- * @brief Random mesh generator using Kokkos_Random
+ * @brief Random mesh generator with sparsity-based unique row sampling
  *
- * Generates random CommonMesh2D with configurable parameters.
- * Uses Kokkos_Random for GPU-compatible random number generation.
+ * Generates random CommonMesh2D/CommonMesh3D with configurable parameters.
+ * Uses Fisher-Yates shuffle for unique row key sampling, ensuring no duplicates.
+ *
+ * The sparsity parameter determines what fraction of grid positions are occupied:
+ * - 2D: num_rows = round(sparsity * (y_max - y_min))
+ * - 3D: num_rows = round(sparsity * (y_max - y_min) * (z_max - z_min))
+ *
+ * Row keys (Y in 2D, (Y,Z) in 3D) are guaranteed to be unique.
  */
 class RandomMeshGenerator {
+private:
+  /**
+   * @brief Calculate number of rows from sparsity (2D)
+   */
+  static inline int calculate_num_rows_2d(const RandomMeshConfig& config) {
+    int y_extent = config.y_max - config.y_min;
+    int num_rows = static_cast<int>(std::round(config.sparsity * y_extent));
+    return std::max(0, num_rows);  // Allow 0 rows for sparsity=0
+  }
+
+  /**
+   * @brief Calculate number of rows from sparsity (3D)
+   */
+  static inline int calculate_num_rows_3d(const RandomMeshConfig& config) {
+    int y_extent = config.y_max - config.y_min;
+    int z_extent = config.z_max - config.z_min;
+    long long grid_positions = static_cast<long long>(y_extent) * static_cast<long long>(z_extent);
+    long long num_rows = static_cast<long long>(std::round(config.sparsity * grid_positions));
+    return static_cast<int>(std::max(0LL, num_rows));  // Allow 0 rows for sparsity=0
+  }
+
+  /**
+   * @brief Generate unique Y coordinates using partial Fisher-Yates shuffle (2D)
+   *
+   * This algorithm guarantees uniqueness without needing a set to track seen values.
+   * It performs a partial Fisher-Yates shuffle, only shuffling the first N elements.
+   */
+  static inline std::vector<int> generate_unique_y_coords(const RandomMeshConfig& config, int num_rows) {
+    // Generate all possible Y coordinates
+    int grid_extent = config.y_max - config.y_min;
+    std::vector<int> all_coords(grid_extent);
+    std::iota(all_coords.begin(), all_coords.end(), config.y_min);
+
+    // Handle edge case: num_rows > grid_extent (clamp to grid extent)
+    int actual_rows = std::min(num_rows, grid_extent);
+    if (actual_rows <= 0) {
+      return {};  // Empty mesh for sparsity = 0
+    }
+
+    // Partial Fisher-Yates shuffle: only shuffle what we need
+    std::mt19937 gen(config.seed);
+    for (int i = 0; i < actual_rows; ++i) {
+      std::uniform_int_distribution<int> dist(i, grid_extent - 1);
+      int j = dist(gen);
+      std::swap(all_coords[i], all_coords[j]);
+    }
+
+    // Keep only selected coordinates
+    all_coords.resize(actual_rows);
+
+    // Sort if requested
+    if (config.sorted_rows) {
+      std::sort(all_coords.begin(), all_coords.end());
+    }
+
+    return all_coords;
+  }
+
+  /**
+   * @brief Generate unique (Y, Z) coordinate pairs using partial Fisher-Yates shuffle (3D)
+   */
+  static inline std::vector<std::pair<int, int>> generate_unique_yz_pairs(
+      const RandomMeshConfig& config, int num_rows) {
+    // Generate all possible (Y, Z) pairs in lexicographic order
+    int y_extent = config.y_max - config.y_min;
+    int z_extent = config.z_max - config.z_min;
+    long long grid_positions = static_cast<long long>(y_extent) * static_cast<long long>(z_extent);
+
+    // Handle edge case
+    long long actual_rows = std::min(static_cast<long long>(num_rows), grid_positions);
+    if (actual_rows <= 0) {
+      return {};  // Empty mesh for sparsity = 0
+    }
+
+    std::vector<std::pair<int, int>> all_pairs;
+    all_pairs.reserve(static_cast<std::size_t>(grid_positions));
+
+    for (int z = config.z_min; z < config.z_max; ++z) {
+      for (int y = config.y_min; y < config.y_max; ++y) {
+        all_pairs.emplace_back(y, z);
+      }
+    }
+
+    // Partial Fisher-Yates shuffle
+    std::mt19937 gen(config.seed);
+    for (long long i = 0; i < actual_rows; ++i) {
+      std::uniform_int_distribution<long long> dist(i, grid_positions - 1);
+      long long j = dist(gen);
+      std::swap(all_pairs[static_cast<std::size_t>(i)], all_pairs[static_cast<std::size_t>(j)]);
+    }
+
+    // Keep only selected pairs
+    all_pairs.resize(static_cast<std::size_t>(actual_rows));
+
+    // Sort lexicographically if requested
+    if (config.sorted_rows) {
+      std::sort(all_pairs.begin(), all_pairs.end());
+    }
+
+    return all_pairs;
+  }
+
 public:
   /**
-   * @brief Generate a random CommonMesh2D
+   * @brief Generate a random CommonMesh2D with unique Y coordinates
+   *
+   * Y coordinates are sampled without replacement using Fisher-Yates shuffle,
+   * guaranteeing no duplicate row keys.
    *
    * @param config Configuration for generation
    * @return Random CommonMesh2D
    */
   static DefaultCommonMesh2D generate_2d(const RandomMeshConfig& config = RandomMeshConfig{}) {
-    // Use std::mt19937 for host-side generation (simpler for test data)
-    std::mt19937 gen(config.seed);
-
-    // Generate number of rows
-    std::uniform_int_distribution<int> rows_dist(config.num_rows_min, config.num_rows_max);
-    int num_rows = rows_dist(gen);
+    // Calculate number of rows from sparsity
+    int num_rows = calculate_num_rows_2d(config);
 
     DefaultCommonMesh2D mesh;
-    mesh.rows.reserve(num_rows);
 
-    // Generate Y coordinates
-    std::vector<int> y_coords;
-    y_coords.reserve(num_rows);
-    std::uniform_int_distribution<int> y_dist(config.y_min, config.y_max);
-
-    for (int i = 0; i < num_rows; ++i) {
-      y_coords.push_back(y_dist(gen));
+    // Handle empty mesh (sparsity = 0)
+    if (num_rows <= 0) {
+      return mesh;
     }
 
-    // Sort if requested
-    if (config.sorted_rows) {
-      std::sort(y_coords.begin(), y_coords.end());
-    }
+    // Generate unique Y coordinates using Fisher-Yates
+    std::vector<int> y_coords = generate_unique_y_coords(config, num_rows);
 
-    // Generate intervals for each row
+    mesh.rows.reserve(y_coords.size());
+
+    // Setup random generators for intervals
+    std::mt19937 gen(config.seed + 1);  // Different seed for intervals
     std::uniform_int_distribution<int> interval_count_dist(
       config.intervals_per_row_min,
       config.intervals_per_row_max
@@ -216,6 +533,7 @@ public:
     );
     std::uniform_int_distribution<int> gap_dist(config.gap_min, config.gap_max);
 
+    // Generate intervals for each row
     for (int y : y_coords) {
       DefaultCommonRow2D row;
       row.y = static_cast<int32_t>(y);
@@ -248,44 +566,51 @@ public:
   }
 
   /**
-   * @brief Generate a random CommonMesh3D
+   * @brief Generate a random CommonMesh3D with unique (Y, Z) coordinate pairs
+   *
+   * (Y, Z) coordinate pairs are sampled without replacement using Fisher-Yates shuffle,
+   * guaranteeing no duplicate row keys.
    *
    * @param config Configuration for generation
    * @return Random CommonMesh3D
    */
   static DefaultCommonMesh3D generate_3d(const RandomMeshConfig& config = RandomMeshConfig{}) {
-    // Use std::mt19937 for host-side generation
-    std::mt19937 gen(config.seed);
-
-    // Generate number of rows
-    std::uniform_int_distribution<int> rows_dist(config.num_rows_min, config.num_rows_max);
-    int num_rows = rows_dist(gen);
+    // Calculate number of rows from sparsity
+    int num_rows = calculate_num_rows_3d(config);
 
     DefaultCommonMesh3D mesh;
-    mesh.rows.reserve(num_rows);
 
-    // Generate (Y, Z) coordinates
-    std::uniform_int_distribution<int> y_dist(config.y_min, config.y_max);
-    std::uniform_int_distribution<int> z_dist(config.z_min, config.z_max);
+    // Handle empty mesh (sparsity = 0)
+    if (num_rows <= 0) {
+      return mesh;
+    }
 
-    for (int i = 0; i < num_rows; ++i) {
+    // Generate unique (Y, Z) pairs using Fisher-Yates
+    std::vector<std::pair<int, int>> yz_pairs = generate_unique_yz_pairs(config, num_rows);
+
+    mesh.rows.reserve(yz_pairs.size());
+
+    // Setup random generators for intervals
+    std::mt19937 gen(config.seed + 1);  // Different seed for intervals
+    std::uniform_int_distribution<int> interval_count_dist(
+      config.intervals_per_row_min,
+      config.intervals_per_row_max
+    );
+    std::uniform_int_distribution<int> length_dist(
+      config.interval_length_min,
+      config.interval_length_max
+    );
+    std::uniform_int_distribution<int> gap_dist(config.gap_min, config.gap_max);
+
+    // Generate intervals for each row
+    for (const auto& [y, z] : yz_pairs) {
       DefaultCommonRow3D row;
-      row.y = static_cast<int32_t>(y_dist(gen));
-      row.z = static_cast<int32_t>(z_dist(gen));
-
-      // Generate intervals by construction (non-overlapping)
-      std::uniform_int_distribution<int> interval_count_dist(
-        config.intervals_per_row_min,
-        config.intervals_per_row_max
-      );
-      std::uniform_int_distribution<int> length_dist(
-        config.interval_length_min,
-        config.interval_length_max
-      );
-      std::uniform_int_distribution<int> gap_dist(config.gap_min, config.gap_max);
+      row.y = static_cast<int32_t>(y);
+      row.z = static_cast<int32_t>(z);
 
       int num_intervals = interval_count_dist(gen);
 
+      // Generate non-overlapping intervals by construction
       // Random starting position
       std::uniform_int_distribution<int> start_dist(0, 1000);
       int current_x = start_dist(gen);
@@ -305,11 +630,7 @@ public:
       mesh.rows.push_back(std::move(row));
     }
 
-    // Sort rows by (y, z) if requested
-    if (config.sorted_rows) {
-      std::sort(mesh.rows.begin(), mesh.rows.end());
-    }
-
+    // Rows are already sorted if requested (in generate_unique_yz_pairs)
     return mesh;
   }
 

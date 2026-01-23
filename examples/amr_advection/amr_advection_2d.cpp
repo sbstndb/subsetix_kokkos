@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+
+
 // Example: 2D advection with adaptive mesh refinement (2 levels, global fine dt)
 // The fine grid follows a moving square by thresholding the coarse solution
 #include <algorithm>

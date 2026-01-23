@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Repository Guidelines
 
 ## Project Structure & Module Organization
@@ -27,6 +31,13 @@ Use CMake presets - see **CLAUDE.md** for complete reference.
 | | `experimental-openmp` | OpenMP | `build-experimental-openmp` |
 | | `experimental-cuda` | CUDA | `build-experimental-cuda` |
 | | `experimental-asan` | Serial + sanitizers | `build-experimental-asan` |
+| **Profiling** | `experimental-perf-serial` | Serial + Linux perf | `build-experimental-perf-serial` |
+| | `experimental-perf-openmp` | OpenMP + Linux perf | `build-experimental-perf-openmp` |
+| | `experimental-serial-profile` | Serial + Kokkos tools | `build-experimental-serial-profile` |
+| | `experimental-openmp-profile` | OpenMP + Kokkos tools | `build-experimental-openmp-profile` |
+| | `experimental-cuda-gcc12-profile` | CUDA + Kokkos tools | `build-experimental-cuda-gcc12-profile` |
+| | `profiling-nsight-cuda-gcc12` | CUDA + Nsight | `build-profiling-nsight-cuda-gcc12` |
+| | `profiling-nsight-cuda-gcc12-release` | CUDA + Nsight (Release) | `build-profiling-nsight-cuda-gcc12-release` |
 
 ### Quick Start
 
@@ -76,6 +87,53 @@ ctest --preset cuda
 ctest --preset experimental-serial
 ./build-experimental-serial/experimental/tests/experimental_v1_unitary_test
 ```
+
+## Profiling Guidelines
+
+The project supports three profiling approaches for performance analysis:
+
+### Profiling Tools
+
+| Tool | Best For | Backend | Preset |
+|------|----------|---------|--------|
+| **Linux perf** | CPU analysis (hot paths, cache) | Serial, OpenMP | `experimental-perf-*` |
+| **Nsight (ncu/nsys)** | GPU kernel profiling | CUDA | `profiling-nsight-*` |
+| **Kokkos tools** | Kernel-level timing | All | `experimental-*-profile` |
+
+### Quick Start
+
+```bash
+# Linux perf (Serial/OpenMP)
+cmake --preset experimental-perf-serial
+cmake --build --preset experimental-perf-serial
+./scripts/perf_profile.sh ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark
+
+# Nsight GPU profiling (CUDA)
+cmake --preset profiling-nsight-cuda-gcc12
+cmake --build --preset profiling-nsight-cuda-gcc12
+./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
+
+# Kokkos profiling tools (All backends)
+cmake --preset experimental-serial-profile
+cmake --build --preset experimental-serial-profile
+./scripts/profile_benchmark.sh experimental-serial-profile kernel-timer "SmallConfig"
+```
+
+### Profiling Scripts
+
+- `scripts/perf_profile.sh` - Generic perf profiling
+- `scripts/profile_benchmark.sh` - Kokkos tools profiling
+- `scripts/profiling/run_ncu.sh` - Nsight Compute
+- `scripts/profiling/run_nsys.sh` - Nsight Systems
+- `scripts/profiling/profile_all_backends.sh` - Profile all backends
+
+### Documentation
+
+See **PROFILING.md** for comprehensive profiling guide, including:
+- Tool selection guide
+- Profiling overhead information
+- Sampling support
+- Script reference
 
 ## Experimental Module Guidelines
 
@@ -155,6 +213,17 @@ When modifying CMake configuration or adding new options, refer to **CLAUDE.md**
 - **Experimental mode** requires disabling stable components to avoid linking errors
 - **Execution/Memory space** flags are mutually exclusive (CMake will error if multiple are set)
 - See `CLAUDE.md` → "CMake Options Reference" for full documentation
+
+## Copyright & License Headers
+
+All source files (`.hpp`, `.cpp`) must include the following header:
+
+```cpp
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+```
+
+This SPDX identifier replaces the full Apache-2.0 license text; see `LICENSE` in the root directory for complete terms.
 
 ## Agent-Specific Instructions
 

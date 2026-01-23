@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # Subsetix Kokkos
 
 > **Sparse Finite Volume Discretization on Complex 2D Geometries with GPU Acceleration**
@@ -80,6 +84,14 @@ ctest --preset serial
 | `experimental-openmp` | OpenMP (experimental only) | Experimental module, OpenMP backend |
 | `experimental-cuda` | CUDA (experimental only) | Experimental module, CUDA backend |
 | `experimental-asan` | Serial + sanitizers (experimental) | Experimental module with sanitizers |
+| **Profiling presets** |||
+| `experimental-perf-serial` | Serial + Linux perf | CPU performance analysis |
+| `experimental-perf-openmp` | OpenMP + Linux perf | CPU performance analysis |
+| `experimental-serial-profile` | Serial + Kokkos tools | Kernel-level profiling |
+| `experimental-openmp-profile` | OpenMP + Kokkos tools | Kernel-level profiling |
+| `experimental-cuda-gcc12-profile` | CUDA + Kokkos tools | GPU kernel profiling |
+| `profiling-nsight-cuda-gcc12` | CUDA + Nsight | Detailed GPU analysis |
+| `profiling-nsight-cuda-gcc12-release` | CUDA + Nsight (Release) | Production GPU analysis |
 
 ### Experimental Algorithms
 
@@ -107,6 +119,39 @@ Run benchmarks:
 ```bash
 ./build-experimental-serial/experimental/benchmarks/experimental_comparison_benchmark
 ```
+
+### Profiling
+
+The project supports three profiling approaches for performance analysis:
+
+**Available Profiling Tools:**
+
+| Tool | Best For | Backend | Preset |
+|------|----------|---------|--------|
+| **Linux perf** | CPU analysis (hot paths, cache, branches) | Serial, OpenMP | `experimental-perf-*` |
+| **Nsight (ncu/nsys)** | GPU kernel profiling and timelines | CUDA | `profiling-nsight-*` |
+| **Kokkos tools** | Kernel-level timing and memory | All | `experimental-*-profile` |
+
+**Quick Start:**
+
+```bash
+# Linux perf (CPU profiling)
+cmake --preset experimental-perf-serial
+cmake --build --preset experimental-perf-serial
+./scripts/perf_profile.sh ./build-experimental-perf-serial/experimental/benchmarks/experimental_comparison_benchmark
+
+# Nsight (GPU profiling)
+cmake --preset profiling-nsight-cuda-gcc12
+cmake --build --preset profiling-nsight-cuda-gcc12
+./scripts/profiling/run_ncu.sh experimental_comparison_benchmark
+
+# Kokkos profiling tools
+cmake --preset experimental-serial-profile
+cmake --build --preset experimental-serial-profile
+./scripts/profile_benchmark.sh experimental-serial-profile kernel-timer "SmallConfig"
+```
+
+**Documentation:** See **PROFILING.md** for comprehensive profiling guide.
 
 ---
 

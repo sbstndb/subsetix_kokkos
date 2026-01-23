@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+-->
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -37,6 +41,16 @@ cmake --preset experimental-cuda        # CUDA, experimental module only
 cmake --build --preset experimental-cuda
 cmake --preset experimental-asan        # Serial + sanitizers, experimental only
 cmake --build --preset experimental-asan
+
+# Profiling builds
+cmake --preset experimental-perf-serial       # Linux perf, experimental only
+cmake --build --preset experimental-perf-serial
+cmake --preset experimental-perf-openmp       # Linux perf + OpenMP
+cmake --build --preset experimental-perf-openmp
+cmake --preset experimental-serial-profile    # Kokkos profiling tools
+cmake --build --preset experimental-serial-profile
+cmake --preset profiling-nsight-cuda-gcc12    # Nsight GPU profiling
+cmake --build --preset profiling-nsight-cuda-gcc12
 ```
 
 ## CMake Options Reference
@@ -95,7 +109,30 @@ cmake --preset experimental-serial
 | Option | Default | Description |
 |--------|---------|-------------|
 | `SUBSETIX_ENABLE_COVERAGE` | `OFF` | Enable code coverage analysis (GCC only, forces Debug build) |
-```
+
+### Profiling
+| Option | Default | Description |
+|--------|---------|-------------|
+| `SUBSETIX_ENABLE_PROFILING_PERF` | `OFF` | Enable Linux perf profiling support (adds debug symbols) |
+| `SUBSETIX_ENABLE_PROFILING_CUDA` | `OFF` | Enable CUDA profiling support (Nsight ncu/nsys, adds debug symbols) |
+| `SUBSETIX_ENABLE_PROFILING_KOKKOS` | `OFF` | Enable Kokkos profiling tools support (fetches and builds kokkos-tools) |
+
+**Important**:
+- Only one profiling option can be `ON` at a time
+- All profiling options add debug symbols (`-g`) automatically
+- `SUBSETIX_ENABLE_PROFILING_KOKKOS` downloads and builds kokkos-tools via FetchContent
+- See **PROFILING.md** for comprehensive profiling guide
+
+**Profiling presets:**
+| Preset | Tool | Backend |
+|--------|------|---------|
+| `experimental-perf-serial` | Linux perf | Serial |
+| `experimental-perf-openmp` | Linux perf | OpenMP |
+| `experimental-serial-profile` | Kokkos tools | Serial |
+| `experimental-openmp-profile` | Kokkos tools | OpenMP |
+| `experimental-cuda-gcc12-profile` | Kokkos tools | CUDA |
+| `profiling-nsight-cuda-gcc12` | Nsight | CUDA |
+| `profiling-nsight-cuda-gcc12-release` | Nsight (Release) | CUDA |
 
 ### Running Tests
 
@@ -368,6 +405,19 @@ CMake INTERFACE targets (link via `target_link_libraries`):
 
 ## Additional Guidelines
 
+### Copyright & License Headers
+
+All source files (`.hpp`, `.cpp`) must include the following header:
+
+```cpp
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+```
+
+This SPDX identifier replaces the full Apache-2.0 license text; see `LICENSE` in the root directory for complete terms.
+
+### Other Documentation
+
 See **AGENTS.md** for:
 - Coding style (C++20, 2-space indentation, naming conventions)
 - Testing guidelines
@@ -377,6 +427,9 @@ See **AGENTS.md** for:
 ## Key Documentation Files
 
 - `/AGENTS.md` - Project guidelines (READ THIS FIRST)
+- `/PROFILING.md` - Profiling guide (Linux perf, Nsight, Kokkos tools)
 - `/3D.md` - Design notes for 3D extension
 - `/FIELD_UPGRADE_SUMMARY.md` - Field system evolution
 - `/docs/fvd_layer_proposal_v3.1.md` - Detailed FVD design specification
+- `/docs/MODAL.md` - Modal GPU CI guide
+- `/docs/PERF_PROFILING.md` - Detailed Linux perf profiling guide

@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: 2025 Subsetix Kokkos Contributors
-// SPDX-License-Identifier: BSD-3-Clause
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 
 #ifdef SUBSETIX_ENABLE_EXPERIMENTAL
 
@@ -66,10 +66,10 @@ inline v3::Mesh3DDevice from_common_3d_v3(const DefaultCommonMesh3D& mesh) {
  * - Reuse the same mesh for all iterations (cache warm, but reproducible)
  * - Different benchmarks use different configs (Small/Medium/Large)
  *
- * Configurations:
- * - SmallConfig: 1250 rows, y_max=64, z_max=64
- * - MediumConfig: 78643 rows, y_max=512, z_max=512
- * - LargeConfig: 5M rows, y_max=4096, z_max=4096
+ * Configurations (30% sparsity):
+ * - SmallConfig: ~19 rows (2D), ~1229 rows (3D), y_max=64, z_max=64
+ * - MediumConfig: ~154 rows (2D), ~78643 rows (3D), y_max=512, z_max=512
+ * - LargeConfig: ~1229 rows (2D), ~5.0M rows (3D), y_max=4096, z_max=4096
  */
 // ============================================================================
 // Version-specific benchmark fixtures
@@ -81,7 +81,6 @@ class V1RandomMeshBenchmark2D : public benchmark::Fixture {
 public:
   void SetUp(const benchmark::State&) override {
     auto cfg = GetConfigFunc()();
-    cfg.num_rows_min = cfg.num_rows_max;
     auto common_a = RandomMeshGenerator::generate_2d(cfg);
     cfg.seed++;
     auto common_b = RandomMeshGenerator::generate_2d(cfg);
@@ -99,7 +98,6 @@ class V2RandomMeshBenchmark2D : public benchmark::Fixture {
 public:
   void SetUp(const benchmark::State&) override {
     auto cfg = GetConfigFunc()();
-    cfg.num_rows_min = cfg.num_rows_max;
     auto common_a = RandomMeshGenerator::generate_2d(cfg);
     cfg.seed++;
     auto common_b = RandomMeshGenerator::generate_2d(cfg);
@@ -117,7 +115,6 @@ class V3RandomMeshBenchmark2D : public benchmark::Fixture {
 public:
   void SetUp(const benchmark::State&) override {
     auto cfg = GetConfigFunc()();
-    cfg.num_rows_min = cfg.num_rows_max;
     auto common_a = RandomMeshGenerator::generate_2d(cfg);
     cfg.seed++;
     auto common_b = RandomMeshGenerator::generate_2d(cfg);
@@ -135,7 +132,6 @@ class V1RandomMeshBenchmark3D : public benchmark::Fixture {
 public:
   void SetUp(const benchmark::State&) override {
     auto cfg = GetConfigFunc()();
-    cfg.num_rows_min = cfg.num_rows_max;
     auto common_a = RandomMeshGenerator::generate_3d(cfg);
     cfg.seed++;
     auto common_b = RandomMeshGenerator::generate_3d(cfg);
@@ -153,7 +149,6 @@ class V2RandomMeshBenchmark3D : public benchmark::Fixture {
 public:
   void SetUp(const benchmark::State&) override {
     auto cfg = GetConfigFunc()();
-    cfg.num_rows_min = cfg.num_rows_max;
     auto common_a = RandomMeshGenerator::generate_3d(cfg);
     cfg.seed++;
     auto common_b = RandomMeshGenerator::generate_3d(cfg);
@@ -171,7 +166,6 @@ class V3RandomMeshBenchmark3D : public benchmark::Fixture {
 public:
   void SetUp(const benchmark::State&) override {
     auto cfg = GetConfigFunc()();
-    cfg.num_rows_min = cfg.num_rows_max;
     auto common_a = RandomMeshGenerator::generate_3d(cfg);
     cfg.seed++;
     auto common_b = RandomMeshGenerator::generate_3d(cfg);
@@ -197,6 +191,10 @@ struct GetMediumConfig {
 
 struct GetLargeConfig {
   RandomMeshConfig operator()() const { return LargeConfig(); }
+};
+
+struct GetExtraLargeConfig {
+  RandomMeshConfig operator()() const { return ExtraLargeConfig(); }
 };
 
 // ============================================================================
@@ -460,6 +458,52 @@ BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark3D, V3_3D_LargeConfig, GetLargeConfig)
   state.SetItemsProcessed(state.iterations() * total_intervals);
   state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
+}
+
+// ============================================================================
+// Extra Large Benchmarks (2x Large)
+// ============================================================================
+
+BENCHMARK_TEMPLATE_F(V1RandomMeshBenchmark2D, V1_ExtraLargeConfig, GetExtraLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v1::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V2RandomMeshBenchmark2D, V2_ExtraLargeConfig, GetExtraLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v2::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V3RandomMeshBenchmark2D, V3_ExtraLargeConfig, GetExtraLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = v3::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
 }
 
 // ============================================================================

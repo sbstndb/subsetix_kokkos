@@ -26,3 +26,22 @@ target_link_libraries(experimental_comparison_benchmark
 )
 
 message(STATUS "  - experimental_comparison_benchmark")
+
+# Regular mesh benchmark (optimal performance scenario)
+add_executable(experimental_regular_mesh_benchmark
+  set_algebra/regular_mesh_benchmark.cpp
+)
+
+target_include_directories(experimental_regular_mesh_benchmark
+  PRIVATE
+    ${EXPERIMENTAL_ROOT}/tests
+)
+
+target_link_libraries(experimental_regular_mesh_benchmark
+  PRIVATE
+    experimental_subsetix_csr
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
+message(STATUS "  - experimental_regular_mesh_benchmark")

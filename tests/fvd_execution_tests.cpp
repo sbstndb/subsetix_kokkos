@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
+
+
 /**
  * @file fvd_execution_tests.cpp
  * @brief Execution tests for FVD API (numerical validation, GPU tests)
