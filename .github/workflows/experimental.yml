@@ -1,8 +1,6 @@
 name: Experimental CI
 
 on:
-  push:
-    branches: ['**']
   pull_request:
     branches: ['**']
   workflow_dispatch:  # Allow manual trigger from GitHub UI
