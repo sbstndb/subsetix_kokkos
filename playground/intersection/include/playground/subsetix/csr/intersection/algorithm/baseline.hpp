@@ -6,14 +6,14 @@
 #include <playground/subsetix/csr/intersection/types.hpp>
 #include <playground/subsetix/csr/intersection/detail/utils.hpp>
 
-namespace playground::subsetix::csr::intersection::v1 {
+namespace playground::subsetix::csr::intersection::baseline {
 
 // ============================================================================
-// v1 Mesh type (versioned, templated on coordinate and index types)
+// baseline Mesh type (versioned, templated on coordinate and index types)
 // ============================================================================
 
 /**
- * @brief CSR-based mesh representation for v1 algorithm.
+ * @brief CSR-based mesh representation for baseline algorithm.
  *
  * This is a compressed sparse row (CSR) representation where:
  * - row_keys stores the row coordinates (sorted)
@@ -161,7 +161,7 @@ std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
 } // namespace detail
 
 // ============================================================================
-// Mesh intersection (2D and 3D) - v1 Algorithm
+// Mesh intersection (2D and 3D) - baseline Algorithm
 // ============================================================================
 
 /**
@@ -501,4 +501,4 @@ mesh_to(const Mesh<DIM, FromSpace, CoordType, IndexType>& src) {
   return dst;
 }
 
-} // namespace playground::subsetix::csr::intersection::v1
+} // namespace playground::subsetix::csr::intersection::baseline

@@ -6,13 +6,13 @@
 #include <playground/subsetix/csr/intersection/types.hpp>
 #include <playground/subsetix/csr/intersection/detail/utils.hpp>
 
-namespace playground::subsetix::csr::intersection::v3 {
+namespace playground::subsetix::csr::intersection::optimized {
 
 // ============================================================================
-// v3 Mesh type (identical to v1, see v1.hpp for full documentation)
+// optimized Mesh type (identical to baseline, see baseline.hpp for full documentation)
 // ============================================================================
 
-/** @brief CSR mesh for v3 algorithm. Identical to v1::Mesh. */
+/** @brief CSR mesh for optimized algorithm. Identical to baseline::Mesh. */
 template <int DIM, class MemorySpace,
           class CoordType = int32_t,
           class IndexType = std::size_t>
@@ -74,12 +74,12 @@ using Mesh3DDevice = Mesh3D<>;  // Default types
 using Mesh3DHost = Mesh<3, Kokkos::HostSpace, int32_t, std::size_t>;
 
 // ============================================================================
-// Core row intersection (identical to v1, see v1.hpp)
+// Core row intersection (identical to baseline, see baseline.hpp)
 // ============================================================================
 
 namespace detail {
 
-/** @brief Row intersection. Identical to v1::detail::row_intersection_impl. */
+/** @brief Row intersection. Identical to baseline::detail::row_intersection_impl. */
 template <bool CountOnly, class IntervalViewIn, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
 std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
@@ -130,10 +130,10 @@ std::size_t row_intersection_impl(const IntervalViewIn& intervals_a,
 } // namespace detail
 
 // ============================================================================
-// Mesh intersection (2D and 3D) - v3 Algorithm
+// Mesh intersection (2D and 3D) - optimized Algorithm
 // ============================================================================
 
-/** @brief Mesh intersection. Identical to v1::intersect_meshes. */
+/** @brief Mesh intersection. Identical to baseline::intersect_meshes. */
 template <int DIM, class CoordType = int32_t, class IndexType = std::size_t>
 inline Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>
 intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, CoordType, IndexType>& A,
@@ -452,4 +452,4 @@ mesh_to(const Mesh<DIM, FromSpace, CoordType, IndexType>& src) {
   return dst;
 }
 
-} // namespace playground::subsetix::csr::intersection::v3
+} // namespace playground::subsetix::csr::intersection::optimized

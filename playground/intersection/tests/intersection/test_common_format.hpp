@@ -6,9 +6,8 @@
 #ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include <playground/subsetix/csr/intersection/types.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/optimized.hpp>
 #include <Kokkos_Core.hpp>
 #include <vector>
 #include <cstdint>
@@ -145,10 +144,10 @@ using DefaultCommonMesh3D = CommonMesh3D<int32_t>;
 /**
  * @brief Converter between CommonMesh2D and version-specific Mesh types
  *
- * This converter works with any version's Mesh type (v1, v2, v3)
+ * This converter works with any version's Mesh type (baseline, optimized)
  * as long as they follow the same CSR structure.
  *
- * @tparam VersionNamespace The version namespace (v1, v2, v3)
+ * @tparam MeshType The Mesh class from a version namespace
  * @tparam MemorySpace Kokkos memory space
  * @tparam CoordType Coordinate type
  * @tparam IndexType Index type for CSR row_ptr
@@ -245,7 +244,7 @@ struct MeshConverter2D {
 /**
  * @brief Converter between CommonMesh3D and version-specific Mesh types
  *
- * @tparam VersionNamespace The version namespace (v1, v2, v3)
+ * @tparam MeshType The Mesh class from a version namespace
  * @tparam MemorySpace Kokkos memory space
  * @tparam CoordType Coordinate type
  * @tparam IndexType Index type for CSR row_ptr
@@ -341,31 +340,27 @@ struct MeshConverter3D {
 };
 
 // ============================================================================
-// Convenience aliases for v1
+// Convenience aliases for baseline
 // ============================================================================
 
-namespace v1_test {
+namespace baseline_test {
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter2D = MeshConverter2D<playground::subsetix::csr::intersection::v1::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter2D = MeshConverter2D<playground::subsetix::csr::intersection::baseline::Mesh, MemorySpace, CoordType, IndexType>;
 
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter3D = MeshConverter3D<playground::subsetix::csr::intersection::v1::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter3D = MeshConverter3D<playground::subsetix::csr::intersection::baseline::Mesh, MemorySpace, CoordType, IndexType>;
 }
 
-namespace v2_test {
+// ============================================================================
+// Convenience aliases for optimized
+// ============================================================================
+
+namespace optimized_test {
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter2D = MeshConverter2D<playground::subsetix::csr::intersection::v2::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter2D = MeshConverter2D<playground::subsetix::csr::intersection::optimized::Mesh, MemorySpace, CoordType, IndexType>;
 
   template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter3D = MeshConverter3D<playground::subsetix::csr::intersection::v2::Mesh, MemorySpace, CoordType, IndexType>;
-}
-
-namespace v3_test {
-  template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter2D = MeshConverter2D<playground::subsetix::csr::intersection::v3::Mesh, MemorySpace, CoordType, IndexType>;
-
-  template<class MemorySpace, class CoordType = int32_t, class IndexType = std::size_t>
-  using Converter3D = MeshConverter3D<playground::subsetix::csr::intersection::v3::Mesh, MemorySpace, CoordType, IndexType>;
+  using Converter3D = MeshConverter3D<playground::subsetix::csr::intersection::optimized::Mesh, MemorySpace, CoordType, IndexType>;
 }
 
 } // namespace playground::subsetix::csr::intersection::test

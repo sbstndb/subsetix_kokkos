@@ -4,9 +4,8 @@
 #ifdef SUBSETIX_ENABLE_PLAYGROUND
 
 #include <gtest/gtest.h>
-#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/optimized.hpp>
 #include "test_common_format.hpp"
 #include "test_random_mesh_generator.hpp"
 #include <Kokkos_Core.hpp>
@@ -15,42 +14,33 @@ using namespace playground::subsetix::csr::intersection;
 using namespace playground::subsetix::csr::intersection::test;
 
 // ============================================================================
-// Random Comparison Tests: v1 vs v2 vs v3 using Random Geometries
+// Random Comparison Tests: baseline vs optimized using Random Geometries
 // ============================================================================
 
 /**
- * @brief Test suite for comparing v1, v2, v3 using random geometries
+ * @brief Test suite for comparing baseline and optimized using random geometries
  *
- * These tests generate random meshes and verify that all versions
+ * These tests generate random meshes and verify that both versions
  * produce bitwise identical results.
  */
 class RandomComparisonTest : public ::testing::Test {
 protected:
-  // Run intersection with v1 (reference)
-  DefaultCommonMesh2D intersect_v1_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
-    return test::intersect_v1_2d(a, b);
+  // Run intersection with baseline (reference)
+  DefaultCommonMesh2D intersect_baseline_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+    return test::intersect_baseline_2d(a, b);
   }
 
-  DefaultCommonMesh3D intersect_v1_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
-    return test::intersect_v1_3d(a, b);
+  DefaultCommonMesh3D intersect_baseline_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+    return test::intersect_baseline_3d(a, b);
   }
 
-  // Run intersection with v2
-  DefaultCommonMesh2D intersect_v2_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
-    return test::intersect_v2_2d(a, b);
+  // Run intersection with optimized
+  DefaultCommonMesh2D intersect_optimized_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+    return test::intersect_optimized_2d(a, b);
   }
 
-  DefaultCommonMesh3D intersect_v2_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
-    return test::intersect_v2_3d(a, b);
-  }
-
-  // Run intersection with v3
-  DefaultCommonMesh2D intersect_v3_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
-    return test::intersect_v3_2d(a, b);
-  }
-
-  DefaultCommonMesh3D intersect_v3_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
-    return test::intersect_v3_3d(a, b);
+  DefaultCommonMesh3D intersect_optimized_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+    return test::intersect_optimized_3d(a, b);
   }
 };
 
@@ -59,7 +49,7 @@ protected:
 // ============================================================================
 
 /**
- * @brief Test v1/v2/v3 produce identical results on 2D random meshes
+ * @brief Test baseline/optimized produce identical results on 2D random meshes
  *
  * This test generates random configuration parameters (num_rows, intervals, seed)
  * within reasonable bounds and runs multiple iterations to cover a wide range
@@ -98,17 +88,13 @@ TEST_F(RandomComparisonTest, AllVersions2D_RandomBounds) {
     config.seed++;
     auto mesh_b = RandomMeshGenerator::generate_2d(config);
 
-    // Run all versions
-    auto result_v1 = intersect_v1_2d(mesh_a, mesh_b);
-    auto result_v2 = intersect_v2_2d(mesh_a, mesh_b);
-    auto result_v3 = intersect_v3_2d(mesh_a, mesh_b);
+    // Run both versions
+    auto result_baseline = intersect_baseline_2d(mesh_a, mesh_b);
+    auto result_optimized = intersect_optimized_2d(mesh_a, mesh_b);
 
-    // All should be identical (bitwise comparison)
-    EXPECT_TRUE(common_meshes_equal(result_v1, result_v2))
-        << "v1 and v2 produced different 2D results (iteration=" << iter
-        << ", seed=" << seed << ", rows=" << num_rows << ")";
-    EXPECT_TRUE(common_meshes_equal(result_v1, result_v3))
-        << "v1 and v3 produced different 2D results (iteration=" << iter
+    // Both should be identical (bitwise comparison)
+    EXPECT_TRUE(common_meshes_equal(result_baseline, result_optimized))
+        << "baseline and optimized produced different 2D results (iteration=" << iter
         << ", seed=" << seed << ", rows=" << num_rows << ")";
   }
 }
@@ -118,7 +104,7 @@ TEST_F(RandomComparisonTest, AllVersions2D_RandomBounds) {
 // ============================================================================
 
 /**
- * @brief Test v1/v2/v3 produce identical results on 3D random meshes
+ * @brief Test baseline/optimized produce identical results on 3D random meshes
  *
  * Same logic as 2D test but for 3D meshes with (y, z) row keys.
  */
@@ -154,15 +140,11 @@ TEST_F(RandomComparisonTest, AllVersions3D_RandomBounds) {
     config.seed++;
     auto mesh_b = RandomMeshGenerator::generate_3d(config);
 
-    auto result_v1 = intersect_v1_3d(mesh_a, mesh_b);
-    auto result_v2 = intersect_v2_3d(mesh_a, mesh_b);
-    auto result_v3 = intersect_v3_3d(mesh_a, mesh_b);
+    auto result_baseline = intersect_baseline_3d(mesh_a, mesh_b);
+    auto result_optimized = intersect_optimized_3d(mesh_a, mesh_b);
 
-    EXPECT_TRUE(common_meshes_equal(result_v1, result_v2))
-        << "v1 and v2 produced different 3D results (iteration=" << iter
-        << ", seed=" << seed << ", rows=" << num_rows << ")";
-    EXPECT_TRUE(common_meshes_equal(result_v1, result_v3))
-        << "v1 and v3 produced different 3D results (iteration=" << iter
+    EXPECT_TRUE(common_meshes_equal(result_baseline, result_optimized))
+        << "baseline and optimized produced different 3D results (iteration=" << iter
         << ", seed=" << seed << ", rows=" << num_rows << ")";
   }
 }
@@ -210,52 +192,37 @@ TEST_F(RandomComparisonTest, AllVersions_MathProperties_Random) {
     DefaultCommonMesh2D mesh_c = RandomMeshGenerator::generate_2d(config);
 
     // Test Commutativity: A ∩ B = B ∩ A
-    auto v1_ab = intersect_v1_2d(mesh_a, mesh_b);
-    auto v1_ba = intersect_v1_2d(mesh_b, mesh_a);
-    EXPECT_TRUE(common_meshes_equal(v1_ab, v1_ba))
-        << "v1 is not commutative (iteration=" << iter << ")";
+    auto baseline_ab = intersect_baseline_2d(mesh_a, mesh_b);
+    auto baseline_ba = intersect_baseline_2d(mesh_b, mesh_a);
+    EXPECT_TRUE(common_meshes_equal(baseline_ab, baseline_ba))
+        << "baseline is not commutative (iteration=" << iter << ")";
 
-    auto v2_ab = intersect_v2_2d(mesh_a, mesh_b);
-    auto v2_ba = intersect_v2_2d(mesh_b, mesh_a);
-    EXPECT_TRUE(common_meshes_equal(v2_ab, v2_ba))
-        << "v2 is not commutative (iteration=" << iter << ")";
-
-    auto v3_ab = intersect_v3_2d(mesh_a, mesh_b);
-    auto v3_ba = intersect_v3_2d(mesh_b, mesh_a);
-    EXPECT_TRUE(common_meshes_equal(v3_ab, v3_ba))
-        << "v3 is not commutative (iteration=" << iter << ")";
+    auto optimized_ab = intersect_optimized_2d(mesh_a, mesh_b);
+    auto optimized_ba = intersect_optimized_2d(mesh_b, mesh_a);
+    EXPECT_TRUE(common_meshes_equal(optimized_ab, optimized_ba))
+        << "optimized is not commutative (iteration=" << iter << ")";
 
     // Test Associativity: (A ∩ B) ∩ C = A ∩ (B ∩ C)
-    auto v1_ab_c = intersect_v1_2d(v1_ab, mesh_c);  // (A ∩ B) ∩ C
-    auto v1_bc = intersect_v1_2d(mesh_b, mesh_c);
-    auto v1_a_bc = intersect_v1_2d(mesh_a, v1_bc);   // A ∩ (B ∩ C)
-    EXPECT_TRUE(common_meshes_equal(v1_ab_c, v1_a_bc))
-        << "v1 is not associative (iteration=" << iter << ")";
+    auto baseline_ab_c = intersect_baseline_2d(baseline_ab, mesh_c);  // (A ∩ B) ∩ C
+    auto baseline_bc = intersect_baseline_2d(mesh_b, mesh_c);
+    auto baseline_a_bc = intersect_baseline_2d(mesh_a, baseline_bc);   // A ∩ (B ∩ C)
+    EXPECT_TRUE(common_meshes_equal(baseline_ab_c, baseline_a_bc))
+        << "baseline is not associative (iteration=" << iter << ")";
 
-    auto v2_ab_c = intersect_v2_2d(v2_ab, mesh_c);
-    auto v2_bc = intersect_v2_2d(mesh_b, mesh_c);
-    auto v2_a_bc = intersect_v2_2d(mesh_a, v2_bc);
-    EXPECT_TRUE(common_meshes_equal(v2_ab_c, v2_a_bc))
-        << "v2 is not associative (iteration=" << iter << ")";
-
-    auto v3_ab_c = intersect_v3_2d(v3_ab, mesh_c);
-    auto v3_bc = intersect_v3_2d(mesh_b, mesh_c);
-    auto v3_a_bc = intersect_v3_2d(mesh_a, v3_bc);
-    EXPECT_TRUE(common_meshes_equal(v3_ab_c, v3_a_bc))
-        << "v3 is not associative (iteration=" << iter << ")";
+    auto optimized_ab_c = intersect_optimized_2d(optimized_ab, mesh_c);
+    auto optimized_bc = intersect_optimized_2d(mesh_b, mesh_c);
+    auto optimized_a_bc = intersect_optimized_2d(mesh_a, optimized_bc);
+    EXPECT_TRUE(common_meshes_equal(optimized_ab_c, optimized_a_bc))
+        << "optimized is not associative (iteration=" << iter << ")";
 
     // Test Idempotence: A ∩ A = A
-    auto v1_aa = intersect_v1_2d(mesh_a, mesh_a);
-    EXPECT_TRUE(common_meshes_equal(v1_aa, mesh_a))
-        << "v1 is not idempotent (iteration=" << iter << ")";
+    auto baseline_aa = intersect_baseline_2d(mesh_a, mesh_a);
+    EXPECT_TRUE(common_meshes_equal(baseline_aa, mesh_a))
+        << "baseline is not idempotent (iteration=" << iter << ")";
 
-    auto v2_aa = intersect_v2_2d(mesh_a, mesh_a);
-    EXPECT_TRUE(common_meshes_equal(v2_aa, mesh_a))
-        << "v2 is not idempotent (iteration=" << iter << ")";
-
-    auto v3_aa = intersect_v3_2d(mesh_a, mesh_a);
-    EXPECT_TRUE(common_meshes_equal(v3_aa, mesh_a))
-        << "v3 is not idempotent (iteration=" << iter << ")";
+    auto optimized_aa = intersect_optimized_2d(mesh_a, mesh_a);
+    EXPECT_TRUE(common_meshes_equal(optimized_aa, mesh_a))
+        << "optimized is not idempotent (iteration=" << iter << ")";
   }
 }
 

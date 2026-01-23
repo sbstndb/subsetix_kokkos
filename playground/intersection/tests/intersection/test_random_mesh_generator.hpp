@@ -7,9 +7,8 @@
 
 #include "test_common_format.hpp"
 #include <playground/subsetix/csr/intersection/set_algebra.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v1.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v2.hpp>
-#include <playground/subsetix/csr/intersection/algorithm/v3.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/optimized.hpp>
 #include <Kokkos_Random.hpp>
 #include <algorithm>
 #include <cmath>
@@ -23,9 +22,8 @@ using DefaultCommonMesh2D = playground::subsetix::csr::intersection::test::Commo
 using DefaultCommonMesh3D = playground::subsetix::csr::intersection::test::CommonMesh3D<int32_t>;
 
 // Bring version namespaces into scope for test helpers
-using namespace playground::subsetix::csr::intersection::v1;
-using namespace playground::subsetix::csr::intersection::v2;
-using namespace playground::subsetix::csr::intersection::v3;
+using namespace playground::subsetix::csr::intersection::baseline;
+using namespace playground::subsetix::csr::intersection::optimized;
 
 namespace playground::subsetix::csr::intersection::test {
 
@@ -225,7 +223,7 @@ inline RandomMeshConfig ExtraLargeConfig() {
  * The parameters work as follows:
  * - num_rows_2d: Direct number of rows for 2D (y = 0, 1, ..., num_rows_2d-1)
  * - grid_size_3d: Size of ONE SIDE of the 3D grid (like y_max/z_max in random config)
- *                Total rows = grid_size_3d * grid_size_3d
+ *                Total rows = grid_size_3d²
  *
  * This matches the random config semantics where y_max/z_max define the grid extent.
  */
@@ -411,7 +409,7 @@ private:
     int z_extent = config.z_max - config.z_min;
     long long grid_positions = static_cast<long long>(y_extent) * static_cast<long long>(z_extent);
     long long num_rows = static_cast<long long>(std::round(config.sparsity * grid_positions));
-    return static_cast<int>(std::max(0LL, num_rows));  // Allow 0 rows for sparsity=0
+    return static_cast<int>(std::max(0LL, num_rows));  // Allow 0 rows for sparsity = 0
   }
 
   /**
@@ -726,31 +724,31 @@ inline bool validate_common_mesh_3d(const DefaultCommonMesh3D& mesh, bool sorted
 }
 
 /**
- * @brief Convert Mesh2DDevice to CommonMesh2D (convenience wrapper for v1)
+ * @brief Convert Mesh2DDevice to CommonMesh2D (convenience wrapper for baseline)
  */
-inline DefaultCommonMesh2D to_common_2d(const v1::Mesh2DDevice& device_mesh) {
-  return v1_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(device_mesh);
+inline DefaultCommonMesh2D to_common_2d(const baseline::Mesh2DDevice& device_mesh) {
+  return baseline_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(device_mesh);
 }
 
 /**
- * @brief Convert Mesh3DDevice to CommonMesh3D (convenience wrapper for v1)
+ * @brief Convert Mesh3DDevice to CommonMesh3D (convenience wrapper for baseline)
  */
-inline DefaultCommonMesh3D to_common_3d(const v1::Mesh3DDevice& device_mesh) {
-  return v1_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(device_mesh);
+inline DefaultCommonMesh3D to_common_3d(const baseline::Mesh3DDevice& device_mesh) {
+  return baseline_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::to_common(device_mesh);
 }
 
 /**
- * @brief Convert CommonMesh2D to Mesh2DDevice (convenience wrapper for v1)
+ * @brief Convert CommonMesh2D to Mesh2DDevice (convenience wrapper for baseline)
  */
-inline v1::Mesh2DDevice from_common_2d(const DefaultCommonMesh2D& common_mesh) {
-  return v1_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(common_mesh);
+inline baseline::Mesh2DDevice from_common_2d(const DefaultCommonMesh2D& common_mesh) {
+  return baseline_test::Converter2D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(common_mesh);
 }
 
 /**
- * @brief Convert CommonMesh3D to Mesh3DDevice (convenience wrapper for v1)
+ * @brief Convert CommonMesh3D to Mesh3DDevice (convenience wrapper for baseline)
  */
-inline v1::Mesh3DDevice from_common_3d(const DefaultCommonMesh3D& common_mesh) {
-  return v1_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(common_mesh);
+inline baseline::Mesh3DDevice from_common_3d(const DefaultCommonMesh3D& common_mesh) {
+  return baseline_test::Converter3D<Kokkos::DefaultExecutionSpace::memory_space>::from_common(common_mesh);
 }
 
 // ============================================================================
@@ -758,79 +756,59 @@ inline v1::Mesh3DDevice from_common_3d(const DefaultCommonMesh3D& common_mesh) {
 // ============================================================================
 
 /**
- * @brief Wrapper for v1::intersect_meshes<2> for backward compatibility
+ * @brief Wrapper for baseline::intersect_meshes<2> for backward compatibility
  * Returns CommonMesh2D for easy testing
  */
 inline DefaultCommonMesh2D intersect_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
   auto device_a = from_common_2d(a);
   auto device_b = from_common_2d(b);
-  auto result = v1::intersect_meshes<2>(device_a, device_b);
+  auto result = baseline::intersect_meshes<2>(device_a, device_b);
   return to_common_2d(result);
 }
 
 /**
- * @brief Wrapper for v1::intersect_meshes<3> for backward compatibility
+ * @brief Wrapper for baseline::intersect_meshes<3> for backward compatibility
  * Returns CommonMesh3D for easy testing
  */
 inline DefaultCommonMesh3D intersect_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
   auto device_a = from_common_3d(a);
   auto device_b = from_common_3d(b);
-  auto result = v1::intersect_meshes<3>(device_a, device_b);
+  auto result = baseline::intersect_meshes<3>(device_a, device_b);
   return to_common_3d(result);
 }
 
 /**
- * @brief Wrapper for v1::intersect_meshes<2> (explicit version name)
+ * @brief Wrapper for baseline::intersect_meshes<2> (explicit version name)
  */
-inline DefaultCommonMesh2D intersect_v1_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+inline DefaultCommonMesh2D intersect_baseline_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
   return intersect_2d(a, b);
 }
 
 /**
- * @brief Wrapper for v2::intersect_meshes<2> (explicit version name)
+ * @brief Wrapper for optimized::intersect_meshes<2> (explicit version name)
  */
-inline DefaultCommonMesh2D intersect_v2_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
-  auto device_a = MeshConverter2D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
-  auto device_b = MeshConverter2D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
-  auto result = v2::intersect_meshes<2>(device_a, device_b);
-  return MeshConverter2D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+inline DefaultCommonMesh2D intersect_optimized_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  auto device_a = MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = optimized::intersect_meshes<2>(device_a, device_b);
+  return MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
 }
 
 /**
- * @brief Wrapper for v3::intersect_meshes<2> (explicit version name)
+ * @brief Wrapper for baseline::intersect_meshes<3> (explicit version name)
  */
-inline DefaultCommonMesh2D intersect_v3_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
-  auto device_a = MeshConverter2D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
-  auto device_b = MeshConverter2D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
-  auto result = v3::intersect_meshes<2>(device_a, device_b);
-  return MeshConverter2D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
-}
-
-/**
- * @brief Wrapper for v1::intersect_meshes<3> (explicit version name)
- */
-inline DefaultCommonMesh3D intersect_v1_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+inline DefaultCommonMesh3D intersect_baseline_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
   return intersect_3d(a, b);
 }
 
 /**
- * @brief Wrapper for v2::intersect_meshes<3> (explicit version name)
+ * @brief Wrapper for optimized::intersect_meshes<3> (explicit version name)
  */
-inline DefaultCommonMesh3D intersect_v2_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
-  auto device_a = MeshConverter3D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
-  auto device_b = MeshConverter3D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
-  auto result = v2::intersect_meshes<3>(device_a, device_b);
-  return MeshConverter3D<v2::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
-}
-
-/**
- * @brief Wrapper for v3::intersect_meshes<3> (explicit version name)
- */
-inline DefaultCommonMesh3D intersect_v3_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
-  auto device_a = MeshConverter3D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
-  auto device_b = MeshConverter3D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
-  auto result = v3::intersect_meshes<3>(device_a, device_b);
-  return MeshConverter3D<v3::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+inline DefaultCommonMesh3D intersect_optimized_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  auto device_a = MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = optimized::intersect_meshes<3>(device_a, device_b);
+  return MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
 }
 
 } // namespace playground::subsetix::csr::intersection::test
