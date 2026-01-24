@@ -95,7 +95,7 @@ enum class RowMapStrategy {
  * This structure is filled by pattern detection on the host and then
  * copied to device for use in the row mapping kernel.
  */
-template <class MemorySpace>
+template <class MemorySpace, class CoordType = int32_t>
 struct RowMapperConfig {
   RowMapStrategy strategy = RowMapStrategy::BINARY_SEARCH;
 
@@ -129,12 +129,12 @@ namespace detail {
  * @return Configuration for the detected strategy
  */
 template <class CoordType, class IndexType, class DeviceMemorySpace>
-inline RowMapperConfig<Kokkos::HostSpace>
+inline RowMapperConfig<Kokkos::HostSpace, CoordType>
 detect_row_pattern_2d_host(const Mesh<2, DeviceMemorySpace, CoordType, IndexType>& mesh_b) {
   using HostMemorySpace = Kokkos::HostSpace;
   using RowKey = typename Mesh<2, DeviceMemorySpace, CoordType, IndexType>::RowKey;
 
-  RowMapperConfig<HostMemorySpace> config;
+  RowMapperConfig<HostMemorySpace, CoordType> config;
 
   if (mesh_b.num_rows == 0) {
     config.strategy = RowMapStrategy::BINARY_SEARCH;
@@ -238,7 +238,7 @@ detect_row_pattern_2d_host(const Mesh<2, DeviceMemorySpace, CoordType, IndexType
  * @return Configuration for the detected strategy
  */
 template <class CoordType, class IndexType, class DeviceMemorySpace>
-inline RowMapperConfig<Kokkos::HostSpace>
+inline RowMapperConfig<Kokkos::HostSpace, CoordType>
 detect_row_pattern_3d_host(const Mesh<3, DeviceMemorySpace, CoordType, IndexType>& mesh_b) {
   // For 3D, we use the same 2D detection on y-coordinate
   // The z-coordinate is handled via binary search within y-groups
@@ -246,7 +246,7 @@ detect_row_pattern_3d_host(const Mesh<3, DeviceMemorySpace, CoordType, IndexType
   using HostMemorySpace = Kokkos::HostSpace;
   using RowKey = typename Mesh<3, DeviceMemorySpace, CoordType, IndexType>::RowKey;
 
-  RowMapperConfig<HostMemorySpace> config;
+  RowMapperConfig<HostMemorySpace, CoordType> config;
 
   if (mesh_b.num_rows == 0) {
     config.strategy = RowMapStrategy::BINARY_SEARCH;
@@ -332,9 +332,9 @@ detect_row_pattern_3d_host(const Mesh<3, DeviceMemorySpace, CoordType, IndexType
  * @brief Convert RowMapperConfig from HostSpace to DeviceSpace.
  */
 template <class CoordType, class DeviceMemorySpace>
-inline RowMapperConfig<DeviceMemorySpace>
-config_to_device(const RowMapperConfig<Kokkos::HostSpace>& host_config) {
-  RowMapperConfig<DeviceMemorySpace> device_config;
+inline RowMapperConfig<DeviceMemorySpace, CoordType>
+config_to_device(const RowMapperConfig<Kokkos::HostSpace, CoordType>& host_config) {
+  RowMapperConfig<DeviceMemorySpace, CoordType> device_config;
 
   device_config.strategy = host_config.strategy;
   device_config.y_min = host_config.y_min;
@@ -370,9 +370,10 @@ namespace detail {
  * @param y Y-coordinate to search for
  * @return Row index in mesh B, or -1 if not found
  */
+template <class CoordType = int32_t>
 KOKKOS_INLINE_FUNCTION
-int find_row_direct_2d(const RowMapperConfig<Kokkos::DefaultExecutionSpace::memory_space>& config,
-                       const Kokkos::View<intersection::RowKey2D<int32_t>*,
+int find_row_direct_2d(const RowMapperConfig<Kokkos::DefaultExecutionSpace::memory_space, CoordType>& config,
+                       const Kokkos::View<intersection::RowKey2D<CoordType>*,
                                           Kokkos::DefaultExecutionSpace::memory_space>& row_keys_b,
                        std::size_t num_rows_b,
                        int32_t y) {
@@ -449,6 +450,7 @@ int find_row_direct_2d(const RowMapperConfig<Kokkos::DefaultExecutionSpace::memo
  * @param z Z-coordinate to search for
  * @return Row index in mesh B, or -1 if not found
  */
+template <class CoordType = int32_t>
 KOKKOS_INLINE_FUNCTION
 int find_row_direct_3d(const RowMapperConfig<Kokkos::DefaultExecutionSpace::memory_space>& config,
                        const Kokkos::View<intersection::RowKey3D<int32_t>*,

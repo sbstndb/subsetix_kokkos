@@ -402,7 +402,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, Co
             const bool a_less_b = (key_a.y < key_b.y) || (key_a.y == key_b.y && key_a.z < key_b.z);
             const bool b_less_a = (key_b.y < key_a.y) || (key_b.y == key_a.y && key_b.z < key_a.z);
 
-            if (!a_less_b && !b_less_b) {
+            if (!a_less_b && !b_less_a) {
               // Keys are equal (y_a == y_b && z_a == z_b)
               ++local_count;
               ++ia;
@@ -526,7 +526,7 @@ intersect_meshes(const Mesh<DIM, Kokkos::DefaultExecutionSpace::memory_space, Co
             const bool a_less_b = (key_a.y < key_b.y) || (key_a.y == key_b.y && key_a.z < key_b.z);
             const bool b_less_a = (key_b.y < key_a.y) || (key_b.y == key_a.y && key_b.z < key_a.z);
 
-            if (!a_less_b && !b_less_b) {
+            if (!a_less_b && !b_less_a) {
               // Keys are equal
               const std::size_t global_idx = chunk_offsets(chunk_id) + local_offset;
               out_rows(global_idx) = key_a;

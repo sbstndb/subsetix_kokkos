@@ -81,6 +81,12 @@ using Mesh3DHost = Mesh<3, Kokkos::HostSpace, int32_t, std::size_t>;
 
 namespace detail {
 
+/** @brief Pair of matching row indices from two meshes. */
+struct RowPair {
+  int idx_a;
+  int idx_b;
+};
+
 /** @brief Row intersection. Identical to optimized::detail::row_intersection_impl. */
 template <bool CountOnly, class IntervalViewIn, class IntervalViewOut>
 KOKKOS_INLINE_FUNCTION
@@ -184,11 +190,6 @@ inline auto cpu_row_mapping_2d(const RowKeyHostView& host_rows_a,
                                const RowPtrHostView& host_row_ptr_b,
                                std::size_t num_rows_a,
                                std::size_t num_rows_b) {
-  struct RowPair {
-    int idx_a;
-    int idx_b;
-  };
-
   std::vector<RowPair> cpu_matches;
 
   // Use pointers for efficient traversal
@@ -239,11 +240,6 @@ inline auto cpu_row_mapping_3d(const RowKeyHostView& host_rows_a,
                                const RowPtrHostView& host_row_ptr_b,
                                std::size_t num_rows_a,
                                std::size_t num_rows_b) {
-  struct RowPair {
-    int idx_a;
-    int idx_b;
-  };
-
   std::vector<RowPair> cpu_matches;
 
   // Use pointers for efficient traversal

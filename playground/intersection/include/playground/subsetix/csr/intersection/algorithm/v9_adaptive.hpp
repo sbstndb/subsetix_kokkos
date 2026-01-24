@@ -337,21 +337,7 @@ intersect_meshes(
 
     case RowMappingStrategy::SOA_OPTIMIZED: {
       // v7: Structure of Arrays optimization
-      soa_optimized::Mesh<DIM, DeviceMemorySpace, CoordType, IndexType> mesh_a, mesh_b;
-      mesh_a.row_keys = A.row_keys;
-      mesh_a.row_ptr = A.row_ptr;
-      mesh_a.intervals = A.intervals;
-      mesh_a.num_rows = A.num_rows;
-      mesh_a.num_intervals = A.num_intervals;
-
-      mesh_b.row_keys = B.row_keys;
-      mesh_b.row_ptr = B.row_ptr;
-      mesh_b.intervals = B.intervals;
-      mesh_b.num_rows = B.num_rows;
-      mesh_b.num_intervals = B.num_intervals;
-
-      auto soa_result = soa_optimized::intersect_meshes<DIM>(mesh_a, mesh_b);
-      result = convert_to_optimized(soa_result);
+      result = soa_optimized::intersect_meshes<DIM, CoordType, IndexType>(A, B);
       break;
     }
 

@@ -672,11 +672,11 @@ intersect_meshes(const optimized::Mesh<DIM, Kokkos::DefaultExecutionSpace::memor
 
 // Convenience aliases for 2D and 3D
 inline optimized::Mesh2DDevice intersect_meshes_2d(const optimized::Mesh2DDevice& A, const optimized::Mesh2DDevice& B) {
-  return intersect_meshes<2>(A, B);
+  return soa_optimized::intersect_meshes<2>(A, B);
 }
 
 inline optimized::Mesh3DDevice intersect_meshes_3d(const optimized::Mesh3DDevice& A, const optimized::Mesh3DDevice& B) {
-  return intersect_meshes<3>(A, B);
+  return soa_optimized::intersect_meshes<3>(A, B);
 }
 
 // ============================================================================
