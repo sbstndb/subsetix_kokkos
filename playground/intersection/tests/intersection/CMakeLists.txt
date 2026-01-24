@@ -130,7 +130,24 @@ target_link_libraries(playground_intersection_random_mesh_generator_test
 
 add_test(NAME PlaygroundIntersectionRandomMeshGeneratorTest COMMAND playground_intersection_random_mesh_generator_test)
 
+# Cross-version row map test - compares all row mapping algorithm versions
+add_executable(playground_intersection_cross_version_row_map_test
+  test_main.cpp
+  cross_version_row_map_test.cpp
+)
+
+target_link_libraries(playground_intersection_cross_version_row_map_test
+  PRIVATE
+    playground_subsetix_csr_intersection
+    gtest
+    gmock
+    Kokkos::kokkos
+)
+
+add_test(NAME PlaygroundIntersectionCrossVersionRowMapTest COMMAND playground_intersection_cross_version_row_map_test)
+
 message(STATUS "  - playground_intersection_baseline_unitary_test")
 message(STATUS "  - playground_intersection_optimized_unitary_test")
 message(STATUS "  - playground_intersection_cross_version_test")
 message(STATUS "  - playground_intersection_random_mesh_generator_test")
+message(STATUS "  - playground_intersection_cross_version_row_map_test")
