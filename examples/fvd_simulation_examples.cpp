@@ -648,7 +648,7 @@ void example_10_complex_multiphysics() {
     amr_config.add_exclusion_rectangle(0.5f, 1.5f, 0.0f, 0.3f, 3);  // Min level 3
     solver.set_refinement_config(amr_config);
 
-    // --- Observers multi-capacités ---
+    // --- Multi-capability observers ---
 
     // Progression
     solver.observers().on_progress([](const auto& state) {
