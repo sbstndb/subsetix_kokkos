@@ -91,7 +91,7 @@ TEST(CSRAmrRefineProjectTest, RefineBoxCardinalityFactorFour) {
   const std::size_t card_coarse = cardinality(host_coarse);
   const std::size_t card_fine = cardinality(host_fine);
 
-  // La cardinalité additionne les largeurs des intervalles :
+  // Cardinality adds the interval widths:
   // doublage en X et duplication en Y => facteur 4.
   EXPECT_EQ(card_fine, 4 * card_coarse);
 }
@@ -141,7 +141,7 @@ TEST(CSRAmrRefineProjectTest, Project1DExamplesOnSingleRow) {
 }
 
 TEST(CSRAmrRefineProjectTest, ProjectMergesNeighbourRows) {
-  // Deux lignes fines y = 0 et y = 1, même intervalle [0,1).
+  // Two fine rows y = 0 and y = 1, same interval [0,1).
   IntervalSet2DHost fine_host =
       make_host_csr({
           {0, {Interval{0, 1}}},

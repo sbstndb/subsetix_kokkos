@@ -259,7 +259,7 @@ private:
     // Configuration du halo
     HaloInfo halo_info_;
 
-    // Méthodes internes
+    // Internal methods
     bool detect_gpu_direct();
     void setup_gpu_direct_buffers();
 };

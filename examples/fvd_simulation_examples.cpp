@@ -70,14 +70,14 @@ void example_2_euler_cylinder() {
     using System = Euler2D<Real>;
     using Solver = EulerSolverRK3;  // Type alias: RK3 + Rusanov + 1st order
 
-    // Paramètres du problème
+    // Problem parameters
     const int nx = 200, ny = 80;
     const Real x_min = 0.0, x_max = 2.0;
     const Real y_min = 0.0, y_max = 0.8;
     const Real gamma = 1.4f;
     const Real mach = 2.0f;
 
-    // Condition initiale: écoulement uniforme Mach 2
+    // Initial condition: Mach 2 uniform flow
     auto mach2_cylinder = [mach, gamma](Real x, Real y) {
         Real rho = 1.0f;
         Real u = mach * std::sqrt(gamma);  // Mach number
@@ -100,7 +100,7 @@ void example_2_euler_cylinder() {
     solver.set_boundary_conditions(bc);
 
     // Ajout d'un obstacle (cylindre) - zone d'exclusion du raffinement
-    // (serait implémenté via un masque géométrique)
+    // (would be implemented via a geometric mask)
 
     // Boucle de simulation
     const Real t_final = 0.2f;
@@ -162,7 +162,7 @@ void example_3_with_amr_and_observers() {
     auto csv_logger = Observers::csv_logger<Real>("simulation_data.csv");
     solver.observers().add_callback(SolverEvent::StepEnd, csv_logger);
 
-    // Observer 4: Temps d'exécution
+    // Observer 4: Execution time
     solver.observers().add_callback(SolverEvent::StepEnd,
         Observers::time_logger<Real>()
     );
@@ -202,9 +202,9 @@ void example_4_time_dependent_bcs() {
         })
         .build();
 
-    // --- BCs dépendantes du temps ---
+    // --- Time-dependent BCs ---
 
-    // 1. Inlet sinusoïdal à gauche
+    // 1. Sinusoidal inlet on the left
     auto sinusoidal_inlet = boundary::sinusoidal_inlet<System>(
         1.0f,    // rho0
         100.0f,  // u0
@@ -228,7 +228,7 @@ void example_4_time_dependent_bcs() {
     );
     solver.set_time_dependent_bc("bottom", ramp_inlet);
 
-    // Monitoring de l'entrée
+    // Monitoring of the inlet
     solver.observers().on_progress([](const auto& state) {
         if (state.step % 20 == 0) {
             printf("t=%.4f: Inlet rho = %.4f (sinusoidal)\n",
@@ -260,7 +260,7 @@ void example_5_custom_source_terms() {
         })
         .build();
 
-    // --- Source 1: Gravité ---
+    // --- Source 1: Gravity ---
     solver.add_gravity(-9.81f);  // Gravity downward (y)
 
     // --- Source 2: Heating in a circular zone ---
@@ -270,7 +270,7 @@ void example_5_custom_source_terms() {
     solver.add_source([gamma = System::default_gamma](const Conserved& U,
                                                        const Primitive& q,
                                                        Real x, Real y, Real t) {
-        // Zone de chauffage: cercle centré en (0.5, 0.25)
+        // Heating zone: circle centered at (0.5, 0.25)
         Real dx = x - 0.5f;
         Real dy = y - 0.25f;
         Real r2 = dx*dx + dy*dy;

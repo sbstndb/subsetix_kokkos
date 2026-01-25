@@ -269,7 +269,7 @@ void example_8_manual_communication() {
             using System = Euler2D<float>;
             return System::from_primitive({1.0f, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Désactiver les communications automatiques
+        // Disable automatic communications
         .with_auto_comm(false)
         .build();
 
@@ -359,7 +359,7 @@ void example_10_level_weighted_lb() {
             float rho = 1.0f + 0.5f * std::exp(-50.0f * ((x-1.0)*(x-1.0) + (y-0.5)*(y-0.5)));
             return System::from_primitive({rho, 0.0f, 0.0f, 1.0f/1.4f}, 1.4f);
         })
-        // Load balancng par niveau (cellules fines = plus coûteuses)
+        // Load balancing by level (fine cells = more expensive)
         .with_load_balancing<LevelWeightedLoadBalance<Euler2D<float>>>({
             .level_weight = 2.0f,  // Niveau l+1 coûte 2x plus
             .max_imbalance = 1.1f
@@ -390,7 +390,7 @@ void example_11_custom_load_balance() {
     using System = Euler2D<float>;
     using Real = float;
 
-    // Fonction de coût personnalisée (Kokkos device-friendly)
+    // Custom cost function (Kokkos device-friendly)
     auto cost_lambda = KOKKOS_LAMBDA(
         const System::Conserved& U,
         const System::Primitive& q,
@@ -398,7 +398,7 @@ void example_11_custom_load_balance() {
         Real grad_rho_y,
         int level
     ) -> Real {
-        // Coût de base
+        // Base cost
         Real cost = 1.0f;
 
         // Bonus for strong gradients (active zones)
@@ -424,7 +424,7 @@ void example_11_custom_load_balance() {
         .with_initial_condition([](float x, float y) {
             return System::from_primitive({1.0f, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Utiliser la fonction de coût personnalisée
+        // Use the custom cost function
         .with_load_balancing<CustomLoadBalance<System, decltype(cost_lambda)>>({
             .cost_func = cost_lambda,
             .max_imbalance = 1.15f
@@ -654,7 +654,7 @@ void example_15_custom_reductions() {
 
     solver.observers().on_mpi_progress([](const MPISolverState<float>& state) {
         if (state.step % 50 == 0) {
-            // Réductions personnalisées
+            // Custom reductions
             float local_min_rho = state.local_min_rho;
             float global_min_rho;
             MPI_Allreduce(&local_min_rho, &global_min_rho, 1, MPI_FLOAT, MPI_MIN,
@@ -678,7 +678,7 @@ void example_15_custom_reductions() {
 // ============================================================================
 
 int main(int argc, char** argv) {
-    // Initialisation Kokkos (MPI sera initialisé automatiquement par Subsetix)
+    // Kokkos initialization (MPI will be initialized automatically by Subsetix)
     Kokkos::initialize(argc, argv);
 
     printf("\n");
@@ -686,7 +686,7 @@ int main(int argc, char** argv) {
     printf("║     COLLECTION D'EXEMPLES FVD AVEC MPI                         ║\n");
     printf("╚════════════════════════════════════════════════════════════════╝\n");
 
-    // Choisir l'exemple à exécuter
+    // Choose the example to run
     int example = 1;
     if (argc > 1) {
         example = std::atoi(argv[1]);
