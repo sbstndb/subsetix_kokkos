@@ -7,6 +7,7 @@
 #include <playground/subsetix/csr/intersection/algorithm/v4_hash.hpp>
 #include <playground/subsetix/csr/intersection/algorithm/v5_parallel_merge.hpp>
 #include <playground/subsetix/csr/intersection/algorithm/v6_direct_index.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v7_soa_optimized.hpp>
 #include <intersection/test_random_mesh_generator.hpp>
 #include <Kokkos_Core.hpp>
 #include <vector>
@@ -18,6 +19,7 @@ using namespace playground::subsetix::csr::intersection::optimized;
 using namespace playground::subsetix::csr::intersection::hash_based;
 using namespace playground::subsetix::csr::intersection::parallel_merge;
 using namespace playground::subsetix::csr::intersection::direct_index;
+using namespace playground::subsetix::csr::intersection::soa_optimized;
 using namespace playground::subsetix::csr::intersection::test;
 
 // Type aliases for convenience
@@ -68,6 +70,14 @@ inline direct_index::Mesh2DDevice from_common_2d_v6_direct_index(const DefaultCo
 }
 inline direct_index::Mesh3DDevice from_common_3d_v6_direct_index(const DefaultCommonMesh3D& mesh) {
   return MeshConverter3D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+// v7_soa_optimized conversion (uses optimized::Mesh as input/output type)
+inline optimized::Mesh2DDevice from_common_2d_v7_soa_optimized(const DefaultCommonMesh2D& mesh) {
+  return MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+inline optimized::Mesh3DDevice from_common_3d_v7_soa_optimized(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
 }
 
 } // namespace benchmark_helpers
@@ -212,6 +222,23 @@ protected:
   direct_index::Mesh2DDevice mesh_a_, mesh_b_;
 };
 
+// v7_soa_optimized 2D fixture
+template <typename GetConfigFunc>
+class V7SoaOptimizedRandomMeshBenchmark2D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common_a = RandomMeshGenerator::generate_2d(cfg);
+    cfg.seed++;
+    auto common_b = RandomMeshGenerator::generate_2d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_2d_v7_soa_optimized(common_a);
+    mesh_b_ = benchmark_helpers::from_common_2d_v7_soa_optimized(common_b);
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  optimized::Mesh2DDevice mesh_a_, mesh_b_;
+};
+
 // v4_hash 3D fixture
 template <typename GetConfigFunc>
 class V4HashRandomMeshBenchmark3D : public benchmark::Fixture {
@@ -261,6 +288,23 @@ public:
   void TearDown(const benchmark::State&) override {}
 protected:
   direct_index::Mesh3DDevice mesh_a_, mesh_b_;
+};
+
+// v7_soa_optimized 3D fixture
+template <typename GetConfigFunc>
+class V7SoaOptimizedRandomMeshBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common_a = RandomMeshGenerator::generate_3d(cfg);
+    cfg.seed++;
+    auto common_b = RandomMeshGenerator::generate_3d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_3d_v7_soa_optimized(common_a);
+    mesh_b_ = benchmark_helpers::from_common_3d_v7_soa_optimized(common_b);
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  optimized::Mesh3DDevice mesh_a_, mesh_b_;
 };
 
 // ============================================================================
@@ -365,6 +409,21 @@ BENCHMARK_TEMPLATE_F(V6DirectIndexRandomMeshBenchmark2D, V6DirectIndex_SmallConf
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRandomMeshBenchmark2D, V7SoaOptimized_SmallConfig, GetSmallConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+  // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
+}
+
 BENCHMARK_TEMPLATE_F(BaselineRandomMeshBenchmark2D, Baseline_MediumConfig, GetMediumConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
@@ -430,6 +489,21 @@ BENCHMARK_TEMPLATE_F(V6DirectIndexRandomMeshBenchmark2D, V6DirectIndex_MediumCon
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
     auto result = direct_index::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+  // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
+}
+
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRandomMeshBenchmark2D, V7SoaOptimized_MediumConfig, GetMediumConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_2d(mesh_a_, mesh_b_);
     benchmark::DoNotOptimize(result.num_rows);
     Kokkos::fence();
     benchmark::DoNotOptimize(result.num_intervals);
@@ -515,6 +589,21 @@ BENCHMARK_TEMPLATE_F(V6DirectIndexRandomMeshBenchmark2D, V6DirectIndex_LargeConf
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRandomMeshBenchmark2D, V7SoaOptimized_LargeConfig, GetLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+  // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
+}
+
 // ============================================================================
 // 3D Benchmarks
 // ============================================================================
@@ -576,6 +665,19 @@ BENCHMARK_TEMPLATE_F(V6DirectIndexRandomMeshBenchmark3D, V6DirectIndex_3D_SmallC
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
     auto result = direct_index::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+  // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
+}
+
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRandomMeshBenchmark3D, V7SoaOptimized_3D_SmallConfig, GetSmallConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_3d(mesh_a_, mesh_b_);
     benchmark::DoNotOptimize(result.num_intervals);
     Kokkos::fence();
   }
@@ -649,6 +751,19 @@ BENCHMARK_TEMPLATE_F(V6DirectIndexRandomMeshBenchmark3D, V6DirectIndex_3D_Medium
   // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
 }
 
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRandomMeshBenchmark3D, V7SoaOptimized_3D_MediumConfig, GetMediumConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+  // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
+}
+
 BENCHMARK_TEMPLATE_F(BaselineRandomMeshBenchmark3D, Baseline_3D_LargeConfig, GetLargeConfig)
 (benchmark::State& state) {
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
@@ -706,6 +821,19 @@ BENCHMARK_TEMPLATE_F(V6DirectIndexRandomMeshBenchmark3D, V6DirectIndex_3D_LargeC
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
     auto result = direct_index::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+  // ns_per_interval is automatically computed by Google Benchmark as time / items_processed
+}
+
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRandomMeshBenchmark3D, V7SoaOptimized_3D_LargeConfig, GetLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_3d(mesh_a_, mesh_b_);
     benchmark::DoNotOptimize(result.num_intervals);
     Kokkos::fence();
   }
@@ -788,6 +916,20 @@ BENCHMARK_TEMPLATE_F(V6DirectIndexRandomMeshBenchmark2D, V6DirectIndex_ExtraLarg
   state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
 }
 
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRandomMeshBenchmark2D, V7SoaOptimized_ExtraLargeConfig, GetExtraLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
 // 3D ExtraLarge Config (~10M rows with 15% sparsity)
 BENCHMARK_TEMPLATE_F(BaselineRandomMeshBenchmark3D, Baseline_3D_ExtraLargeConfig, GetExtraLargeConfig)
 (benchmark::State& state) {
@@ -842,6 +984,18 @@ BENCHMARK_TEMPLATE_F(V6DirectIndexRandomMeshBenchmark3D, V6DirectIndex_3D_ExtraL
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
     auto result = direct_index::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRandomMeshBenchmark3D, V7SoaOptimized_3D_ExtraLargeConfig, GetExtraLargeConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_3d(mesh_a_, mesh_b_);
     benchmark::DoNotOptimize(result.num_intervals);
     Kokkos::fence();
   }

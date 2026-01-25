@@ -5,6 +5,7 @@
 
 #include <playground/subsetix/csr/intersection/types.hpp>
 #include <playground/subsetix/csr/intersection/detail/utils.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/optimized.hpp>
 
 namespace playground::subsetix::csr::intersection::soa_optimized {
 

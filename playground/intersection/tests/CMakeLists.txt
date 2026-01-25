@@ -15,6 +15,8 @@ add_executable(playground_intersection_tests
   intersection/test_baseline_unitary.cpp
   intersection/test_optimized_unitary.cpp
   intersection/test_cross_version.cpp
+  intersection/test_new_versions_unitary.cpp
+  intersection/test_v7_soa_unitary.cpp
   intersection/test_overlap_patterns.cpp
   intersection/test_sorted_rows.cpp
   intersection/test_large_mesh.cpp
