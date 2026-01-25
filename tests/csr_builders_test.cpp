@@ -262,3 +262,51 @@ TEST(CSRBuildersSmokeTest, BitmapBuilder) {
   // Row 2: empty.
   EXPECT_EQ(host.row_ptr(3) - host.row_ptr(2), 0U);
 }
+
+TEST(CSRBuildersValidationTest, MakeBoxDeviceInvalidXDimensions) {
+  Box2D box;
+  box.x_min = 10;
+  box.x_max = 5;  // Invalid: x_min >= x_max
+  box.y_min = 0;
+  box.y_max = 3;
+
+  EXPECT_THROW(
+      make_box_device(box),
+      std::invalid_argument);
+}
+
+TEST(CSRBuildersValidationTest, MakeBoxDeviceInvalidYDimensions) {
+  Box2D box;
+  box.x_min = 0;
+  box.x_max = 10;
+  box.y_min = 5;
+  box.y_max = 5;  // Invalid: y_min >= y_max
+
+  EXPECT_THROW(
+      make_box_device(box),
+      std::invalid_argument);
+}
+
+TEST(CSRBuildersValidationTest, MakeBoxDeviceInvalidBothDimensions) {
+  Box2D box;
+  box.x_min = 10;
+  box.x_max = 10;  // Invalid: x_min >= x_max
+  box.y_min = 3;
+  box.y_max = 1;   // Invalid: y_min >= y_max
+
+  EXPECT_THROW(
+      make_box_device(box),
+      std::invalid_argument);
+}
+
+TEST(CSRBuildersValidationTest, MakeBoxDeviceNegativeDimensions) {
+  Box2D box;
+  box.x_min = -5;
+  box.x_max = -10;  // Invalid: x_min >= x_max (even with negative values)
+  box.y_min = -3;
+  box.y_max = 0;
+
+  EXPECT_THROW(
+      make_box_device(box),
+      std::invalid_argument);
+}

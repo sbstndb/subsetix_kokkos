@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cmath>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -345,14 +346,27 @@ build_interval_set_from_rows(std::size_t num_rows,
  * @brief Build a filled axis-aligned rectangle on device.
  *
  * All rows y in [box.y_min, box.y_max) contain a single interval [x_min, x_max).
+ *
+ * @throws std::invalid_argument if box dimensions are invalid
+ *         (x_min >= x_max or y_min >= y_max)
  */
 inline IntervalSet2DDevice
 make_box_device(const Box2D& box) {
-  IntervalSet2DDevice dev;
-
-  if (box.x_min >= box.x_max || box.y_min >= box.y_max) {
-    return dev;
+  if (box.x_min >= box.x_max) {
+    throw std::invalid_argument(
+        "make_box_device: invalid x dimensions (x_min=" +
+        std::to_string(box.x_min) + " >= x_max=" +
+        std::to_string(box.x_max) + ")");
   }
+
+  if (box.y_min >= box.y_max) {
+    throw std::invalid_argument(
+        "make_box_device: invalid y dimensions (y_min=" +
+        std::to_string(box.y_min) + " >= y_max=" +
+        std::to_string(box.y_max) + ")");
+  }
+
+  IntervalSet2DDevice dev;
 
   const std::size_t num_rows =
       static_cast<std::size_t>(box.y_max - box.y_min);
