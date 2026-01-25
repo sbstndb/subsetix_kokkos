@@ -26,8 +26,8 @@ using namespace subsetix::fvd::mpi;
 // ============================================================================
 
 void example_1_mpi_minimal() {
-    // MPI et Kokkos sont initialisés automatiquement
-    // La détection de MPI se fait automatiquement au premier appel
+    // MPI and Kokkos are initialized automatically
+    // MPI detection is automatic on first call
 
     auto solver = EulerSolverRK3::builder(1000, 500)
         .with_domain(0.0, 2.0, 0.0, 1.0)
@@ -35,20 +35,20 @@ void example_1_mpi_minimal() {
             using System = Euler2D<float>;
             return System::from_primitive({1.0f, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Tout est automatique:
-        // - MPI auto-détecté
-        // - Décomposition cartésienne 2D automatique
-        // - Communications implicites après chaque step()
-        // - Observateurs affichent seulement sur rank 0
+        // Everything is automatic:
+        // - MPI auto-detected
+        // - Automatic 2D Cartesian decomposition
+        // - Implicit communications after each step()
+        // - Observers display only on rank 0
         .build();
 
-    // Simulation - les communications sont transparentes !
+    // Simulation - communications are transparent!
     const float t_final = 0.1f;
     while (solver.time() < t_final) {
-        solver.step();  // Halo exchange automatique
+        solver.step();  // Automatic halo exchange
     }
 
-    // Affichage uniquement sur rank 0
+    // Display only on rank 0
     if (solver.is_rank0()) {
         printf("Simulation terminée: t = %.4f\n", solver.time());
     }
@@ -59,24 +59,24 @@ void example_1_mpi_minimal() {
 // ============================================================================
 
 void example_2_cartesian_2d() {
-    // Décomposition explicite en grille 2x2 (pour 4 ranks)
+    // Explicit decomposition in 2x2 grid (for 4 ranks)
     auto solver = EulerSolverRK3::builder(1000, 500)
         .with_domain(0.0, 2.0, 0.0, 1.0)
         .with_initial_condition([](float x, float y) {
             using System = Euler2D<float>;
             return System::from_primitive({1.0f, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Décomposition explicite
+        // Explicit decomposition
         .with_decomposition<Cartesian2D>({
             .nx_global = 1000,
             .ny_global = 500,
-            .px = 2,    // 2 ranks en X
-            .py = 2,    // 2 ranks en Y
+            .px = 2,    // 2 ranks in X
+            .py = 2,    // 2 ranks in Y
             .padding = 1  // Ghost cells
         })
         .build();
 
-    // Afficher les informations de décomposition
+    // Display the decomposition information
     auto info = solver.mpi_info();
     printf("[Rank %d/%d] Position grille: (%d, %d) / (%d, %d)\n",
            solver.rank(), solver.nranks(),
@@ -100,23 +100,23 @@ void example_3_metis_decomposition() {
     auto solver = EulerSolverRK3::builder(1000, 500)
         .with_domain(0.0, 2.0, 0.0, 1.0)
         .with_initial_condition([](float x, float y) {
-            // Condition initiale complexe pour justifier Metis
+            // Complex initial condition to justify Metis
             using System = Euler2D<float>;
             float rho = 1.0f + 0.5f * std::sin(10.0f * x) * std::cos(10.0f * y);
             return System::from_primitive({rho, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Décomposition Metis (nombre arbitraire de voisins)
+        // Metis decomposition (arbitrary number of neighbors)
         .with_decomposition<MetisDecomposition>({
             .geometry = MetisDecomposition::GeometryInput{
                 .nx = 1000,
                 .ny = 500,
                 .halo_width = 1
             },
-            .imbalance = 1.05f  // Tolérance de déséquilibre
+            .imbalance = 1.05f  // Imbalance tolerance
         })
         .build();
 
-    // Interroger les voisins
+    // Query the neighbors
     printf("[Rank %d/%d] J'ai %d voisins:\n",
            solver.rank(), solver.nranks(), solver.num_neighbors());
 
@@ -143,11 +143,11 @@ void example_4_observer_rank0_only() {
             using System = Euler2D<float>;
             return System::from_primitive({1.0f, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Mode: seul rank 0 affiche (défaut)
+        // Mode: only rank 0 displays (default)
         .with_observer_mode(ObserverMode::Rank0Only)
         .build();
 
-    // Observer de progression
+    // Progress observer
     solver.observers().on_mpi_progress([](const MPISolverState<float>& state) {
         if (state.step % 10 == 0) {
             printf("[Rank 0] Step %d: t=%.4f, dt=%.5f, %zu local cells\n",
@@ -172,14 +172,14 @@ void example_5_observer_all_ranks() {
             using System = Euler2D<float>;
             return System::from_primitive({1.0f, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Mode: tous les ranks affichent avec préfixe
+        // Mode: all ranks display with prefix
         .with_observer_mode(ObserverMode::AllRanks)
         .build();
 
-    // Observer de progression
+    // Progress observer
     solver.observers().on_mpi_progress([](const MPISolverState<float>& state) {
         if (state.step % 10 == 0) {
-            // Affichage automatique avec préfixe [Rank X/Y]
+            // Automatic display with prefix [Rank X/Y]
             printf("[Rank %d/%d] Step %d: t=%.4f, %zu cells\n",
                    state.rank, state.nranks, state.step, state.time, state.local_cells);
         }
@@ -199,17 +199,17 @@ void example_6_observer_reduced() {
     auto solver = EulerSolverRK3::builder(1000, 500)
         .with_domain(0.0, 2.0, 0.0, 1.0)
         .with_initial_condition([](float x, float y) {
-            // Shock tube pour variations significatives
+            // Shock tube for significant variations
             using System = Euler2D<float>;
             float rho = (x < 1.0f) ? 2.0f : 1.0f;
             float p = (x < 1.0f) ? 2.0f : 1.0f;
             return System::from_primitive({rho, 0.0f, 0.0f, p}, 1.4f);
         })
-        // Mode: réductions automatiques
+        // Mode: automatic reductions
         .with_observer_mode(ObserverMode::Reduced)
         .build();
 
-    // Observer avec réductions MPI
+    // Observer with MPI reductions
     solver.observers().on_mpi_progress([](const MPISolverState<float>& state) {
         if (state.step % 10 == 0 && state.rank == 0) {
             printf("Step %d: t=%.4f\n", state.step, state.time);
@@ -229,7 +229,7 @@ void example_6_observer_reduced() {
 }
 
 // ============================================================================
-// EXAMPLE 7: COMMUNICATION ASYNCHRONE
+// EXAMPLE 7: ASYNCHRONOUS COMMUNICATION
 // ============================================================================
 
 void example_7_async_communication() {
@@ -239,12 +239,12 @@ void example_7_async_communication() {
             using System = Euler2D<float>;
             return System::from_primitive({1.0f, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Mode asynchrone pour recouvrement calcul/communication
+        // Asynchronous mode for computation/communication overlap
         .with_comm_mode(CommMode::Asynchronous)
         .with_auto_comm(true)
         .build();
 
-    // Observer pour monitorer le recouvrement
+    // Observer to monitor the overlap
     solver.observers().on_mpi_progress([](const MPISolverState<float>& state) {
         if (state.step % 20 == 0 && state.rank == 0) {
             printf("Step %d: comm overlap = %.1f%%\n",
@@ -275,10 +275,10 @@ void example_8_manual_communication() {
 
     const float t_final = 0.1f;
 
-    // Faire plusieurs sous-étapes avant de communiquer
+    // Do multiple sub-steps before communicating
     int inner_steps = 0;
     while (solver.time() < t_final) {
-        // 5 steps sans communication
+        // 5 steps without communication
         for (int i = 0; i < 5; ++i) {
             solver.step_without_comm();
             inner_steps++;
@@ -317,7 +317,7 @@ void example_9_load_balancing() {
     // Activer le load balancing automatique
     solver.enable_auto_load_balance(true);
 
-    // Observer pour le load balancing
+    // Observer for load balancing
     solver.observers().on_load_balance([](const MPISolverState<float>& state,
                                          float old_ratio, float new_ratio) {
         if (state.rank == 0) {
@@ -407,11 +407,11 @@ void example_11_custom_load_balance() {
             cost += 10.0f * grad_mag;
         }
 
-        // Bonus pour le raffinement
+        // Bonus for refinement
         cost *= Kokkos::pow(2.0f, level);
 
-        // Bonus pour les chocs (compression)
-        Real div_v = 0.0f;  // TODO: calculer depuis q.u, q.v
+        // Bonus for shocks (compression)
+        Real div_v = 0.0f;  // TODO: compute from q.u, q.v
         if (div_v < -0.5f) {
             cost *= 3.0f;
         }
@@ -451,7 +451,7 @@ void example_12_full_featured() {
     auto solver = Solver::builder(1000, 500)
         .with_domain(0.0, 2.0, 0.0, 1.0)
         .with_initial_condition([](float x, float y) {
-            // Écoulement Mach 2 avec obstacle cylindrique
+            // Mach 2 flow with cylindrical obstacle
             float mach = 2.0f;
             float gamma = 1.4f;
             float rho = 1.0f;
@@ -470,7 +470,7 @@ void example_12_full_featured() {
 
             return System::from_primitive({rho, u, v, p}, gamma);
         })
-        // Décomposition Metis pour géométrie complexe
+        // Metis decomposition for complex geometry
         .with_decomposition<MetisDecomposition>({
             .geometry = MetisDecomposition::GeometryInput{
                 .nx = 1000,
@@ -480,7 +480,7 @@ void example_12_full_featured() {
             .imbalance = 1.05f
         })
         .with_halo_width(2)
-        // Communication asynchrone avec GPU-Direct si dispo
+        // Asynchronous communication with GPU-Direct if available
         .with_comm_mode(CommMode::GPUDirect)
         .with_auto_comm(true)
         // Observateurs: stats globales
@@ -561,7 +561,7 @@ void example_13_vtk_output() {
             using System = Euler2D<float>;
             return System::from_primitive({1.0f, 100.0f, 0.0f, 100000.0f}, 1.4f);
         })
-        // Seul rank 0 écrit les fichiers VTK
+        // Only rank 0 writes VTK files
         .with_observer_mode(ObserverMode::Rank0Only)
         .build();
 
@@ -571,7 +571,7 @@ void example_13_vtk_output() {
             if (state.step % 100 == 0 && solver.is_rank0()) {
                 char filename[256];
                 snprintf(filename, sizeof(filename), "output_mpi/frame_%04d.vtk", frame++);
-                // Gather automatique sur rank 0 + écriture VTK
+                // Automatic gather on rank 0 + VTK writing
                 solver.write_vtk(filename);
                 printf("VTK écrit: %s\n", filename);
             }
@@ -620,7 +620,7 @@ void example_14_checkpoint_restart() {
     // Checkpoint manuel
     solver.write_checkpoint("final_mpi.bin", CheckpointFormat::Binary);
 
-    // Restart: chaque rank lit sa portion
+    // Restart: each rank reads its portion
     auto solver2 = EulerSolverRK3::builder(1000, 500)
         .with_domain(0.0, 2.0, 0.0, 1.0)
         .build();

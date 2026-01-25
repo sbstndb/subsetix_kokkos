@@ -179,7 +179,7 @@ void BM_CSRIntersection_Tiny(benchmark::State& state) {
   RectConfig a{0, 128, 0, 128};          // 128x128
   const Coord N = 128;
   const Coord offset = N / 4;
-  RectConfig b{offset, offset + N, offset, offset + N}; // carré 128x128
+  RectConfig b{offset, offset + N, offset, offset + N}; // 128x128 square
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
                                   const IntervalSet2DDevice& B,
                                   IntervalSet2DDevice& out,
@@ -192,7 +192,7 @@ void BM_CSRIntersection_Medium(benchmark::State& state) {
   const Coord N = 1280;
   RectConfig a{0, N, 0, N};              // 1280x1280
   const Coord offset = N / 4;
-  RectConfig b{offset, offset + N, offset, offset + N}; // carré 1280x1280
+  RectConfig b{offset, offset + N, offset, offset + N}; // 1280x1280 square
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
                                   const IntervalSet2DDevice& B,
                                   IntervalSet2DDevice& out,
@@ -205,7 +205,7 @@ void BM_CSRIntersection_Large(benchmark::State& state) {
   const Coord N = 12800;
   RectConfig a{0, N, 0, N};              // 12800x12800
   const Coord offset = N / 4;
-  RectConfig b{offset, offset + N, offset, offset + N}; // carré 12800x12800
+  RectConfig b{offset, offset + N, offset, offset + N}; // 12800x12800 square
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
                                   const IntervalSet2DDevice& B,
                                   IntervalSet2DDevice& out,
@@ -218,7 +218,7 @@ void BM_CSRIntersection_XLarge(benchmark::State& state) {
   const Coord N = 128000;
   RectConfig a{0, N, 0, N};              // 128000x128000
   const Coord offset = N / 4;
-  RectConfig b{offset, offset + N, offset, offset + N}; // carré 128000x128000
+  RectConfig b{offset, offset + N, offset, offset + N}; // 128000x128000 square
   bench_binary_op(state, a, b, [](const IntervalSet2DDevice& A,
                                   const IntervalSet2DDevice& B,
                                   IntervalSet2DDevice& out,

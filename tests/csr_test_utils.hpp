@@ -14,7 +14,7 @@
 #include <subsetix/geometry/csr_mapping.hpp>
 #include <subsetix/geometry/csr_set_ops.hpp>
 
-// Utilitaires de tests pour comparer et construire des CSR 2D simples.
+// Test utilities for comparing and building simple 2D CSR.
 
 namespace subsetix {
 namespace csr_test {

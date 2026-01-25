@@ -14,15 +14,15 @@ namespace subsetix::fvd::mpi {
 // ============================================================================
 
 /**
- * @brief Load balancing par nombre de cellules
+ * @brief Load balancing by cell count
  *
- * Stratégie la plus simple: chaque rank doit avoir ~N_cells_total / N_ranks
+ * Simplest strategy: each rank should have ~N_cells_total / N_ranks
  */
 struct CellCountLoadBalance {
     template<typename System>
     struct Config {
-        float max_imbalance = 1.1f;  // Tolérance de déséquilibre
-        int check_interval = 100;    // Vérifier tous les N steps
+        float max_imbalance = 1.1f;  // Imbalance tolerance
+        int check_interval = 100;    // Check every N steps
 
         bool validate() const {
             return max_imbalance > 1.0f && check_interval > 0;
@@ -30,16 +30,16 @@ struct CellCountLoadBalance {
     };
 
     /**
-     * @brief Fonction device-friendly pour calculer le coût d'une cellule
+     * @brief Device-friendly function to compute the cost of a cell
      *
-     * Toutes les cellules ont le même coût.
+     * All cells have the same cost.
      *
-     * @param U Variables conservatives
-     * @param q Variables primitives
-     * @param grad_rho_x Gradient de densité en X
-     * @param grad_rho_y Gradient de densité en Y
-     * @param level Niveau de raffinement
-     * @return Coût de la cellule
+     * @param U Conservative variables
+     * @param q Primitive variables
+     * @param grad_rho_x Density gradient in X
+     * @param grad_rho_y Density gradient in Y
+     * @param level Refinement level
+     * @return Cost of the cell
      */
     template<typename System>
     KOKKOS_FUNCTION static float compute_cell_cost(
@@ -50,7 +50,7 @@ struct CellCountLoadBalance {
         int level
     ) {
         (void)U; (void)q; (void)grad_rho_x; (void)grad_rho_y; (void)level;
-        return 1.0f;  // Toutes les cellules ont le même coût
+        return 1.0f;  // All cells have the same cost
     }
 };
 
@@ -59,14 +59,14 @@ struct CellCountLoadBalance {
 // ============================================================================
 
 /**
- * @brief Load basé sur le niveau de raffinement
+ * @brief Load based on refinement level
  *
- * Les cellules fines sont plus coûteuses (plus de travail par cellule)
+ * Fine cells are more expensive (more work per cell)
  */
 struct LevelWeightedLoadBalance {
     template<typename System>
     struct Config {
-        float level_weight = 2.0f;  // Une cellule de niveau l+1 coûte level_weight fois plus
+        float level_weight = 2.0f;  // A cell at level l+1 costs level_weight times more
         float max_imbalance = 1.1f;
         int check_interval = 100;
 
@@ -84,7 +84,7 @@ struct LevelWeightedLoadBalance {
         int level
     ) {
         (void)U; (void)q; (void)grad_rho_x; (void)grad_rho_y;
-        // Coût exponentiel avec le niveau
+        // Exponential cost with level
         return Kokkos::pow(level_weight, level);
     }
 
@@ -97,9 +97,9 @@ struct LevelWeightedLoadBalance {
 // ============================================================================
 
 /**
- * @brief Load basé sur l'activité physique (gradient, etc.)
+ * @brief Load based on physical activity (gradient, etc.)
  *
- * Les régions actives (chocs, gradients forts) sont plus coûteuses
+ * Active regions (shocks, strong gradients) are more expensive
  */
 struct PhysicsWeightedLoadBalance {
     template<typename System>
@@ -125,19 +125,19 @@ struct PhysicsWeightedLoadBalance {
     ) {
         float cost = base_cost;
 
-        // Coût basé sur les gradients de densité
+        // Cost based on density gradients
         using Real = typename System::RealType;
         Real grad_mag = Kokkos::sqrt(grad_rho_x * grad_rho_x + grad_rho_y * grad_rho_y);
         cost += gradient_weight * grad_mag;
 
-        // Bonus pour les chocs (compression forte = divergence négative)
-        // Pour simplifier, on utilise le gradient de vitesse
-        // Dans une implémentation complète, on calculerait div(v)
-        if (grad_mag > 0.5f) {  // Seuil arbitraire pour "activité forte"
+        // Bonus for shocks (strong compression = negative divergence)
+        // To simplify, we use the velocity gradient
+        // In a complete implementation, we would compute div(v)
+        if (grad_mag > 0.5f) {  // Arbitrary threshold for "strong activity"
             cost *= shock_weight;
         }
 
-        // Bonus pour le raffinement
+        // Bonus for refinement
         cost *= Kokkos::pow(2.0f, level);
 
         return cost;
@@ -149,9 +149,9 @@ struct PhysicsWeightedLoadBalance {
 // ============================================================================
 
 /**
- * @brief Load personnalisé par l'utilisateur (compile-time)
+ * @brief Custom load defined by the user (compile-time)
  *
- * L'utilisateur fournit un lambda qui devient une fonction device via KOKKOS_LAMBDA
+ * The user provides a lambda that becomes a device function via KOKKOS_LAMBDA
  *
  * Exemple d'utilisation:
  * @code
@@ -162,7 +162,7 @@ struct PhysicsWeightedLoadBalance {
  *     float grad_rho_y,
  *     int level
  * ) -> float {
- *     // Votre logique de coût ici
+ *     // Your cost logic here
  *     return some_cost;
  * };
  *
@@ -195,9 +195,9 @@ struct CustomLoadBalance {
 // ============================================================================
 
 /**
- * @brief Traits pour les politiques de load balancing
+ * @brief Traits for load balancing policies
  *
- * Permet d'interroger les propriétés d'une politique à compile time.
+ * Allows querying properties of a policy at compile time.
  */
 template<typename LoadBalancePolicy, typename System>
 struct LoadBalanceTraits {
@@ -219,11 +219,11 @@ struct LoadBalanceTraits {
 // ============================================================================
 
 /**
- * @brief Créer une configuration de load balancing par défaut
+ * @brief Create a default load balancing configuration
  *
- * @tparam LoadBalancePolicy Politique de load balancing
- * @tparam System Système (Euler2D, etc.)
- * @return Config Configuration par défaut
+ * @tparam LoadBalancePolicy Load balancing policy
+ * @tparam System System (Euler2D, etc.)
+ * @return Config Default configuration
  */
 template<template<typename> class LoadBalancePolicy, typename System>
 typename LoadBalancePolicy<System>::Config default_load_balance_config() {
@@ -231,12 +231,12 @@ typename LoadBalancePolicy<System>::Config default_load_balance_config() {
 }
 
 /**
- * @brief Valider une configuration de load balancing
+ * @brief Validate a load balancing configuration
  *
- * @tparam LoadBalancePolicy Politique de load balancing
+ * @tparam LoadBalancePolicy Load balancing policy
  * @tparam System Système
- * @param cfg Configuration à valider
- * @return true Si valide
+ * @param cfg Configuration to validate
+ * @return true If valid
  */
 template<template<typename> class LoadBalancePolicy, typename System>
 bool validate_load_balance_config(const typename LoadBalancePolicy<System>::Config& cfg) {

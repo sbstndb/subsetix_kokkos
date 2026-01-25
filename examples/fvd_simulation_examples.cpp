@@ -43,7 +43,7 @@ void example_1_simplest_advection() {
     auto solver = Solver::builder(100, 50)
         .with_domain(0.0, 1.0, 0.0, 0.5)
         .with_initial_condition([](Real x, Real y) {
-            // Condition initiale: gaussienne au centre
+            // Initial condition: Gaussian at center
             Real r2 = (x-0.5)*(x-0.5) + (y-0.25)*(y-0.25);
             return typename Advection2D<Real>::Conserved{
                 std::exp(-10.0 * r2)  // u(x,y,0)
@@ -212,7 +212,7 @@ void example_4_time_dependent_bcs() {
     );
     solver.set_time_dependent_bc("left", sinusoidal_inlet);
 
-    // 2. Outlet avec onde pulsative
+    // 2. Outlet with pulsating wave
     auto pulsating_outlet = boundary::pulsating_inlet<System>(
         1.0f,    // rho0
         -50.0f,  // u0 (outflow)
@@ -220,7 +220,7 @@ void example_4_time_dependent_bcs() {
     );
     solver.set_time_dependent_bc("right", pulsating_outlet);
 
-    // 3. Inlet avec rampe linéaire en bas
+    // 3. Inlet with linear ramp at bottom
     auto ramp_inlet = boundary::linear_ramp<System>(
         1.5f,    // rho0
         0.0f,    // u0
@@ -261,9 +261,9 @@ void example_5_custom_source_terms() {
         .build();
 
     // --- Source 1: Gravité ---
-    solver.add_gravity(-9.81f);  // Gravité vers le bas (y)
+    solver.add_gravity(-9.81f);  // Gravity downward (y)
 
-    // --- Source 2: Chauffage dans une zone circulaire ---
+    // --- Source 2: Heating in a circular zone ---
     using Conserved = typename System::Conserved;
     using Primitive = typename System::Primitive;
 
@@ -395,12 +395,12 @@ void example_7_parametric_study() {
 
     printf("Nombre de runs: %zu\n", mach_numbers.size() * cfl_numbers.size());
 
-    // Boucle sur les paramètres
+    // Loop over parameters
     for (Real mach : mach_numbers) {
         for (Real cfl : cfl_numbers) {
             printf("\n--- Run: Mach=%.1f, CFL=%.2f ---\n", mach, cfl);
 
-            // Créer un solveur pour ce run
+            // Create a solver for this run
             auto solver = Solver::builder(100, 50)
                 .with_domain(0.0, 2.0, 0.0, 0.8)
                 .with_cfl(cfl)
@@ -431,7 +431,7 @@ void example_7_parametric_study() {
             printf("Résultat: %d steps, %.3f s, %.1f steps/s\n",
                    steps, elapsed, steps / elapsed);
 
-            // Sauvegarder les résultats pour analyse
+            // Save results for analysis
             char filename[256];
             snprintf(filename, sizeof(filename),
                      "results_mach_%.1f_cfl_%.2f.csv", mach, cfl);
@@ -477,7 +477,7 @@ void example_8_custom_solver() {
 
     // Configuration AMR pour capturer les structures fines
     auto amr_config = standard_amr<System>();
-    amr_config.config.max_level = 6;  // Plus de niveaux pour MUSCL+HLLC
+    amr_config.config.max_level = 6;  // More levels for MUSCL+HLLC
     solver.set_refinement_config(amr_config);
 
     // Monitoring détaillé
@@ -533,27 +533,27 @@ void example_9_with_vtk_output() {
         })
         .build();
 
-    // Observer pour sortie VTK périodique avec NOUVELLE API write_all_fields()
-    // C'est la méthode recommandée car elle exporte TOUTES les variables conservatives
-    // (rho, rhou, rhov, E) dans un seul fichier VTK
+    // Observer for periodic VTK output with NEW API write_all_fields()
+    // This is the recommended method because it exports ALL conservative variables
+    // (rho, rhou, rhov, E) in a single VTK file
     int vtk_frame = 0;
     solver.observers().add_callback(SolverEvent::StepEnd,
         [&vtk_frame, &solver](SolverEvent, const SolverState<Real>& state) {
             if (state.step % 50 == 0) {
-                // NOUVEAU: write_all_fields() exporte toutes les variables
+                // NEW: write_all_fields() exports all variables
                 auto output = solver.get_output();
 
                 char filename[256];
                 snprintf(filename, sizeof(filename), "output/frame_%04d.vtk", vtk_frame++);
 
-                // Méthode recommandée: toutes les variables dans un fichier
+                // Recommended method: all variables in one file
                 VTKExporter::write_all_fields(output, filename, true);
                 printf("VTK multi-champ écrit: %s (rho, rhou, rhov, E)\n", filename);
             }
         }
     );
 
-    // Observer alternatif: utiliser write_legacy() pour un seul champ
+    // Alternative observer: use write_legacy() for a single field
     solver.observers().add_callback(SolverEvent::StepEnd,
         [&solver](SolverEvent, const SolverState<Real>& state) {
             if (state.step == 100) {
@@ -660,7 +660,7 @@ void example_10_complex_multiphysics() {
     auto csv_log = Observers::csv_logger<Real>("combustion_chamber.csv");
     solver.observers().add_callback(SolverEvent::StepEnd, csv_log);
 
-    // Sortie VTK pour visualisation
+    // VTK output for visualization
     int vtk_frame = 0;
     solver.observers().add_callback(SolverEvent::StepEnd,
         [&vtk_frame, &solver](SolverEvent, const SolverState<Real>& state) {
@@ -770,14 +770,14 @@ void example_12_error_handling() {
     val_cfg.max_temperature = 10000.0f;
     solver.set_validation(val_cfg);
 
-    // Observer pour les erreurs
+    // Observer for errors
     solver.observers().add_callback(SolverEvent::Error,
         [](SolverEvent event, const SolverState<Real>& state) {
             printf("ERREUR détectée à t=%.4f, step=%d\n", state.time, state.step);
         }
     );
 
-    // Observer pour les avertissements
+    // Observer for warnings
     solver.observers().add_callback(SolverEvent::StepEnd,
         [](SolverEvent event, const SolverState<Real>& state) {
             if (state.residual_rho > 1.0f) {
@@ -786,7 +786,7 @@ void example_12_error_handling() {
         }
     );
 
-    // Simulation avec gestion des erreurs
+    // Simulation with error handling
     try {
         while (solver.time() < 0.1) {
             solver.step();
@@ -840,7 +840,7 @@ void example_13_flux_scheme_comparison() {
         .with_initial_condition(sod_initial)
         .build();
 
-    // --- Solveur 3: Roe (le plus précis, avec fix d'entropie) ---
+    // --- Solver 3: Roe (most accurate, with entropy fix) ---
     using SolverRoe = AdaptiveSolver<System,
         reconstruction::NoReconstruction,
         flux::RoeFlux,
@@ -863,7 +863,7 @@ void example_13_flux_scheme_comparison() {
     while (solver_hllc.time() < t_final) solver_hllc.step();
     while (solver_roe.time() < t_final) solver_roe.step();
 
-    // Export pour comparaison
+    // Export for comparison
     auto out_rusanov = solver_rusanov.get_output();
     auto out_hllc = solver_hllc.get_output();
     auto out_roe = solver_roe.get_output();
@@ -977,7 +977,7 @@ void example_15_time_integrator_comparison() {
     using Real = float;
     using System = Euler2D<Real>;
 
-    // Test sur un problème advection d'un pulse gaussien
+    // Test on an advection problem of a Gaussian pulse
     auto gaussian_pulse = [](Real x, Real y) {
         Real dx = x - 0.5;
         Real dy = y - 0.25;
@@ -1051,7 +1051,7 @@ void example_16_multilevel_amr_vtk() {
     auto solver = Solver::builder(100, 50)
         .with_domain(0.0, 2.0, 0.0, 0.8)
         .with_initial_condition([](Real x, Real y) {
-            // Deux explosions pour tester le multi-niveau
+            // Two explosions to test multi-level
             Real dx1 = x - 0.5, dy1 = y - 0.4;
             Real r1 = std::sqrt(dx1*dx1 + dy1*dy1);
             Real dx2 = x - 1.5, dy2 = y - 0.4;
@@ -1067,18 +1067,18 @@ void example_16_multilevel_amr_vtk() {
     amr_config.config.max_level = 4;
     solver.set_refinement_config(amr_config);
 
-    // Simulation courte pour générer de l'AMR
+    // Short simulation to generate AMR
     for (int i = 0; i < 20; ++i) {
         solver.step();
     }
 
-    // Récupérer tous les niveaux AMR
+    // Retrieve all AMR levels
     auto all_levels = solver.get_all_levels();
     printf("Nombre de niveaux AMR: %zu\n", all_levels.size());
 
     // Récupérer la géométrie multi-niveau
     // Note: Ceci nécessite que AdaptiveSolver expose multilevel_geometry
-    // Pour cet exemple, nous montrons l'API conceptuelle
+    // For this example, we show the conceptual API
 
     printf("\nExport multi-niveau AMR:\n");
     printf("  - write_multilevel() exporte tous les niveaux dans un seul VTK\n");
@@ -1088,7 +1088,7 @@ void example_16_multilevel_amr_vtk() {
     // Pour l'export effectif, utiliser:
     // VTKExporter::write_multilevel(all_levels, multilevel_geo, "output/multilevel.vtk", true);
 
-    // Export chaque niveau séparément pour comparaison
+    // Export each level separately for comparison
     for (std::size_t level = 0; level < all_levels.size(); ++level) {
         char filename[256];
         snprintf(filename, sizeof(filename), "output/level_%zu.vtk", level);
@@ -1113,7 +1113,7 @@ int main(int argc, char** argv) {
     printf("║  COLLECTION D'EXEMPLES FVD - Subsetix Finite Volume API       ║\n");
     printf("╚════════════════════════════════════════════════════════════════╝\n");
 
-    // Lancer les exemples (commentez/décommentez selon vos besoins)
+    // Run the examples (comment/uncomment as needed)
     example_1_simplest_advection();
     // example_2_euler_cylinder();
     // example_3_with_amr_and_observers();

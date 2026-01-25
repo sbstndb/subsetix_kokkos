@@ -6,10 +6,10 @@
 /**
  * @file adaptive_solver_mpi.hpp
  *
- * @brief Extension MPI pour AdaptiveSolver
+ * @brief MPI extension for AdaptiveSolver
  *
- * Ce fichier étend AdaptiveSolver avec les fonctionnalités MPI.
- * Il peut être inclus après adaptive_solver.hpp pour ajouter le support MPI.
+ * This file extends AdaptiveSolver with MPI functionality.
+ * It can be included after adaptive_solver.hpp to add MPI support.
  *
  * Usage:
  *   #include <subsetix/fvd/solver/adaptive_solver.hpp>
@@ -33,12 +33,12 @@ namespace subsetix::fvd::solver {
 // ============================================================================
 
 /**
- * @brief Extension MPI pour AdaptiveSolver
+ * @brief MPI extension for AdaptiveSolver
  *
- * Cette classe étend AdaptiveSolver avec les fonctionnalités MPI
- * via l'héritage. Elle ne modifie pas la classe de base.
+ * This class extends AdaptiveSolver with MPI functionality
+ * via inheritance. It does not modify the base class.
  *
- * Les méthodes MPI sont ajoutées sans casser le code existant.
+ * MPI methods are added without breaking existing code.
  */
 template<
     FiniteVolumeSystem System,
@@ -57,13 +57,13 @@ public:
     // ========================================================================
 
     /**
-     * @brief Configuration étendue pour MPI
+     * @brief Extended configuration for MPI
      */
     struct Config : public Base::Config {
-        // Configuration MPI
+        // MPI configuration
         mpi::MPIConfig mpi_config;
 
-        // Configuration de décomposition
+        // Decomposition configuration
         typename Decomposition::Config decomp_config;
     };
 
@@ -72,15 +72,15 @@ public:
     // ========================================================================
 
     /**
-     * @brief Builder étendu pour le solveur MPI
+     * @brief Extended builder for MPI solver
      */
     class Builder : public Base::Builder {
     public:
         using BaseBuilder = typename Base::Builder;
 
-        // Constructeur
+        // Constructor
         Builder(int nx, int ny) : BaseBuilder(nx, ny) {
-            // Configurer MPI par défaut
+            // Configure MPI by default
             mpi_config_ = mpi::default_mpi_config();
         }
 
@@ -89,10 +89,10 @@ public:
         // ====================================================================
 
         /**
-         * @brief Spécifie le type de décomposition de domaine
+         * @brief Specify the domain decomposition type
          *
-         * @tparam Decomp La politique de décomposition (Cartesian1D, Cartesian2D, Metis, etc.)
-         * @param config Configuration de la décomposition
+         * @tparam Decomp The decomposition policy (Cartesian1D, Cartesian2D, Metis, etc.)
+         * @param config Decomposition configuration
          *
          * Exemple:
          *   builder.with_decomposition<mpi::Cartesian2D>({
@@ -123,9 +123,9 @@ public:
         }
 
         /**
-         * @brief Configure la largeur des halo cells pour les communications MPI
+         * @brief Configure the width of halo cells for MPI communications
          *
-         * @param halo_width Nombre de couches de ghost cells (défaut: 1)
+         * @param halo_width Number of ghost cell layers (default: 1)
          */
         Builder& with_halo_width(int halo_width = 1) {
             mpi_config_.comm.halo_width = halo_width;
@@ -133,9 +133,9 @@ public:
         }
 
         /**
-         * @brief Active/désactive les communications automatiques
+         * @brief Enable/disable automatic communications
          *
-         * @param enable Si true, les halo exchanges sont automatiques après chaque step()
+         * @param enable If true, halo exchanges are automatic after each step()
          */
         Builder& with_auto_comm(bool enable = true) {
             mpi_config_.comm.auto_comm = enable;
@@ -143,9 +143,9 @@ public:
         }
 
         /**
-         * @brief Configure le mode de communication
+         * @brief Configure the communication mode
          *
-         * @param mode Mode de communication
+         * @param mode Communication mode
          */
         Builder& with_comm_mode(mpi::CommMode mode) {
             mpi_config_.comm.mode = mode;
@@ -153,9 +153,9 @@ public:
         }
 
         /**
-         * @brief Configure le comportement des observateurs en multi-rank
+         * @brief Configure observer behavior in multi-rank
          *
-         * @param mode Mode des observateurs
+         * @param mode Observer mode
          */
         Builder& with_observer_mode(mpi::ObserverMode mode) {
             mpi_config_.observer.mode = mode;
@@ -163,10 +163,10 @@ public:
         }
 
         /**
-         * @brief Configure le communicateur MPI
+         * @brief Configure the MPI communicator
          *
-         * @param comm_mode Mode d'initialisation MPI
-         * @param custom_comm Communicateur custom (optionnel)
+         * @param comm_mode MPI initialization mode
+         * @param custom_comm Custom communicator (optional)
          */
         Builder& with_mpi_comm(
             mpi::MPICommMode comm_mode = mpi::MPICommMode::Auto,
@@ -178,31 +178,31 @@ public:
         }
 
         /**
-         * @brief Configure le load balancing pour AMR
+         * @brief Configure load balancing for AMR
          *
-         * @tparam LoadBalancePolicy Politique de load balancing
-         * @param policy Configuration de la politique
+         * @tparam LoadBalancePolicy Load balancing policy
+         * @param policy Policy configuration
          */
         template<typename LoadBalancePolicy>
         Builder& with_load_balancing(typename LoadBalancePolicy::template Config<System> policy) {
-            // Stocker la politique (à implémenter)
+            // Store the policy (to implement)
             mpi_config_.enable_auto_load_balance = true;
             mpi_config_.load_balance_tolerance = policy.max_imbalance;
             return *this;
         }
 
         /**
-         * @brief Construit le solveur MPI
+         * @brief Build the MPI solver
          *
-         * @return MPIAdaptiveSolver Le solveur configuré
+         * @return MPIAdaptiveSolver The configured solver
          */
         MPIAdaptiveSolver build() {
-            // Construire la configuration
+            // Build the configuration
             Config config;
             config.mpi_config = mpi_config_;
             config.decomp_config = decomp_config_;
 
-            // Construire le solveur
+            // Build the solver
             return MPIAdaptiveSolver(config);
         }
 
@@ -218,49 +218,49 @@ public:
     // ========================================================================
 
     /**
-     * @brief Retourne les informations MPI de ce solveur
+     * @brief Return the MPI information of this solver
      */
     const mpi::TopologyInfo<Real>& mpi_info() const {
         return topology_.info();
     }
 
     /**
-     * @brief Retourne mon rank
+     * @brief Return my rank
      */
     int rank() const {
         return topology_.rank();
     }
 
     /**
-     * @brief Retourne le nombre total de ranks
+     * @brief Return the total number of ranks
      */
     int nranks() const {
         return topology_.nranks();
     }
 
     /**
-     * @brief Retourne vrai si je suis le rang 0
+     * @brief Return true if I am rank 0
      */
     bool is_rank0() const {
         return topology_.is_rank0();
     }
 
     /**
-     * @brief Retourne la liste de mes voisins
+     * @brief Return the list of my neighbors
      */
     const std::vector<int>& neighbors() const {
         return topology_.neighbors();
     }
 
     /**
-     * @brief Retourne le nombre de voisins
+     * @brief Return the number of neighbors
      */
     int num_neighbors() const {
         return topology_.num_neighbors();
     }
 
     /**
-     * @brief Vérifie si un rank est mon voisin
+     * @brief Check if a rank is my neighbor
      */
     bool is_neighbor(int other_rank) const {
         return topology_.is_neighbor(other_rank);
@@ -271,36 +271,36 @@ public:
     // ========================================================================
 
     /**
-     * @brief Active/désactive les communications automatiques
+     * @brief Enable/disable automatic communications
      */
     void enable_auto_comm(bool enable = true) {
         comm_manager_.enable_auto_comm(enable);
     }
 
     /**
-     * @brief Exécute manuellement un échange de halos
+     * @brief Manually execute a halo exchange
      */
     void exchange_halos() {
-        // À implémenter avec les champs actuels
+        // To implement with current fields
         // comm_manager_.exchange_halos(topology_, fields, num_fields);
     }
 
     /**
-     * @brief Synchronise tous les ranks (barrière MPI)
+     * @brief Synchronize all ranks (MPI barrier)
      */
     void barrier() {
         comm_manager_.barrier();
     }
 
     /**
-     * @brief Réduit une valeur scalaire sur tous les ranks
+     * @brief Reduce a scalar value across all ranks
      */
     Real allreduce(Real local_value, MPI_Op op = MPI_SUM) const {
         return comm_manager_.allreduce(local_value, op);
     }
 
     /**
-     * @brief Broadcast une valeur depuis le rank 0
+     * @brief Broadcast a value from rank 0
      */
     void broadcast(Real& value, int root = 0) const {
         comm_manager_.broadcast(value, root);
@@ -311,19 +311,19 @@ public:
     // ========================================================================
 
     /**
-     * @brief Active le load balancing automatique pour AMR
+     * @brief Enable automatic load balancing for AMR
      */
     void enable_auto_load_balance(bool enable = true) {
-        // À implémenter
+        // To implement
     }
 
     /**
-     * @brief Force un load balancing immédiat
+     * @brief Force an immediate load balancing
      */
     void load_balance();
 
     /**
-     * @brief Retourne des statistiques sur le load balancing
+     * @brief Return statistics about load balancing
      */
     mpi::LoadBalanceStats load_balance_stats() const;
 
@@ -332,14 +332,14 @@ public:
     // ========================================================================
 
     /**
-     * @brief Retourne la largeur actuelle du halo
+     * @brief Return the current halo width
      */
     int halo_width() const {
         return comm_manager_.config().halo_width;
     }
 
     /**
-     * @brief Modifie la largeur du halo
+     * @brief Modify the halo width
      */
     void set_halo_width(int width) {
         auto cfg = comm_manager_.config();
@@ -348,7 +348,7 @@ public:
     }
 
     /**
-     * @brief Synchronise les ghost cells (synonyme de exchange_halos)
+     * @brief Synchronize ghost cells (synonym of exchange_halos)
      */
     void sync_ghosts() {
         exchange_halos();
@@ -359,20 +359,20 @@ public:
     // ========================================================================
 
     /**
-     * @brief Effectue un pas de temps avec échange de halos automatique
+     * @brief Perform a time step with automatic halo exchange
      */
     void step() {
-        // Step normal du solveur de base
+        // Normal step of the base solver
         Base::step();
 
-        // Échange automatique des halos si activé
+        // Automatic halo exchange if enabled
         if (comm_manager_.auto_comm_enabled()) {
             exchange_halos();
         }
     }
 
     /**
-     * @brief Step sans communication (pour usage manuel)
+     * @brief Step without communication (for manual usage)
      */
     void step_without_comm() {
         Base::step();
@@ -383,14 +383,14 @@ public:
     // ========================================================================
 
     /**
-     * @brief Retourne le gestionnaire d'observateurs MPI
+     * @brief Return the MPI observer manager
      */
     mpi::MPIObserverManager<Real>& mpi_observers() {
         return mpi_observers_;
     }
 
     /**
-     * @brief Retourne le gestionnaire d'observateurs MPI (const)
+     * @brief Return the MPI observer manager (const)
      */
     const mpi::MPIObserverManager<Real>& mpi_observers() const {
         return mpi_observers_;
@@ -402,7 +402,7 @@ private:
     // ========================================================================
 
     /**
-     * @brief Constructeur privé (utiliser Builder)
+     * @brief Constructor privé (utiliser Builder)
      */
     explicit MPIAdaptiveSolver(const Config& config)
         : Base(config)
@@ -410,30 +410,30 @@ private:
         , topology_()
         , mpi_observers_()
     {
-        // Initialiser MPI si nécessaire
+        // Initialize MPI if necessary
         if (config.mpi_config.comm_mode == mpi::MPICommMode::Auto) {
             mpi::MPIInitializer::initialize();
         }
 
-        // Initialiser la décomposition
+        // Initialize the decomposition
         init_decomposition(config.decomp_config);
 
-        // Configurer les observateurs MPI
+        // Configure MPI observers
         mpi_observers_.set_observer_mode(config.mpi_config.observer.mode);
         mpi_observers_.set_comm(config.mpi_config.custom_comm);
     }
 
     /**
-     * @brief Initialiser la décomposition de domaine
+     * @brief Initialize the decomposition de domaine
      */
     void init_decomposition(const typename Decomposition::Config& config) {
-        // Appeler la politique de décomposition
+        // Call the decomposition policy
         auto decomp_info = Decomposition::init(config, mpi_config_.custom_comm);
 
-        // Construire la topologie
+        // Build the topology
         topology_ = mpi::TopologyQuery(decomp_info, mpi_config_.custom_comm);
 
-        // Construire les infos de halo
+        // Build the halo info
         halo_info_ = mpi::HaloBuilder::build(topology_, mpi_config_.comm.halo_width);
     }
 
@@ -452,14 +452,14 @@ private:
 // CONVENIENCE TYPE ALIASES
 // ============================================================================
 
-// Solveur MPI avec Euler2D
+// MPI solver with Euler2D
 template<typename Real = float>
 using EulerSolverMPI = MPIAdaptiveSolver<Euler2D<Real>,
                                         reconstruction::NoReconstruction,
                                         flux::RusanovFlux,
                                         mpi::Cartesian2D>;
 
-// Solveur MPI RK3
+// MPI RK3 solver
 template<typename Real = float>
 using EulerSolverRK3_MPI = MPIAdaptiveSolver<Euler2D<Real>,
                                             reconstruction::NoReconstruction,

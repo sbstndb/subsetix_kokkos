@@ -37,11 +37,11 @@ struct RowKey2D {
  * Templated on MemorySpace to support both Host and Device.
  * Uses Kokkos::View for all storage.
  *
- * Invariants (par convention) :
+ * Invariants (by convention):
  *  - row_keys.extent(0) == num_rows,
  *  - row_ptr.extent(0) == num_rows + 1,
  *  - intervals.extent(0) >= num_intervals,
- *  - pour chaque ligne, les intervalles sont triés et non chevauchants.
+ *  - for each row, intervals are sorted and non-overlapping.
  */
 template <class MemorySpace>
 struct IntervalSet2D {

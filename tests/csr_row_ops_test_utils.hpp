@@ -15,8 +15,8 @@
 #include <subsetix/geometry/csr_mapping.hpp>
 #include <subsetix/geometry/csr_set_ops.hpp>
 
-// Utilitaires de tests pour les opérateurs de base sur une ligne
-// (union, intersection, différence A \ B).
+// Test utilities for basic operators on a single row
+// (union, intersection, difference A \ B).
 
 namespace subsetix {
 namespace csr_test {
@@ -41,7 +41,7 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     cases.push_back(c);
   }
 
-  // 1) A non vide, B vide.
+  // 1) A non-empty, B empty.
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{0, 2});
@@ -50,16 +50,16 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     cases.push_back(c);
   }
 
-  // 2) A vide, B non vide.
+  // 2) A empty, B non-empty.
   {
     RowOpCase c;
     c.intervals_b.push_back(Interval{0, 2});
     c.expected_union = c.intervals_b;
-    // intersection et différence A\B vides.
+    // intersection and difference A\B empty.
     cases.push_back(c);
   }
 
-  // 3) Recouvrement partiel : A = [0,3), B = [1,4).
+  // 3) Partial overlap: A = [0,3), B = [1,4).
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{0, 3});
@@ -70,7 +70,7 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     cases.push_back(c);
   }
 
-  // 4) B strictement inclus dans A, multiples trous.
+  // 4) B strictly included in A, multiple holes.
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{0, 10});
@@ -85,7 +85,7 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     cases.push_back(c);
   }
 
-  // 5) Plusieurs intervalles dans A, B chevauche les deux.
+  // 5) Multiple intervals in A, B overlaps both.
   //    A = [0,2), [4,6); B = [1,5)
   {
     RowOpCase c;
@@ -103,7 +103,7 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     cases.push_back(c);
   }
 
-  // 6) A et B disjoints.
+  // 6) A and B disjoint.
   //    A = [0,2), [4,6); B = [10,12)
   {
     RowOpCase c;
@@ -119,19 +119,19 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     cases.push_back(c);
   }
 
-  // 7) Intervalles qui se touchent : A = [0,2), B = [2,4).
+  // 7) Adjacent intervals: A = [0,2), B = [2,4).
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{0, 2});
     c.intervals_b.push_back(Interval{2, 4});
 
     c.expected_union.push_back(Interval{0, 4});
-    // intersection vide
+    // intersection empty
     c.expected_difference_a_minus_b.push_back(Interval{0, 2});
     cases.push_back(c);
   }
 
-  // 8) B couvre plusieurs intervalles de A : A = [0,2), [4,6); B = [0,6).
+  // 8) B covers multiple intervals of A: A = [0,2), [4,6); B = [0,6).
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{0, 2});
@@ -143,11 +143,11 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     c.expected_intersection.push_back(Interval{0, 2});
     c.expected_intersection.push_back(Interval{4, 6});
 
-    // A \ B vide
+    // A \ B empty
     cases.push_back(c);
   }
 
-  // 9) A avec plusieurs intervalles, B recouvre partiellement le bloc central.
+  // 9) A with multiple intervals, B partially overlaps the central block.
   //    A = [0,2), [3,5), [6,7); B = [1,6)
   {
     RowOpCase c;
@@ -166,7 +166,7 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     cases.push_back(c);
   }
 
-  // 10) A entièrement inclus dans B : A = [2,4), B = [0,6)
+  // 10) A entirely included in B: A = [2,4), B = [0,6)
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{2, 4});
@@ -174,11 +174,11 @@ inline std::vector<RowOpCase> build_row_op_cases() {
 
     c.expected_union.push_back(Interval{0, 6});
     c.expected_intersection.push_back(Interval{2, 4});
-    // A \ B vide
+    // A \ B empty
     cases.push_back(c);
   }
 
-  // 11) B uniquement à gauche et à droite de A : A = [2,4), B = [0,1), [5,7)
+  // 11) B only to the left and right of A: A = [2,4), B = [0,1), [5,7)
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{2, 4});
@@ -189,36 +189,36 @@ inline std::vector<RowOpCase> build_row_op_cases() {
     c.expected_union.push_back(Interval{2, 4});
     c.expected_union.push_back(Interval{5, 7});
 
-    // intersection vide
+    // intersection empty
     c.expected_difference_a_minus_b.push_back(Interval{2, 4});
     cases.push_back(c);
   }
 
-  // 12) B juste à gauche, touchant A : A = [2,4), B = [0,2)
+  // 12) B just to the left, touching A: A = [2,4), B = [0,2)
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{2, 4});
     c.intervals_b.push_back(Interval{0, 2});
 
     c.expected_union.push_back(Interval{0, 4});
-    // intersection vide (demi-ouverts)
+    // intersection empty (half-open intervals)
     c.expected_difference_a_minus_b.push_back(Interval{2, 4});
     cases.push_back(c);
   }
 
-  // 13) B juste à droite, touchant A : A = [2,4), B = [4,6)
+  // 13) B just to the right, touching A: A = [2,4), B = [4,6)
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{2, 4});
     c.intervals_b.push_back(Interval{4, 6});
 
     c.expected_union.push_back(Interval{2, 6});
-    // intersection vide
+    // intersection empty
     c.expected_difference_a_minus_b.push_back(Interval{2, 4});
     cases.push_back(c);
   }
 
-  // 14) Coordonnées négatives : A = [-5,-1), B = [-3,1)
+  // 14) Negative coordinates: A = [-5,-1), B = [-3,1)
   {
     RowOpCase c;
     c.intervals_a.push_back(Interval{-5, -1});

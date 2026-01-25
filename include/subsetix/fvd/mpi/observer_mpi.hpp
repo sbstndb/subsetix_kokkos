@@ -19,48 +19,48 @@ namespace subsetix::fvd::mpi {
 // ============================================================================
 
 /**
- * @brief Snapshot du solveur avec informations MPI
+ * @brief Solver snapshot with MPI information
  *
- * Étend SolverState<Real> avec les informations spécifiques MPI.
+ * Extends SolverState<Real> with MPI-specific information.
  */
 template<typename Real = float>
 struct MPISolverState : public SolverState<Real> {
-    // Hérite de SolverState<Real>:
+    // Inherits from SolverState<Real>:
     // - Real time, dt
     // - int step, stage, max_level
     // - std::size_t total_cells, cells_per_level[10]
     // - double wall_time, step_time
     // - Real residual_rho, residual_momentum, residual_energy
 
-    // Informations MPI
-    int rank = 0;                 // Mon rank
-    int nranks = 1;               // Nombre total de ranks
+    // MPI information
+    int rank = 0;                 // My rank
+    int nranks = 1;               // Total number of ranks
 
-    // Statistiques locales
-    std::size_t local_cells = 0;  // Nombre de cellules sur ce rank
-    Real local_min_rho = Real(0); // Min locale de la densité
-    Real local_max_rho = Real(0); // Max locale de la densité
-    Real local_avg_rho = Real(0); // Moyenne locale de la densité
+    // Local statistics
+    std::size_t local_cells = 0;  // Number of cells on this rank
+    Real local_min_rho = Real(0); // Local minimum of density
+    Real local_max_rho = Real(0); // Local maximum of density
+    Real local_avg_rho = Real(0); // Local average of density
 
-    // Statistiques globales (réduites via MPI_Allreduce)
-    std::size_t global_cells = 0; // Nombre total de cellules (tous ranks)
-    Real global_min_rho = Real(0); // Min global de la densité
-    Real global_max_rho = Real(0); // Max global de la densité
-    Real global_avg_rho = Real(0); // Moyenne globale de la densité
+    // Global statistics (reduced via MPI_Allreduce)
+    std::size_t global_cells = 0; // Total number of cells (all ranks)
+    Real global_min_rho = Real(0); // Global minimum of density
+    Real global_max_rho = Real(0); // Global maximum of density
+    Real global_avg_rho = Real(0); // Global average of density
 
     // Load balancing
     float load_balance_ratio = 1.0f;  // max_cells / avg_cells
-    int most_loaded_rank = 0;         // Rank le plus chargé
+    int most_loaded_rank = 0;         // Most loaded rank
 
     // Communication
-    double last_comm_time = 0.0;      // Temps passé en comm MPI (secondes)
-    double comm_overlap_ratio = 0.0;  // Ratio de recouvrement calcul/comm
-    std::size_t bytes_sent = 0;       // Octets envoyés lors du dernier exchange
-    std::size_t bytes_received = 0;   // Octets reçus lors du dernier exchange
+    double last_comm_time = 0.0;      // Time spent in MPI comm (seconds)
+    double comm_overlap_ratio = 0.0;  // Computation/communication overlap ratio
+    std::size_t bytes_sent = 0;       // Bytes sent during last exchange
+    std::size_t bytes_received = 0;   // Bytes received during last exchange
 
     // Voisins
-    int num_neighbors = 0;            // Nombre de voisins
-    std::vector<int> neighbor_ranks;  // Liste des rangs voisins
+    int num_neighbors = 0;            // Number of neighbors
+    std::vector<int> neighbor_ranks;  // List of neighbor ranks
 };
 
 // ============================================================================
@@ -68,13 +68,13 @@ struct MPISolverState : public SolverState<Real> {
 // ============================================================================
 
 /**
- * @brief Callback de progression MPI-aware
+ * @brief MPI-aware progress callback
  */
 template<typename Real = float>
 using MPIProgressCallback = std::function<void(const MPISolverState<Real>&)>;
 
 /**
- * @brief Callback de load balancing
+ * @brief Load balancing callback
  */
 template<typename Real = float>
 using LoadBalanceCallback = std::function<void(
@@ -84,7 +84,7 @@ using LoadBalanceCallback = std::function<void(
 )>;
 
 /**
- * @brief Callback de communication
+ * @brief Communication callback
  */
 template<typename Real = float>
 using CommCallback = std::function<void(
@@ -97,9 +97,9 @@ using CommCallback = std::function<void(
 // ============================================================================
 
 /**
- * @brief Gestionnaire d'observateurs MPI-aware
+ * @brief MPI-aware observer manager
  *
- * Étend ObserverManager avec des fonctionnalités spécifiques MPI.
+ * Extends ObserverManager with MPI-specific functionality.
  */
 template<typename Real = float>
 class MPIObserverManager : public ObserverManager<Real> {
@@ -124,16 +124,16 @@ public:
     // ========================================================================
 
     /**
-     * @brief Configure le mode des observateurs
+     * @brief Configure the observer mode
      *
-     * @param mode Mode des observateurs (Rank0Only, AllRanks, Reduced)
+     * @param mode Observer mode (Rank0Only, AllRanks, Reduced)
      */
     void set_observer_mode(ObserverMode mode) {
         mode_ = mode;
     }
 
     /**
-     * @brief Retourne le mode actuel des observateurs
+     * @brief Return the current observer mode
      */
     ObserverMode observer_mode() const {
         return mode_;
@@ -144,31 +144,31 @@ public:
     // ========================================================================
 
     /**
-     * @brief Enregistrer un callback de progression MPI-aware
+     * @brief Register an MPI-aware progress callback
      *
-     * Le callback s'adapte au mode configuré:
-     * - Rank0Only: appelé seulement sur rank 0
-     * - AllRanks: appelé sur tous les ranks
-     * - Reduced: appelé sur tous les ranks avec stats globales
+     * The callback adapts to the configured mode:
+     * - Rank0Only: called only on rank 0
+     * - AllRanks: called on all ranks
+     * - Reduced: called on all ranks with global stats
      *
-     * @param callback Fonction à appeler après chaque step
-     * @return int ID du callback
+     * @param callback Function to call after each step
+     * @return int Callback ID
      */
     int on_mpi_progress(MPIProgressCallback<Real> callback);
 
     /**
-     * @brief Enregistrer un callback de load balancing
+     * @brief Register a load balancing callback
      *
-     * @param callback Fonction appelée après chaque redistribution
-     * @return int ID du callback
+     * @param callback Function called after each redistribution
+     * @return int Callback ID
      */
     int on_load_balance(LoadBalanceCallback<Real> callback);
 
     /**
-     * @brief Enregistrer un callback de communication
+     * @brief Register a communication callback
      *
-     * @param callback Fonction appelée après chaque échange de halos
-     * @return int ID du callback
+     * @param callback Function called after each halo exchange
+     * @return int Callback ID
      */
     int on_communication(CommCallback<Real> callback);
 
@@ -177,19 +177,19 @@ public:
     // ========================================================================
 
     /**
-     * @brief Notifier tous les observateurs d'un événement MPI
+     * @brief Notify all observers of an MPI event
      *
-     * @param event Événement
-     * @param state État du solveur avec info MPI
+     * @param event Event
+     * @param state Solver state with MPI info
      */
     void notify_mpi(SolverEvent event, const MPISolverState<Real>& state);
 
     /**
-     * @brief Notifier un événement de load balancing
+     * @brief Notify a load balancing event
      *
-     * @param state État du solveur
-     * @param old_ratio Ancien ratio de load balance
-     * @param new_ratio Nouveau ratio de load balance
+     * @param state Solver state
+     * @param old_ratio Old load balance ratio
+     * @param new_ratio New load balance ratio
      */
     void notify_load_balance(const MPISolverState<Real>& state,
                             float old_ratio, float new_ratio);
@@ -199,24 +199,24 @@ public:
     // ========================================================================
 
     /**
-     * @brief Vérifier si ce rank doit afficher/écrire
+     * @brief Check if this rank should display/write
      *
-     * @return true Si ce rank doit output
+     * @return true If this rank should output
      */
     bool should_output() const;
 
     /**
-     * @brief Retourne le rank de ce gestionnaire
+     * @brief Return the rank of this manager
      */
     int rank() const { return rank_; }
 
     /**
-     * @brief Retourne le nombre total de ranks
+     * @brief Return the total number of ranks
      */
     int nranks() const { return nranks_; }
 
     /**
-     * @brief Configure le communicateur MPI
+     * @brief Configure the MPI communicator
      */
     void set_comm(MPI_Comm comm);
 
@@ -226,7 +226,7 @@ private:
     int rank_ = 0;
     int nranks_ = 1;
 
-    // Callbacks MPI-aware
+    // MPI-aware callbacks
     std::vector<MPIProgressCallback<Real>> mpi_progress_callbacks_;
     std::vector<LoadBalanceCallback<Real>> load_balance_callbacks_;
     std::vector<CommCallback<Real>> comm_callbacks_;
@@ -237,38 +237,38 @@ private:
 // ============================================================================
 
 /**
- * @brief Observateurs prédéfinis pour MPI
+ * @brief Predefined observers for MPI
  */
 class MPIObservers {
 public:
     /**
-     * @brief Créer un callback de progression MPI-aware
+     * @brief Create an MPI-aware progress callback
      *
      * S'adapte au mode configuré:
-     * - Rank0Only: affiche seulement sur rank 0
-     * - AllRanks: affiche avec préfixe [Rank X/Y]
-     * - Reduced: affiche les stats globales
+     * - Rank0Only: displays only on rank 0
+     * - AllRanks: displays with prefix [Rank X/Y]
+     * - Reduced: displays global stats
      *
-     * @param print_interval Afficher tous les N steps
+     * @param print_interval Display every N steps
      * @return MPIProgressCallback<Real>
      */
     template<typename Real = float>
     static MPIProgressCallback<Real> mpi_progress_printer(int print_interval = 1);
 
     /**
-     * @brief Créer un callback de logging CSV MPI-aware
+     * @brief Create an MPI-aware CSV logging callback
      *
-     * Seul rank 0 écrit le fichier.
+     * Only rank 0 writes the file.
      *
-     * @param filename Nom du fichier CSV
-     * @return Callback pour écriture CSV
+     * @param filename CSV file name
+     * @return Callback for CSV writing
      */
     template<typename Real = float>
     static std::function<void(SolverEvent, const MPISolverState<Real>&)>
     mpi_csv_logger(const std::string& filename);
 
     /**
-     * @brief Créer un callback de rapport de load balancing
+     * @brief Create a load balancing report callback
      *
      * @return LoadBalanceCallback<Real>
      */
@@ -276,7 +276,7 @@ public:
     static LoadBalanceCallback<Real> load_balance_reporter();
 
     /**
-     * @brief Créer un callback de rapport de communication
+     * @brief Create a communication report callback
      *
      * @return CommCallback<Real>
      */

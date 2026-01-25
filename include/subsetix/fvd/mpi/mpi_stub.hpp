@@ -6,17 +6,17 @@
 /**
  * @file mpi_stub.hpp
  *
- * @brief Stub MPI pour compilation sans MPI
+ * @brief Stub MPI for compilation without MPI
  *
- * Ce fichier fournit des définitions stub pour MPI lorsqu'il n'est pas disponible.
- * Permet à l'API de compiler en mode single-rank sans MPI installé.
+ * This file provides stub definitions for MPI when it is not available.
+ * Allows the API to compile in single-rank mode without MPI installed.
  */
 
 #ifdef SUBSETIX_USE_MPI
 #include <mpi.h>
 #else
 
-// Stub types et constantes pour compilation sans MPI
+// Stub types and constants for compilation without MPI
 
 typedef int MPI_Comm;
 typedef int MPI_Request;
@@ -24,7 +24,7 @@ typedef int MPI_Op;
 typedef int MPI_Datatype;
 typedef int MPI_Status;
 
-// Constantes
+// Constants
 #define MPI_COMM_WORLD 0
 #define MPI_SUM 0
 #define MPI_MAX 1

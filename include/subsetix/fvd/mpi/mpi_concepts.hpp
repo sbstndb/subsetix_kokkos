@@ -22,32 +22,32 @@ enum class Boundary : int;
 // ============================================================================
 
 /**
- * @brief Concept pour les politiques de décomposition de domaine
+ * @brief Concept for domain decomposition policies
  *
- * Une politique de décomposition doit fournir:
- * - Config: Structure de configuration (POD, GPU-safe)
- * - DecompositionInfo: Structure d'information retournée
- * - init(): Fonction statique pour initialiser la décomposition
- * - find_neighbors(): Fonction pour trouver les voisins
- * - is_on_boundary(): Fonction pour vérifier si sur une frontière
+ * A decomposition policy must provide:
+ * - Config: Configuration structure (POD, GPU-safe)
+ * - DecompositionInfo: Returned information structure
+ * - init(): Static function to initialize the decomposition
+ * - find_neighbors(): Function to find neighbors
+ * - is_on_boundary(): Function to check if on a boundary
  */
 template<typename T>
 concept DecompositionPolicy = requires {
-    // Type de configuration (doit être trivial pour GPU)
+    // Configuration type (must be trivial for GPU)
     typename T::Config;
 
-    // Type d'information retourné
+    // Returned information type
     typename T::DecompositionInfo;
 
-    // Initialisation de la décomposition
+    // Decomposition initialization
     { T::init(std::declval<const typename T::Config&>(), std::declval<MPI_Comm>()) }
         -> std::same_as<typename T::DecompositionInfo>;
 
-    // Trouver les voisins d'un rank
+    // Find the neighbors of a rank
     { T::find_neighbors(std::declval<const typename T::DecompositionInfo&>()) }
         -> std::convertible_to<std::array<int, 4>>;
 
-    // Vérifier si sur une frontière
+    // Check if on a boundary
     { T::is_on_boundary(std::declval<const typename T::DecompositionInfo&>(),
                        std::declval<Boundary>()) }
         -> std::same_as<bool>;
@@ -58,15 +58,15 @@ concept DecompositionPolicy = requires {
 // ============================================================================
 
 /**
- * @brief Concept pour les politiques de load balancing
+ * @brief Concept for load balancing policies
  *
- * Doit fournir une fonction device-friendly pour calculer le coût d'une cellule.
+ * Must provide a device-friendly function to compute the cost of a cell.
  */
 template<typename T, typename System>
 concept LoadBalancePolicy = requires {
     typename T::template Config<System>;
 
-    // Fonction pour calculer le coût d'une cellule (doit être KOKKOS_FUNCTION)
+    // Function to compute the cost of a cell (must be KOKKOS_FUNCTION)
     { T::template compute_cell_cost<System>(
         std::declval<const typename System::Conserved&>(),
         std::declval<const typename System::Primitive&>(),
@@ -77,22 +77,22 @@ concept LoadBalancePolicy = requires {
 };
 
 // ============================================================================
-// COMM POLICY CONCEPT (pour communication entre ranks)
+// COMM POLICY CONCEPT (for communication between ranks)
 // ============================================================================
 
 /**
- * @brief Concept pour les politiques de communication
+ * @brief Concept for communication policies
  */
 template<typename T>
 concept CommPolicy = requires {
-    // Type de configuration
+    // Configuration type
     typename T::Config;
 
-    // Méthode pour échanger les halos
+    // Method to exchange halos
     { T::exchange_halos(std::declval<const typename T::Config&>()) }
         -> std::same_as<void>;
 
-    // Méthode pour barrier
+    // Method for barrier
     { T::barrier(std::declval<const typename T::Config&>()) }
         -> std::same_as<void>;
 };

@@ -16,29 +16,29 @@ namespace subsetix::fvd::mpi {
 // ============================================================================
 
 /**
- * @brief Information sur la topologie MPI
+ * @brief Information about the MPI topology
  *
- * Contient les informations sur les voisins, les frontières, etc.
+ * Contains information about neighbors, boundaries, etc.
  */
 template<typename Real = float>
 struct TopologyInfo {
     int rank = 0;                    // Mon rank
     int nranks = 1;                  // Nombre total de ranks
 
-    // Domaine local
+    // Local domain
     int nx_local = 0;
     int ny_local = 0;
-    int x_offset = 0;                // Position dans le domaine global
+    int x_offset = 0;                // Position in the global domain
     int y_offset = 0;
 
-    // Voisins
-    std::vector<int> neighbors;      // Liste des rangs voisins
-    std::vector<std::vector<int>> boundary_cells;  // Cellules frontière par voisin
+    // Neighbors
+    std::vector<int> neighbors;      // List of neighbor ranks
+    std::vector<std::vector<int>> boundary_cells;  // Boundary cells per neighbor
 
-    // Type de décomposition
+    // Decomposition type
     GenericDecompositionInfo::Type decomp_type = GenericDecompositionInfo::Type::Cartesian1D;
 
-    // Pour grille cartésienne
+    // For Cartesian grid
     struct {
         int grid_x = 0;
         int grid_y = 0;
@@ -47,35 +47,35 @@ struct TopologyInfo {
     } cartesian;
 
     /**
-     * @brief Retourne le nombre de voisins
+     * @brief Return the number of neighbors
      */
     int num_neighbors() const {
         return static_cast<int>(neighbors.size());
     }
 
     /**
-     * @brief Vérifie si un rank est mon voisin
+     * @brief Check if a rank is my neighbor
      *
-     * @param other_rank Rank à vérifier
-     * @return true Si c'est un voisin
+     * @param other_rank Rank to check
+     * @return true If it is a neighbor
      */
     bool is_neighbor(int other_rank) const {
         return std::find(neighbors.begin(), neighbors.end(), other_rank) != neighbors.end();
     }
 
     /**
-     * @brief Vérifie si je suis sur une frontière globale
+     * @brief Check if I am on a global boundary
      *
-     * @param side Direction à vérifier
-     * @return true Si sur la frontière
+     * @param side Direction to check
+     * @return true If on the boundary
      */
     bool is_on_boundary(Boundary side) const;
 
     /**
-     * @brief Retourne les cellules frontière avec un voisin
+     * @brief Return the boundary cells with a neighbor
      *
-     * @param neighbor_rank Rang du voisin
-     * @return const std::vector<int>& Liste des cellules frontières
+     * @param neighbor_rank Neighbor rank
+     * @return const std::vector<int>@return const std::vector<int>@return const std::vector<int>& Liste des cellules List of cells frontières List of boundary cells
      */
     const std::vector<int>& boundary_cells_with(int neighbor_rank) const;
 };
@@ -85,26 +85,26 @@ struct TopologyInfo {
 // ============================================================================
 
 /**
- * @brief Interface pour interroger la topologie MPI
+ * @brief Interface to query the MPI topology
  *
- * Permet à l'utilisateur de demander: "quels sont mes voisins ?",
- * "suis-je sur une frontière ?", etc.
+ * Allows the user to ask: "what are my neighbors?",
+ * "am I on a boundary?", etc.
  */
 class TopologyQuery {
 public:
     using Real = float;
 
     /**
-     * @brief Constructeur à partir d'une info de décomposition
+     * @brief Constructor from decomposition info
      *
-     * @param decomp_info Information de décomposition
-     * @param comm Communicateur MPI
+     * @param decomp_info Decomposition information
+     * @param comm MPI communicator
      */
     template<typename DecompositionInfo>
     explicit TopologyQuery(const DecompositionInfo& decomp_info, MPI_Comm comm = MPI_COMM_WORLD);
 
     /**
-     * @brief Constructeur par défaut (single rank)
+     * @brief Default constructor (single rank)
      */
     TopologyQuery();
 
@@ -113,17 +113,17 @@ public:
     // ========================================================================
 
     /**
-     * @brief Retourne mon rank
+     * @brief Return my rank
      */
     int rank() const { return info_.rank; }
 
     /**
-     * @brief Retourne le nombre total de ranks
+     * @brief Return the total number of ranks
      */
     int nranks() const { return info_.nranks; }
 
     /**
-     * @brief Retourne vrai si je suis le rang 0
+     * @brief Return true if I am rank 0
      */
     bool is_rank0() const { return info_.rank == 0; }
 
@@ -132,36 +132,36 @@ public:
     // ========================================================================
 
     /**
-     * @brief Retourne la liste de mes voisins
+     * @brief Return the list of my neighbors
      *
-     * @return const std::vector<int>& Vecteur des rangs voisins
+     * @return const std::vector<int>@return const std::vector<int>& Vecteur des rangs voisins Vector of neighbor ranks
      */
     const std::vector<int>& neighbors() const {
         return info_.neighbors;
     }
 
     /**
-     * @brief Retourne le nombre de voisins
+     * @brief Return the number of neighbors
      */
     int num_neighbors() const {
         return info_.num_neighbors();
     }
 
     /**
-     * @brief Vérifie si un rank est mon voisin
+     * @brief Check if a rank is my neighbor
      *
-     * @param other_rank Rank à vérifier
-     * @return true Si c'est un voisin
+     * @param other_rank Rank to check
+     * @return true If it is a neighbor
      */
     bool is_neighbor(int other_rank) const {
         return info_.is_neighbor(other_rank);
     }
 
     /**
-     * @brief Retourne les cellules frontière avec un voisin
+     * @brief Return the boundary cells with a neighbor
      *
-     * @param neighbor_rank Rang du voisin
-     * @return const std::vector<int>& Liste des cellules
+     * @param neighbor_rank Neighbor rank
+     * @return const std::vector<int>@return const std::vector<int>& Liste des cellules List of cells
      */
     const std::vector<int>& boundary_cells_with(int neighbor_rank) const {
         return info_.boundary_cells_with(neighbor_rank);
@@ -172,7 +172,7 @@ public:
     // ========================================================================
 
     /**
-     * @brief Retourne la taille de mon domaine local
+     * @brief Return the size of my local domain
      *
      * @return std::array<int, 2> {nx_local, ny_local}
      */
@@ -181,7 +181,7 @@ public:
     }
 
     /**
-     * @brief Retourne l'offset de mon domaine dans le domaine global
+     * @brief Return the offset of my domain in the global domain
      *
      * @return std::array<int, 2> {x_offset, y_offset}
      */
@@ -190,19 +190,19 @@ public:
     }
 
     /**
-     * @brief Vérifie si je suis sur une frontière globale
+     * @brief Check if I am on a global boundary
      *
-     * @param side Direction à vérifier
-     * @return true Si sur la frontière
+     * @param side Direction to check
+     * @return true If on the boundary
      */
     bool is_on_boundary(Boundary side) const {
         return info_.is_on_boundary(side);
     }
 
     /**
-     * @brief Retourne les directions où je suis sur une frontière
+     * @brief Return the directions where I am on a boundary
      *
-     * @return std::vector<Boundary> Liste des directions
+     * @return std::vector<Boundary> List of directions
      */
     std::vector<Boundary> boundaries() const;
 
@@ -211,7 +211,7 @@ public:
     // ========================================================================
 
     /**
-     * @brief Retourne ma position dans la grille cartésienne
+     * @brief Return my position in the Cartesian grid
      *
      * @return std::array<int, 2> {grid_x, grid_y}
      */
@@ -220,7 +220,7 @@ public:
     }
 
     /**
-     * @brief Retourne la taille de la grille cartésienne
+     * @brief Return the size of the Cartesian grid
      *
      * @return std::array<int, 2> {grid_nx, grid_ny}
      */
@@ -229,10 +229,10 @@ public:
     }
 
     /**
-     * @brief Retourne le voisin dans une direction (grille cartésienne)
+     * @brief Return the neighbor in a direction (Cartesian grid)
      *
      * @param side Direction
-     * @return int Rank du voisin (-1 si pas de voisin)
+     * @return int Neighbor rank (-1 if no neighbor)
      */
     int cartesian_neighbor(Boundary side) const;
 
@@ -241,12 +241,12 @@ public:
     // ========================================================================
 
     /**
-     * @brief Affiche les informations de topologie
+     * @brief Display the topology information
      */
     void print() const;
 
     /**
-     * @brief Retourne les informations de topologie
+     * @brief Return the topology information
      */
     const TopologyInfo<Real>& info() const {
         return info_;
@@ -262,17 +262,17 @@ private:
 // ============================================================================
 
 /**
- * @brief Information sur les halo cells
+ * @brief Information about halo cells
  */
 struct HaloInfo {
-    int width = 1;                       // Largeur du halo
-    std::vector<int> send_ranks;         // Rangs auxquels envoyer
-    std::vector<int> recv_ranks;         // Rangs desquels recevoir
-    std::vector<std::vector<int>> send_cells;   // Cellules à envoyer par rang
-    std::vector<std::vector<int>> recv_cells;   // Cellules à recevoir par rang
+    int width = 1;                       // Halo width
+    std::vector<int> send_ranks;         // Ranks to send to
+    std::vector<int> recv_ranks;         // Ranks to receive from
+    std::vector<std::vector<int>> send_cells;   // Cells to send per rank
+    std::vector<std::vector<int>> recv_cells;   // Cells to receive per rank
 
     /**
-     * @brief Retourne le nombre total de cellules à envoyer
+     * @brief Return the total number of cells to send
      */
     std::size_t total_send_cells() const {
         std::size_t total = 0;
@@ -283,7 +283,7 @@ struct HaloInfo {
     }
 
     /**
-     * @brief Retourne le nombre total de cellules à recevoir
+     * @brief Return the total number of cells to receive
      */
     std::size_t total_recv_cells() const {
         std::size_t total = 0;
@@ -299,27 +299,27 @@ struct HaloInfo {
 // ============================================================================
 
 /**
- * @brief Construit les informations de halo à partir de la topologie
+ * @brief Build halo information from the topology
  */
 class HaloBuilder {
 public:
     /**
-     * @brief Construit les infos de halo pour une décomposition
+     * @brief Build halo info for a decomposition
      *
-     * @param topology Topologie
-     * @param halo_width Largeur du halo
-     * @return HaloInfo Informations de halo
+     * @param topology Topology
+     * @param halo_width Halo width
+     * @return HaloInfo Halo information
      */
     static HaloInfo build(const TopologyQuery& topology, int halo_width = 1);
 
     /**
-     * @brief Construit les infos de halo pour grille cartésienne
+     * @brief Build halo info for Cartesian grid
      *
-     * @param nx_local Taille locale en X
-     * @param ny_local Taille locale en Y
-     * @param neighbors Voisins {left, right, bottom, top}
-     * @param halo_width Largeur du halo
-     * @return HaloInfo Informations de halo
+     * @param nx_local Local size in X
+     * @param ny_local Local size in Y
+     * @param neighbors Neighbors {left, right, bottom, top}
+     * @param halo_width Halo width
+     * @return HaloInfo Halo information
      */
     static HaloInfo build_cartesian(
         int nx_local, int ny_local,

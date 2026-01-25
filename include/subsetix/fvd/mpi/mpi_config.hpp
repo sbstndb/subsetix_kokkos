@@ -13,89 +13,89 @@ namespace subsetix::fvd::mpi {
 // ============================================================================
 
 /**
- * @brief Mode de communication entre ranks
+ * @brief Communication mode between ranks
  */
 enum class CommMode : int {
     /**
-     * Communications synchrones bloquantes après chaque step
-     * - Simple et sûr
-     * - Peut sous-utiliser GPU/CPU pendant les comm
+     * Synchronous blocking communications after each step
+     * - Simple and safe
+     * - May underutilize GPU/CPU during comm
      */
     Synchronous = 0,
 
     /**
-     * Communications asynchrones non-bloquantes
-     * - Recouvrement calcul/communication
-     * - Meilleure performance
+     * Asynchronous non-blocking communications
+     * - Computation/communication overlap
+     * - Better performance
      */
     Asynchronous = 1,
 
     /**
-     * Communications avec GPU-Direct (si disponible)
-     * - Mémoire GPU vers GPU directe
-     * - Requis CUDA-aware MPI
+     * Communications with GPU-Direct (if available)
+     * - Direct GPU to GPU memory
+     * - Requires CUDA-aware MPI
      */
     GPUDirect = 2,
 
     /**
-     * Mode hybride: automatique selon le runtime
+     * Hybrid mode: automatic based on runtime
      */
     Hybrid = 3
 };
 
 /**
- * @brief Comportement des observateurs en environnement multi-rank
+ * @brief Observer behavior in multi-rank environment
  */
 enum class ObserverMode : int {
     /**
-     * Seul le rang 0 affiche/écrit les messages
-     * - Autres ranks silencieux
-     * - Sortie console/VTK uniquement depuis rank 0
+     * Only rank 0 displays/writes messages
+     * - Other ranks silent
+     * - Console/VTK output only from rank 0
      */
     Rank0Only = 0,
 
     /**
-     * Tous les ranks affichent avec préfixe
+     * All ranks display with prefix
      * - Format: "[Rank 0/4] Step 100: t=0.5"
-     * - Utile pour debugging
+     * - Useful for debugging
      */
     AllRanks = 1,
 
     /**
-     * Réductions automatiques pour statistiques globales
-     * - Les observers font des MPI_Allreduce
-     * - Affiche les min/max/moyenne global
+     * Automatic reductions for global statistics
+     * - Observers perform MPI_Allreduce
+     * - Displays global min/max/average
      */
     Reduced = 2,
 
     /**
-     * Mode hybride: réduit pour les stats, rank 0 pour la sortie
+     * Hybrid mode: reduced for stats, rank 0 for output
      */
     Smart = 3
 };
 
 /**
- * @brief Mode d'initialisation MPI
+ * @brief MPI initialization mode
  */
 enum class MPICommMode : int {
     /**
-     * Auto-initialisation MPI implicite
+     * Implicit MPI auto-initialization
      */
     Auto = 0,
 
     /**
-     * Utilisateur gère MPI_Init/MPI_Finalize
+     * User manages MPI_Init/MPI_Finalize
      */
     UserManaged = 1,
 
     /**
-     * Utilisateur fournit un MPI_Comm custom
+     * User provides a custom MPI_Comm
      */
     Custom = 2
 };
 
 /**
- * @brief Directions de frontière
+ * @brief Boundary directions
  */
 enum class Boundary : int {
     Left = 0,
@@ -105,24 +105,24 @@ enum class Boundary : int {
 };
 
 /**
- * @brief Statistiques de load balancing
+ * @brief Load balancing statistics
  */
 struct LoadBalanceStats {
-    std::size_t total_cells = 0;      // Nombre total de cellules
-    std::size_t min_cells = 0;        // Min cellules par rank
-    std::size_t max_cells = 0;        // Max cellules par rank
-    std::size_t avg_cells = 0;        // Moyenne cellules par rank
-    float initial_ratio = 1.0f;       // Ratio max/avg initial
-    float final_ratio = 1.0f;         // Ratio max/avg final
-    float target_ratio = 1.1f;        // Ratio cible
-    int num_rebalances = 0;           // Nombre de redistributions
-    double total_comm_time = 0.0;     // Temps total en communication
-    double comm_ratio = 0.0;          // Ratio temps comm / temps total
-    int most_loaded_rank = 0;         // Rank le plus chargé
+    std::size_t total_cells = 0;      // Total number of cells
+    std::size_t min_cells = 0;        // Min cells per rank
+    std::size_t max_cells = 0;        // Max cells per rank
+    std::size_t avg_cells = 0;        // Average cells per rank
+    float initial_ratio = 1.0f;       // Initial max/avg ratio
+    float final_ratio = 1.0f;         // Final max/avg ratio
+    float target_ratio = 1.1f;        // Target ratio
+    int num_rebalances = 0;           // Number of redistributions
+    double total_comm_time = 0.0;     // Total time in communication
+    double comm_ratio = 0.0;          // Communication time / total time ratio
+    int most_loaded_rank = 0;         // Most loaded rank
 };
 
 /**
- * @brief Configuration de communication MPI
+ * @brief MPI communication configuration
  */
 struct CommConfig {
     CommMode mode = CommMode::Synchronous;
@@ -130,30 +130,30 @@ struct CommConfig {
     int halo_width = 1;
     bool use_gpu_direct = false;  // Auto-detect if Hybrid
 
-    // Pour mode asynchrone
-    bool enable_overlap = true;   // Recouvrement calcul/comm
+    // For asynchronous mode
+    bool enable_overlap = true;   // Computation/communication overlap
 
     // Timeouts
-    double comm_timeout = 30.0;   // Timeout en secondes
+    double comm_timeout = 30.0;   // Timeout in seconds
 };
 
 /**
- * @brief Configuration des observateurs MPI
+ * @brief MPI observer configuration
  */
 struct ObserverConfig {
     ObserverMode mode = ObserverMode::Rank0Only;
 
-    // Pour mode Reduced
+    // For Reduced mode
     bool enable_allreduce = true;
-    int reduce_interval = 1;  // Réduire tous les N steps
+    int reduce_interval = 1;  // Reduce every N steps
 
-    // Pour mode AllRanks
+    // For AllRanks mode
     bool show_rank_prefix = true;
     const char* rank_format = "[Rank %d/%d]";
 };
 
 /**
- * @brief Configuration MPI globale
+ * @brief Global MPI configuration
  */
 struct MPIConfig {
     MPICommMode comm_mode = MPICommMode::Auto;
