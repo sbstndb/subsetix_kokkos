@@ -99,7 +99,7 @@ TEST(CSRTranslationSmokeTest, CardinalityInvariantUnderTranslation) {
   domain.y_min = 0;
   domain.y_max = 32;
 
-  // Construire un set un peu riche : union d'un disque et d'un checkerboard.
+  // Build a somewhat rich set: union of a disk and a checkerboard.
   Disk2D disk;
   disk.cx = 20;
   disk.cy = 16;
@@ -173,7 +173,7 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslation) {
   domain.y_min = 0;
   domain.y_max = 32;
 
-  // A = disque, B = checkerboard sur le même domaine.
+  // A = disk, B = checkerboard on the same domain.
   Disk2D disk;
   disk.cx = 24;
   disk.cy = 16;
@@ -191,13 +191,13 @@ TEST(CSRTranslationSmokeTest, UnionCommutesWithTranslation) {
 
   const Coord dx = 5;
 
-  // (A ∪ B) translaté.
+  // (A ∪ B) translated.
   auto U = run_union(A, B);
   CsrSetAlgebraContext ctx;
   IntervalSet2DDevice U_shift, A_shift, B_shift;
   translate_x_device(U, dx, U_shift, ctx);
 
-  // A et B translatés puis union.
+  // A and B translated then union.
   translate_x_device(A, dx, A_shift, ctx);
   translate_x_device(B, dx, B_shift, ctx);
   auto U_shift_alt = run_union(A_shift, B_shift);

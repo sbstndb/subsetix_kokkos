@@ -39,7 +39,7 @@ void example_1_simplest_advection() {
         time::ForwardEuler<Real>               // 1er ordre temps
     >;
 
-    // Construction avec builder pattern
+    // Construction with builder pattern
     auto solver = Solver::builder(100, 50)
         .with_domain(0.0, 1.0, 0.0, 0.5)
         .with_initial_condition([](Real x, Real y) {
@@ -158,7 +158,7 @@ void example_3_with_amr_and_observers() {
         printf("  REMESH: %zu -> %zu cells (%.1f%% change)\n", old_c, new_c, change);
     });
 
-    // Observer 3: Logging CSV pour post-traitement
+    // Observer 3: CSV logging for post-processing
     auto csv_logger = Observers::csv_logger<Real>("simulation_data.csv");
     solver.observers().add_callback(SolverEvent::StepEnd, csv_logger);
 
@@ -329,7 +329,7 @@ void example_6_checkpoint_restart() {
     using System = Euler2D<Real>;
     using Solver = EulerSolverRK3;
 
-    // --- Première partie: Simulation avec checkpoint ---
+    // --- Part 1: Simulation with checkpoint ---
 
     auto solver = Solver::builder(100, 50)
         .with_domain(0.0, 2.0, 0.0, 0.8)
@@ -338,10 +338,10 @@ void example_6_checkpoint_restart() {
         })
         .build();
 
-    // Auto-checkpoint toutes les 100 étapes
+    // Auto-checkpoint every 100 steps
     solver.set_auto_checkpoint(100, "sim_checkpoint");
 
-    // Observer pour noter les checkpoints
+    // Observer to note checkpoints
     solver.observers().add_callback(SolverEvent::OutputWritten,
         [](SolverEvent, const SolverState<Real>& state) {
             printf("Checkpoint écrit à t=%.4f\n", state.time);
@@ -475,7 +475,7 @@ void example_8_custom_solver() {
         })
         .build();
 
-    // Configuration AMR pour capturer les structures fines
+    // AMR configuration to capture fine structures
     auto amr_config = standard_amr<System>();
     amr_config.config.max_level = 6;  // More levels for MUSCL+HLLC
     solver.set_refinement_config(amr_config);
@@ -486,7 +486,7 @@ void example_8_custom_solver() {
                state.step, state.time, state.dt, state.total_cells, state.max_level + 1);
     });
 
-    // Validation stricte pour schéma de haut ordre
+    // Strict validation for high-order scheme
     ValidationConfig val_cfg;
     val_cfg.check_negative_density = true;
     val_cfg.check_negative_pressure = true;
@@ -586,7 +586,7 @@ void example_10_complex_multiphysics() {
     using System = Euler2D<Real>;
     using Solver = EulerSolverRK3;
 
-    // Configuration: Chambre de combustion avec injection, gravité, AMR
+    // Configuration: Combustion chamber with injection, gravity, AMR
     auto solver = Solver::builder(150, 75)
         .with_domain(0.0, 1.5, 0.0, 0.75)
         .with_initial_condition([](Real x, Real y) {
@@ -712,7 +712,7 @@ void example_11_builder_namespace() {
     using Real = float;
     using System = Euler2D<Real>;
 
-    // Utiliser le namespace builder pour créer un solveur
+    // Use the builder namespace to create a solver
     auto solver_builder = builder::create<System,
                                           reconstruction::NoReconstruction,
                                           flux::RusanovFlux,
@@ -793,7 +793,7 @@ void example_12_error_handling() {
         }
     } catch (const std::exception& e) {
         printf("Exception capturée: %s\n", e.what());
-        // Écrire checkpoint pour diagnostic
+        // Write checkpoint for diagnostic
         solver.write_checkpoint("error_checkpoint.bin", CheckpointFormat::Binary);
         printf("Checkpoint de diagnostic écrit\n");
     }
@@ -1062,7 +1062,7 @@ void example_16_multilevel_amr_vtk() {
         })
         .build();
 
-    // Configuration AMR pour générer plusieurs niveaux
+    // AMR configuration to generate multiple levels
     auto amr_config = standard_amr<System>();
     amr_config.config.max_level = 4;
     solver.set_refinement_config(amr_config);

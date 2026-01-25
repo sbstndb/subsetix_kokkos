@@ -401,7 +401,7 @@ void example_11_custom_load_balance() {
         // Coût de base
         Real cost = 1.0f;
 
-        // Bonus pour les gradients forts (zones actives)
+        // Bonus for strong gradients (active zones)
         Real grad_mag = Kokkos::sqrt(grad_rho_x * grad_rho_x + grad_rho_y * grad_rho_y);
         if (grad_mag > 0.1f) {
             cost += 10.0f * grad_mag;
@@ -600,10 +600,10 @@ void example_14_checkpoint_restart() {
         })
         .build();
 
-    // Auto-checkpoint: chaque rank écrit sa portion
+    // Auto-checkpoint: each rank writes its portion
     solver.set_auto_checkpoint(100, "mpi_checkpoint");
 
-    // Observer pour les checkpoints
+    // Observer for checkpoints
     solver.observers().add_callback(SolverEvent::OutputWritten,
         [](SolverEvent, const auto& state) {
             if (state.rank == 0) {

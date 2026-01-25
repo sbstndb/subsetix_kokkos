@@ -98,7 +98,7 @@ TEST(CSRSetAlgebraPropertiesTest, PartitionOfAByB) {
   // A = (A ∩ B) ∪ (A \ B)
   expect_equal_csr(host_A, host_U);
 
-  // Intersection nulle entre (A ∩ B) et (A \ B) en termes de cellules.
+  // Empty intersection between (A ∩ B) and (A \ B) in terms of cells.
   auto I_cap_D1 = run_intersection(I, D1, ctx);
   auto host_I_cap_D1 = to<HostMemorySpace>(I_cap_D1);
   EXPECT_EQ(I_cap_D1.num_intervals, 0u);
@@ -153,7 +153,7 @@ TEST(CSRSetAlgebraPropertiesTest, DeMorganRelativeToBoxDomain) {
 
   CsrSetAlgebraContext ctx;
 
-  // Compléments relatifs dans D_full.
+  // Relative complements in D_full.
   auto Ac = run_difference(D_full, A, ctx);
   auto Bc = run_difference(D_full, B, ctx);
 
