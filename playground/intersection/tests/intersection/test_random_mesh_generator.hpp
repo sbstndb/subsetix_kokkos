@@ -9,6 +9,10 @@
 #include <playground/subsetix/csr/intersection/set_algebra.hpp>
 #include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
 #include <playground/subsetix/csr/intersection/algorithm/optimized.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v4_hash.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v5_parallel_merge.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v6_direct_index.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v7_soa_optimized.hpp>
 #include <Kokkos_Random.hpp>
 #include <algorithm>
 #include <cmath>
@@ -24,6 +28,10 @@ using DefaultCommonMesh3D = playground::subsetix::csr::intersection::test::Commo
 // Bring version namespaces into scope for test helpers
 using namespace playground::subsetix::csr::intersection::baseline;
 using namespace playground::subsetix::csr::intersection::optimized;
+using namespace playground::subsetix::csr::intersection::hash_based;
+using namespace playground::subsetix::csr::intersection::parallel_merge;
+using namespace playground::subsetix::csr::intersection::direct_index;
+using namespace playground::subsetix::csr::intersection::soa_optimized;
 
 namespace playground::subsetix::csr::intersection::test {
 
@@ -808,6 +816,106 @@ inline DefaultCommonMesh3D intersect_optimized_3d(const DefaultCommonMesh3D& a, 
   auto device_a = MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
   auto device_b = MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
   auto result = optimized::intersect_meshes<3>(device_a, device_b);
+  return MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+}
+
+// ============================================================================
+// Wrappers for v4 (hash-based)
+// ============================================================================
+
+/**
+ * @brief Wrapper for hash_based::intersect_meshes<2>
+ */
+inline DefaultCommonMesh2D intersect_v4_hash_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  auto device_a = MeshConverter2D<hash_based::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter2D<hash_based::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = hash_based::intersect_meshes<2>(device_a, device_b);
+  return MeshConverter2D<hash_based::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+}
+
+/**
+ * @brief Wrapper for hash_based::intersect_meshes<3>
+ */
+inline DefaultCommonMesh3D intersect_v4_hash_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  auto device_a = MeshConverter3D<hash_based::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter3D<hash_based::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = hash_based::intersect_meshes<3>(device_a, device_b);
+  return MeshConverter3D<hash_based::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+}
+
+// ============================================================================
+// Wrappers for v5 (parallel merge)
+// ============================================================================
+
+/**
+ * @brief Wrapper for parallel_merge::intersect_meshes<2>
+ */
+inline DefaultCommonMesh2D intersect_v5_parallel_merge_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  auto device_a = MeshConverter2D<parallel_merge::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter2D<parallel_merge::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = parallel_merge::intersect_meshes<2>(device_a, device_b);
+  return MeshConverter2D<parallel_merge::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+}
+
+/**
+ * @brief Wrapper for parallel_merge::intersect_meshes<3>
+ */
+inline DefaultCommonMesh3D intersect_v5_parallel_merge_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  auto device_a = MeshConverter3D<parallel_merge::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter3D<parallel_merge::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = parallel_merge::intersect_meshes<3>(device_a, device_b);
+  return MeshConverter3D<parallel_merge::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+}
+
+// ============================================================================
+// Wrappers for v6 (direct index)
+// ============================================================================
+
+/**
+ * @brief Wrapper for direct_index::intersect_meshes<2>
+ */
+inline DefaultCommonMesh2D intersect_v6_direct_index_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  auto device_a = MeshConverter2D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter2D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = direct_index::intersect_meshes<2>(device_a, device_b);
+  return MeshConverter2D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+}
+
+/**
+ * @brief Wrapper for direct_index::intersect_meshes<3>
+ */
+inline DefaultCommonMesh3D intersect_v6_direct_index_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  auto device_a = MeshConverter3D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter3D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = direct_index::intersect_meshes<3>(device_a, device_b);
+  return MeshConverter3D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+}
+
+// ============================================================================
+// Wrappers for v7 (SOA optimized)
+// ============================================================================
+
+/**
+ * @brief Wrapper for soa_optimized::intersect_meshes<2>
+ *
+ * Note: v7 uses optimized::Mesh as input/output type (same as baseline/optimized)
+ */
+inline DefaultCommonMesh2D intersect_v7_soa_optimized_2d(const DefaultCommonMesh2D& a, const DefaultCommonMesh2D& b) {
+  auto device_a = MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = soa_optimized::intersect_meshes<2>(device_a, device_b);
+  return MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
+}
+
+/**
+ * @brief Wrapper for soa_optimized::intersect_meshes<3>
+ *
+ * Note: v7 uses optimized::Mesh as input/output type (same as baseline/optimized)
+ */
+inline DefaultCommonMesh3D intersect_v7_soa_optimized_3d(const DefaultCommonMesh3D& a, const DefaultCommonMesh3D& b) {
+  auto device_a = MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(a);
+  auto device_b = MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(b);
+  auto result = soa_optimized::intersect_meshes<3>(device_a, device_b);
   return MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::to_common(result);
 }
 

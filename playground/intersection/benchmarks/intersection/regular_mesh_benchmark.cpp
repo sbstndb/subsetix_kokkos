@@ -4,6 +4,10 @@
 #include <benchmark/benchmark.h>
 #include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
 #include <playground/subsetix/csr/intersection/algorithm/optimized.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v4_hash.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v5_parallel_merge.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v6_direct_index.hpp>
+#include <playground/subsetix/csr/intersection/algorithm/v7_soa_optimized.hpp>
 #include <intersection/test_random_mesh_generator.hpp>
 #include <Kokkos_Core.hpp>
 #include <vector>
@@ -12,6 +16,10 @@
 using namespace playground::subsetix::csr::intersection;
 using namespace playground::subsetix::csr::intersection::baseline;
 using namespace playground::subsetix::csr::intersection::optimized;
+using namespace playground::subsetix::csr::intersection::hash_based;
+using namespace playground::subsetix::csr::intersection::parallel_merge;
+using namespace playground::subsetix::csr::intersection::direct_index;
+using namespace playground::subsetix::csr::intersection::soa_optimized;
 using namespace playground::subsetix::csr::intersection::test;
 
 // Type aliases for convenience
@@ -37,6 +45,38 @@ inline optimized::Mesh2DDevice from_common_2d_optimized(const DefaultCommonMesh2
   return MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
 }
 inline optimized::Mesh3DDevice from_common_3d_optimized(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+// v4 (hash-based) conversion
+inline hash_based::Mesh2DDevice from_common_2d_v4(const DefaultCommonMesh2D& mesh) {
+  return MeshConverter2D<hash_based::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+inline hash_based::Mesh3DDevice from_common_3d_v4(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<hash_based::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+// v5 (parallel merge) conversion
+inline parallel_merge::Mesh2DDevice from_common_2d_v5(const DefaultCommonMesh2D& mesh) {
+  return MeshConverter2D<parallel_merge::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+inline parallel_merge::Mesh3DDevice from_common_3d_v5(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<parallel_merge::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+// v6 (direct index) conversion
+inline direct_index::Mesh2DDevice from_common_2d_v6(const DefaultCommonMesh2D& mesh) {
+  return MeshConverter2D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+inline direct_index::Mesh3DDevice from_common_3d_v6(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<direct_index::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+// v7 (SOA optimized) uses optimized format with soa_optimized functions
+inline optimized::Mesh2DDevice from_common_2d_v7(const DefaultCommonMesh2D& mesh) {
+  return MeshConverter2D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+inline optimized::Mesh3DDevice from_common_3d_v7(const DefaultCommonMesh3D& mesh) {
   return MeshConverter3D<optimized::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
 }
 
@@ -125,6 +165,126 @@ public:
     auto cfg = GetConfigFunc()();
     auto common = RegularMeshGenerator::generate_3d(cfg);
     mesh_a_ = benchmark_helpers::from_common_3d_optimized(common);
+    mesh_b_ = mesh_a_;
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  optimized::Mesh3DDevice mesh_a_, mesh_b_;
+};
+
+// v4 (hash-based) 2D fixture
+template <typename GetConfigFunc>
+class V4HashRegularMeshBenchmark2D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common = RegularMeshGenerator::generate_2d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_2d_v4(common);
+    mesh_b_ = mesh_a_;
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  hash_based::Mesh2DDevice mesh_a_, mesh_b_;
+};
+
+// v4 3D fixture
+template <typename GetConfigFunc>
+class V4HashRegularMeshBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common = RegularMeshGenerator::generate_3d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_3d_v4(common);
+    mesh_b_ = mesh_a_;
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  hash_based::Mesh3DDevice mesh_a_, mesh_b_;
+};
+
+// v5 (parallel merge) 2D fixture
+template <typename GetConfigFunc>
+class V5ParallelMergeRegularMeshBenchmark2D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common = RegularMeshGenerator::generate_2d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_2d_v5(common);
+    mesh_b_ = mesh_a_;
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  parallel_merge::Mesh2DDevice mesh_a_, mesh_b_;
+};
+
+// v5 3D fixture
+template <typename GetConfigFunc>
+class V5ParallelMergeRegularMeshBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common = RegularMeshGenerator::generate_3d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_3d_v5(common);
+    mesh_b_ = mesh_a_;
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  parallel_merge::Mesh3DDevice mesh_a_, mesh_b_;
+};
+
+// v6 (direct index) 2D fixture
+template <typename GetConfigFunc>
+class V6DirectIndexRegularMeshBenchmark2D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common = RegularMeshGenerator::generate_2d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_2d_v6(common);
+    mesh_b_ = mesh_a_;
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  direct_index::Mesh2DDevice mesh_a_, mesh_b_;
+};
+
+// v6 3D fixture
+template <typename GetConfigFunc>
+class V6DirectIndexRegularMeshBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common = RegularMeshGenerator::generate_3d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_3d_v6(common);
+    mesh_b_ = mesh_a_;
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  direct_index::Mesh3DDevice mesh_a_, mesh_b_;
+};
+
+// v7 (SOA optimized) 2D fixture
+template <typename GetConfigFunc>
+class V7SoaOptimizedRegularMeshBenchmark2D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common = RegularMeshGenerator::generate_2d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_2d_v7(common);
+    mesh_b_ = mesh_a_;
+  }
+  void TearDown(const benchmark::State&) override {}
+protected:
+  optimized::Mesh2DDevice mesh_a_, mesh_b_;
+};
+
+// v7 3D fixture
+template <typename GetConfigFunc>
+class V7SoaOptimizedRegularMeshBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+    auto common = RegularMeshGenerator::generate_3d(cfg);
+    mesh_a_ = benchmark_helpers::from_common_3d_v7(common);
     mesh_b_ = mesh_a_;
   }
   void TearDown(const benchmark::State&) override {}
@@ -337,6 +497,116 @@ BENCHMARK_TEMPLATE_F(OptimizedRegularMeshBenchmark3D, Optimized_3D_Regular_Large
   std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
   for (auto _ : state) {
     auto result = optimized::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+// ============================================================================
+// v4-v7 Benchmarks (Large only for comparison with random benchmarks)
+// ============================================================================
+
+// 2D Large benchmarks for v4-v7
+BENCHMARK_TEMPLATE_F(V4HashRegularMeshBenchmark2D, V4Hash_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = hash_based::intersect_meshes<2>(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V5ParallelMergeRegularMeshBenchmark2D, V5ParallelMerge_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = parallel_merge::intersect_meshes<2>(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V6DirectIndexRegularMeshBenchmark2D, V6DirectIndex_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = direct_index::intersect_meshes<2>(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRegularMeshBenchmark2D, V7SoaOptimized_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_2d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_rows);
+    Kokkos::fence();
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+// 3D Large benchmarks for v4-v7
+BENCHMARK_TEMPLATE_F(V4HashRegularMeshBenchmark3D, V4Hash_3D_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = hash_based::intersect_meshes<3>(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V5ParallelMergeRegularMeshBenchmark3D, V5ParallelMerge_3D_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = parallel_merge::intersect_meshes<3>(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V6DirectIndexRegularMeshBenchmark3D, V6DirectIndex_3D_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = direct_index::intersect_meshes<3>(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(V7SoaOptimizedRegularMeshBenchmark3D, V7SoaOptimized_3D_Regular_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = soa_optimized::intersect_meshes_3d(mesh_a_, mesh_b_);
     benchmark::DoNotOptimize(result.num_intervals);
     Kokkos::fence();
   }
