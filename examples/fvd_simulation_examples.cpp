@@ -275,7 +275,7 @@ void example_5_custom_source_terms() {
         Real dy = y - 0.25f;
         Real r2 = dx*dx + dy*dy;
 
-        // Source d'énergie: chauffage pulsatoire
+        // Energy source: pulsating heating
         Real heat_source = 0.0f;
         if (r2 < 0.01f) {  // Rayon = 0.1
             heat_source = 1000.0f * (1.0f + 0.5f * std::sin(10.0f * t));
@@ -284,7 +284,7 @@ void example_5_custom_source_terms() {
         return Conserved{0, 0, 0, heat_source};  // Seulement l'énergie
     });
 
-    // --- Source 3: Force de traînée ---
+    // --- Source 3: Drag force ---
     solver.add_source([](const Conserved& U, const Primitive& q,
                          Real x, Real y, Real t) {
         Real Cd = 0.1f;  // Coefficient de traînée
@@ -294,10 +294,10 @@ void example_5_custom_source_terms() {
         return Conserved{0, drag_x, drag_y, 0};
     });
 
-    // --- Source 4: Réaction chimique (modèle simplifié) ---
+    // --- Source 4: Chemical reaction (simplified model) ---
     solver.add_source([](const Conserved& U, const Primitive& q,
                          Real x, Real y, Real t) {
-        // Modèle Arrhenius simplifié: A * rho^2 * exp(-E/RT)
+        // Simplified Arrhenius model: A * rho^2 * exp(-E/RT)
         Real A = 1e6f;
         Real E_RT = 10.0f;  // Température adimensionnelle inverse
         Real reaction_rate = A * q.rho * q.rho * std::exp(-E_RT * 1.4f / (q.p/q.rho));
@@ -358,11 +358,11 @@ void example_6_checkpoint_restart() {
     solver.write_checkpoint("final_checkpoint.bin", CheckpointFormat::Binary);
     printf("Checkpoint final écrit\n");
 
-    // --- Deuxième partie: Restart ---
+    // --- Part 2: Restart ---
 
-    printf("\n--- Deuxième partie: Restart ---\n");
+    printf("\n--- Part 2: Restart ---\n");
 
-    // Créer un nouveau solveur et charger le checkpoint
+    // Create a new solver and load the checkpoint
     auto solver2 = Solver::builder(100, 50)
         .with_domain(0.0, 2.0, 0.0, 0.8)
         .build();
@@ -389,7 +389,7 @@ void example_7_parametric_study() {
     using System = Euler2D<Real>;
     using Solver = EulerSolverRK3;
 
-    // Paramètres à varier
+    // Parameters to vary
     std::vector<Real> mach_numbers = {0.5f, 1.0f, 2.0f, 3.0f};
     std::vector<Real> cfl_numbers = {0.3f, 0.5f, 0.8f};
 
@@ -435,7 +435,7 @@ void example_7_parametric_study() {
             char filename[256];
             snprintf(filename, sizeof(filename),
                      "results_mach_%.1f_cfl_%.2f.csv", mach, cfl);
-            // Écrire les résultats...
+            // Write the results...
         }
     }
 
@@ -452,11 +452,11 @@ void example_8_custom_solver() {
     using Real = float;
     using System = Euler2D<Real>;
 
-    // Définir un solveur personnalisé avec:
-    // - Reconstruction MUSCL (2ème ordre espace)
+    // Define a custom solver with:
+    // - MUSCL reconstruction (2nd order space)
     // - Limiteur Minmod
-    // - Flux HLLC (plus précis que Rusanov)
-    // - Intégrateur RK4 (4ème ordre temps)
+    // - HLLC flux (more accurate than Rusanov)
+    // - RK4 integrator (4th order time)
     using MySolver = AdaptiveSolver<
         System,
         reconstruction::MUSCL_Reconstruction<reconstruction::MinmodLimiter>,
@@ -468,7 +468,7 @@ void example_8_custom_solver() {
     auto solver = MySolver::builder(200, 100)
         .with_domain(0.0, 1.0, 0.0, 0.5)
         .with_initial_condition([](Real x, Real y) {
-            // Problème de Shu-Osher (interaction onde de choc / turbulence)
+            // Shu-Osher problem (shock wave / turbulence interaction)
             Real rho = (x < 0.1f) ? 3.857143f : 1.0f + 0.2f * std::sin(20.0f * 3.14159f * x);
             Real p = (x < 0.1f) ? 10.33333f : 1.0f;
             return System::from_primitive({rho, 0.0f, 0.0f, p}, 1.4f);
@@ -480,7 +480,7 @@ void example_8_custom_solver() {
     amr_config.config.max_level = 6;  // More levels for MUSCL+HLLC
     solver.set_refinement_config(amr_config);
 
-    // Monitoring détaillé
+    // Detailed monitoring
     solver.observers().on_progress([](const auto& state) {
         printf("Step %d: t=%.5f, dt=%.6f, %zu cells (lev=%d)\n",
                state.step, state.time, state.dt, state.total_cells, state.max_level + 1);
@@ -494,7 +494,7 @@ void example_8_custom_solver() {
     val_cfg.max_mach = 50.0f;
     solver.set_validation(val_cfg);
 
-    // Profiling activé
+    // Profiling enabled
     solver.enable_profiling(true);
 
     // Simulation
@@ -557,7 +557,7 @@ void example_9_with_vtk_output() {
     solver.observers().add_callback(SolverEvent::StepEnd,
         [&solver](SolverEvent, const SolverState<Real>& state) {
             if (state.step == 100) {
-                // Exemple: exporter seulement la densité
+                // Example: export only the density
                 auto output = solver.get_output();
                 VTKExporter::write_legacy(output, "output/rho_only.vtk", "rho", true);
                 printf("VTK single-champ écrit: rho_only.vtk\n");
@@ -600,25 +600,25 @@ void example_10_complex_multiphysics() {
 
     // --- Conditions aux limites complexes ---
 
-    // Injection pulsatoire à gauche
+    // Pulsating injection on the left
     auto injection = boundary::pulsating_inlet<System>(2.5f, 150.0f, 10.0f);
     solver.set_time_dependent_bc("left", injection);
 
-    // Paroi réfléchissante en bas
+    // Reflecting wall at bottom
     auto wall_bc = BoundaryConfigBuilder<System>::reflective_wall();
     solver.set_boundary_condition("bottom", wall_bc);
 
-    // Conditions de sortie non-réfléchissante en haut et à droite
+    // Non-reflecting outflow conditions at top and right
     auto outflow = BoundaryConfigBuilder<System>::non_reflecting_outflow();
     solver.set_boundary_condition("top", outflow);
     solver.set_boundary_condition("right", outflow);
 
     // --- Termes sources ---
 
-    // Gravité (chambre verticale)
+    // Gravity (vertical chamber)
     solver.add_gravity(-9.81f);
 
-    // Source de combustion (zone réactive)
+    // Combustion source (reactive zone)
     solver.add_source([](const auto& U, const auto& q, Real x, Real y, Real t) {
         // Zone de combustion: x > 0.5 et y < 0.3
         if (x > 0.5f && y < 0.3f) {
@@ -811,7 +811,7 @@ void example_13_flux_scheme_comparison() {
     using Real = float;
     using System = Euler2D<Real>;
 
-    // Problème de test: tube à choc (Sod problem)
+    // Test problem: shock tube (Sod problem)
     auto sod_initial = [](Real x, Real y) {
         Real rho = (x < 0.5) ? 1.0f : 0.125f;
         Real p = (x < 0.5) ? 1.0f : 0.1f;
@@ -829,7 +829,7 @@ void example_13_flux_scheme_comparison() {
         .with_initial_condition(sod_initial)
         .build();
 
-    // --- Solveur 2: HLLC (moins diffusif, résout l'onde de contact) ---
+    // --- Solver 2: HLLC (less diffusive, resolves contact wave) ---
     using SolverHLLC = AdaptiveSolver<System,
         reconstruction::NoReconstruction,
         flux::HLLCFlux,
@@ -856,7 +856,7 @@ void example_13_flux_scheme_comparison() {
     printf("  - HLLC: moins diffusif, résout l'onde de contact\n");
     printf("  - Roe: le plus précis, fix d'entropie pour les ondes de choc\n\n");
 
-    // Simulation et export des résultats
+    // Simulation and export of results
     const Real t_final = 0.2f;
 
     while (solver_rusanov.time() < t_final) solver_rusanov.step();
@@ -890,7 +890,7 @@ void example_14_muscl_limiter_comparison() {
     using Real = float;
     using System = Euler2D<Real>;
 
-    // Problème de Shu-Osher: interaction onde de choc / ondes d'entropie
+    // Shu-Osher problem: shock wave / entropy waves interaction
     auto shu_osher = [](Real x, Real y) {
         Real rho = (x < 0.1) ? 3.857143f : 1.0f + 0.2f * std::sin(20.0f * 3.14159f * x);
         Real p = (x < 0.1) ? 10.33333f : 1.0f;
@@ -1076,8 +1076,8 @@ void example_16_multilevel_amr_vtk() {
     auto all_levels = solver.get_all_levels();
     printf("Nombre de niveaux AMR: %zu\n", all_levels.size());
 
-    // Récupérer la géométrie multi-niveau
-    // Note: Ceci nécessite que AdaptiveSolver expose multilevel_geometry
+    // Retrieve the multi-level geometry
+    // Note: This requires AdaptiveSolver to expose multilevel_geometry
     // For this example, we show the conceptual API
 
     printf("\nExport multi-niveau AMR:\n");
@@ -1127,7 +1127,7 @@ int main(int argc, char** argv) {
     // example_11_builder_namespace();
     // example_12_error_handling();
 
-    // NOUVEAUX EXEMPLES (VTK multi-champ, comparaisons de schémas)
+    // NEW EXAMPLES (multi-field VTK, scheme comparisons)
     // example_13_flux_scheme_comparison();   // Rusanov vs HLLC vs Roe
     // example_14_muscl_limiter_comparison(); // Minmod vs MC vs Van Leer vs Superbee
     // example_15_time_integrator_comparison(); // Euler vs RK2 vs RK3 vs SSPRK3 vs RK4
