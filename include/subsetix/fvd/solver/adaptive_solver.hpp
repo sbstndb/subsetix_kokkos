@@ -747,10 +747,6 @@ private:
     // IMPROVEMENT D: Observer manager for callbacks
     ObserverManager<Real> observer_manager_;
 
-    // Timing for observers
-    std::chrono::time_point<std::chrono::steady_clock> start_time_;
-    std::chrono::time_point<std::chrono::steady_clock> last_step_time_;
-
     // Geometry
     csr::IntervalSet2DDevice fluid_geometry_;
     csr::Box2D domain_;
