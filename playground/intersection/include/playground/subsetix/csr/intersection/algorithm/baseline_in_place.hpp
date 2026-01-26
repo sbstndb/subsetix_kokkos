@@ -7,12 +7,33 @@
 
 #include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
 #include <playground/subsetix/csr/intersection/workspace.hpp>
+#include <limits>
 
 // This file is included from within namespace playground::subsetix::csr::intersection::baseline
 
 // ============================================================================
 // Mesh intersection with pre-allocated workspace - Implementation
 // ============================================================================
+
+namespace detail {
+
+template <typename IndexType>
+struct ScanAccum {
+  IndexType interval;
+  IndexType row;
+
+  KOKKOS_INLINE_FUNCTION
+  ScanAccum() : interval(0), row(0) {}
+
+  KOKKOS_INLINE_FUNCTION
+  ScanAccum& operator+=(const ScanAccum& rhs) {
+    interval += rhs.interval;
+    row += rhs.row;
+    return *this;
+  }
+};
+
+} // namespace detail
 
 /**
  * @brief Internal implementation of 2D intersection with workspace
@@ -119,14 +140,6 @@ void intersect_meshes_2d_in_place_impl(
         out_idx_b(pos) = tmp_idx_b(i);
       });
 
-  Kokkos::fence();
-
-  // Copy row keys to result mesh (deep_copy since we're writing to pre-allocated result)
-  Kokkos::deep_copy(result_out.row_keys, out_rows);
-
-  // Set result metadata
-  result_out.num_rows = num_rows_out;
-
   auto row_ptr_a = A.row_ptr;
   auto row_ptr_b = B.row_ptr;
   auto intervals_a = A.intervals;
@@ -162,37 +175,63 @@ void intersect_meshes_2d_in_place_impl(
 
   // Phase 3: Scan to compute row_ptr offsets
   auto total_view = ws.total_view;
+  auto final_num_rows_view = ws.final_num_rows_view;
+  auto new_positions = ws.new_positions;
+
+  using ScanAccum = detail::ScanAccum<IndexType>;
+
+  const IndexType invalid_row = std::numeric_limits<IndexType>::max();
 
   Kokkos::parallel_scan(
-      "intersection_scan",
+      "intersection_scan_compact",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        const std::size_t count = row_counts(i);
+      KOKKOS_LAMBDA(const std::size_t i, ScanAccum& acc, const bool final_pass) {
+        const IndexType count = static_cast<IndexType>(row_counts(i));
+        const bool keep = (count > 0);
         if (final_pass) {
-          result_out.row_ptr(i) = static_cast<IndexType>(update);
+          if (keep) {
+            const IndexType pos = acc.row;
+            new_positions(i) = pos;
+            result_out.row_ptr(pos) = acc.interval;
+            result_out.row_keys(pos) = out_rows(i);
+          } else {
+            new_positions(i) = invalid_row;
+          }
           if (i + 1 == num_rows_out) {
-            result_out.row_ptr(num_rows_out) = static_cast<IndexType>(update + count);
-            total_view() = update + count;
+            const IndexType total_intervals = acc.interval + count;
+            const IndexType total_rows = acc.row + static_cast<IndexType>(keep ? 1 : 0);
+            result_out.row_ptr(total_rows) = total_intervals;
+            total_view() = total_intervals;
+            final_num_rows_view() = total_rows;
           }
         }
-        update += count;
+        acc.interval += count;
+        acc.row += static_cast<IndexType>(keep ? 1 : 0);
       });
-
-  Kokkos::fence();
 
   std::size_t num_intervals_host = 0;
   Kokkos::deep_copy(num_intervals_host, total_view);
   result_out.num_intervals = num_intervals_host;
 
-  if (result_out.num_intervals == 0) {
+  std::size_t final_num_rows = 0;
+  Kokkos::deep_copy(final_num_rows, final_num_rows_view);
+
+  if (final_num_rows == 0 || result_out.num_intervals == 0) {
+    result_out.num_rows = 0;
+    result_out.num_intervals = 0;
     return;
   }
 
-  // Phase 4: Fill intersected intervals
+  // Phase 4: Fill intersected intervals using compacted row indices
   Kokkos::parallel_for(
-      "intersection_fill",
+      "intersection_fill_compact",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
+        const IndexType pos = new_positions(i);
+        if (pos == invalid_row) {
+          return;
+        }
+
         const int ia = out_idx_a(i);
         const int ib = out_idx_b(i);
 
@@ -206,75 +245,10 @@ void intersect_meshes_2d_in_place_impl(
           return;
         }
 
-        // Use result_out.row_ptr(i) as the offset (NOT r.begin_a!)
         detail::row_intersection_impl<false>(
             intervals_a, r.begin_a, r.end_a,
             intervals_b, r.begin_b, r.end_b,
-            result_out.intervals, result_out.row_ptr(i));
-      });
-
-  Kokkos::fence();
-
-  // Phase 5: Final compaction - remove rows with no intervals
-  auto has_intervals = ws.has_intervals;
-  auto new_positions = ws.new_positions;
-  auto final_num_rows_view = ws.final_num_rows_view;
-
-  Kokkos::parallel_for(
-      "intersection_mark_rows",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        has_intervals(i) = (result_out.row_ptr(i) < result_out.row_ptr(i + 1)) ? 1 : 0;
-      });
-
-  Kokkos::parallel_scan(
-      "intersection_compact_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        const std::size_t count = static_cast<std::size_t>(has_intervals(i));
-        if (final_pass) {
-          new_positions(i) = update;
-          if (i + 1 == num_rows_out) {
-            final_num_rows_view() = update + count;
-          }
-        }
-        update += count;
-      });
-
-  Kokkos::fence();
-
-  std::size_t final_num_rows = 0;
-  Kokkos::deep_copy(final_num_rows, final_num_rows_view);
-
-  if (final_num_rows == num_rows_out) {
-    // No compaction needed - result is already compact
-    return;
-  }
-
-  if (final_num_rows == 0) {
-    result_out.num_rows = 0;
-    result_out.num_intervals = 0;
-    return;
-  }
-
-  // In-place compaction: shift row_keys and row_ptr
-  Kokkos::parallel_for(
-      "intersection_compact_copy",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t j) {
-        if (has_intervals(j)) {
-          const std::size_t new_pos = new_positions(j);
-          result_out.row_keys(new_pos) = result_out.row_keys(j);
-          result_out.row_ptr(new_pos) = result_out.row_ptr(j);
-        }
-      });
-
-  // Set final row_ptr value
-  Kokkos::parallel_for(
-      "intersection_compact_final_ptr",
-      Kokkos::RangePolicy<ExecSpace>(0, 1),
-      KOKKOS_LAMBDA(const std::size_t) {
-        result_out.row_ptr(final_num_rows) = result_out.row_ptr(num_rows_out);
+            result_out.intervals, result_out.row_ptr(pos));
       });
 
   result_out.num_rows = final_num_rows;
@@ -377,13 +351,6 @@ void intersect_meshes_3d_in_place_impl(
         out_idx_b(pos) = tmp_idx_b(i);
       });
 
-  Kokkos::fence();
-
-  // Copy row keys to result mesh
-  Kokkos::deep_copy(result_out.row_keys, out_rows);
-
-  result_out.num_rows = num_rows_out;
-
   auto row_ptr_a = A.row_ptr;
   auto row_ptr_b = B.row_ptr;
   auto intervals_a = A.intervals;
@@ -416,36 +383,62 @@ void intersect_meshes_3d_in_place_impl(
       });
 
   auto total_view = ws.total_view;
+  auto final_num_rows_view = ws.final_num_rows_view;
+  auto new_positions = ws.new_positions;
+
+  using ScanAccum = detail::ScanAccum<IndexType>;
+
+  const IndexType invalid_row = std::numeric_limits<IndexType>::max();
 
   Kokkos::parallel_scan(
-      "intersection_scan_3d",
+      "intersection_scan_compact_3d",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        const std::size_t count = row_counts(i);
+      KOKKOS_LAMBDA(const std::size_t i, ScanAccum& acc, const bool final_pass) {
+        const IndexType count = static_cast<IndexType>(row_counts(i));
+        const bool keep = (count > 0);
         if (final_pass) {
-          result_out.row_ptr(i) = static_cast<IndexType>(update);
+          if (keep) {
+            const IndexType pos = acc.row;
+            new_positions(i) = pos;
+            result_out.row_ptr(pos) = acc.interval;
+            result_out.row_keys(pos) = out_rows(i);
+          } else {
+            new_positions(i) = invalid_row;
+          }
           if (i + 1 == num_rows_out) {
-            result_out.row_ptr(num_rows_out) = static_cast<IndexType>(update + count);
-            total_view() = update + count;
+            const IndexType total_intervals = acc.interval + count;
+            const IndexType total_rows = acc.row + static_cast<IndexType>(keep ? 1 : 0);
+            result_out.row_ptr(total_rows) = total_intervals;
+            total_view() = total_intervals;
+            final_num_rows_view() = total_rows;
           }
         }
-        update += count;
+        acc.interval += count;
+        acc.row += static_cast<IndexType>(keep ? 1 : 0);
       });
-
-  Kokkos::fence();
 
   std::size_t num_intervals_host = 0;
   Kokkos::deep_copy(num_intervals_host, total_view);
   result_out.num_intervals = num_intervals_host;
 
-  if (result_out.num_intervals == 0) {
+  std::size_t final_num_rows = 0;
+  Kokkos::deep_copy(final_num_rows, final_num_rows_view);
+
+  if (final_num_rows == 0 || result_out.num_intervals == 0) {
+    result_out.num_rows = 0;
+    result_out.num_intervals = 0;
     return;
   }
 
   Kokkos::parallel_for(
-      "intersection_fill_3d",
+      "intersection_fill_compact_3d",
       Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
       KOKKOS_LAMBDA(const std::size_t i) {
+        const IndexType pos = new_positions(i);
+        if (pos == invalid_row) {
+          return;
+        }
+
         const int ia = out_idx_a(i);
         const int ib = out_idx_b(i);
 
@@ -459,72 +452,10 @@ void intersect_meshes_3d_in_place_impl(
           return;
         }
 
-        // Use result_out.row_ptr(i) as the offset
         detail::row_intersection_impl<false>(
             intervals_a, r.begin_a, r.end_a,
             intervals_b, r.begin_b, r.end_b,
-            result_out.intervals, result_out.row_ptr(i));
-      });
-
-  Kokkos::fence();
-
-  // Phase 5: Final compaction
-  auto has_intervals = ws.has_intervals;
-  auto new_positions = ws.new_positions;
-  auto final_num_rows_view = ws.final_num_rows_view;
-
-  Kokkos::parallel_for(
-      "intersection_mark_rows_3d",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        has_intervals(i) = (result_out.row_ptr(i) < result_out.row_ptr(i + 1)) ? 1 : 0;
-      });
-
-  Kokkos::parallel_scan(
-      "intersection_compact_scan_3d",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        const std::size_t count = static_cast<std::size_t>(has_intervals(i));
-        if (final_pass) {
-          new_positions(i) = update;
-          if (i + 1 == num_rows_out) {
-            final_num_rows_view() = update + count;
-          }
-        }
-        update += count;
-      });
-
-  Kokkos::fence();
-
-  std::size_t final_num_rows = 0;
-  Kokkos::deep_copy(final_num_rows, final_num_rows_view);
-
-  if (final_num_rows == num_rows_out) {
-    return;
-  }
-
-  if (final_num_rows == 0) {
-    result_out.num_rows = 0;
-    result_out.num_intervals = 0;
-    return;
-  }
-
-  Kokkos::parallel_for(
-      "intersection_compact_copy_3d",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_out),
-      KOKKOS_LAMBDA(const std::size_t j) {
-        if (has_intervals(j)) {
-          const std::size_t new_pos = new_positions(j);
-          result_out.row_keys(new_pos) = result_out.row_keys(j);
-          result_out.row_ptr(new_pos) = result_out.row_ptr(j);
-        }
-      });
-
-  Kokkos::parallel_for(
-      "intersection_compact_final_ptr_3d",
-      Kokkos::RangePolicy<ExecSpace>(0, 1),
-      KOKKOS_LAMBDA(const std::size_t) {
-        result_out.row_ptr(final_num_rows) = result_out.row_ptr(num_rows_out);
+            result_out.intervals, result_out.row_ptr(pos));
       });
 
   result_out.num_rows = final_num_rows;
