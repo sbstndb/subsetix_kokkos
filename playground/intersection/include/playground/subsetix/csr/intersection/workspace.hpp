@@ -7,19 +7,20 @@
 
 #include <Kokkos_Core.hpp>
 #include <cstddef>
+#include <playground/subsetix/csr/intersection/types.hpp>
 
 namespace playground::subsetix::csr::intersection {
 
 /**
- * @brief Reusable workspace for intersection algorithms to eliminate per-call allocations
+ * @brief Reusable workspace for 2D intersection algorithms to eliminate per-call allocations
  *
- * This workspace pre-allocates all temporary buffers needed for mesh intersection.
+ * This workspace pre-allocates all temporary buffers needed for 2D mesh intersection.
  * Buffers are sized based on max(A.rows, B.rows) and max(A.intervals, B.intervals)
  * since the intersection cannot be larger than the inputs.
  *
  * Usage pattern:
  * ```cpp
- * IntersectionWorkspace<Kokkos::Cuda> ws;
+ * IntersectionWorkspace2D<Kokkos::Cuda> ws;
  *
  * // In benchmark SetUp():
  * std::size_t max_rows = std::max(mesh_a.num_rows, mesh_b.num_rows);
@@ -32,11 +33,13 @@ namespace playground::subsetix::csr::intersection {
  * }
  * ```
  */
-template <typename ExecSpace, typename IndexType = std::size_t>
-struct IntersectionWorkspace {
+template <typename ExecSpace, typename IndexType = std::size_t, typename CoordType = int32_t>
+struct IntersectionWorkspace2D {
   using MemorySpace = typename ExecSpace::memory_space;
   using IntView = Kokkos::View<int*, MemorySpace>;
   using SizeTView = Kokkos::View<IndexType*, MemorySpace>;
+  using ScalarView = Kokkos::View<IndexType, MemorySpace>;
+  using RowKeyView = Kokkos::View<RowKey2D<CoordType>*, MemorySpace>;
 
   // ============================================================================
   // Phase 1: Row Mapping Buffers
@@ -58,11 +61,11 @@ struct IntersectionWorkspace {
   // Phase 2: Row Scan & Compaction Buffers
   // ============================================================================
 
-  /// Scalar view for reduction result (number of output rows)
-  SizeTView num_rows_out_view;
+  /// Scalar view for reduction result (number of output rows) - 0D view
+  ScalarView num_rows_out_view;
 
-  /// Compacted row keys from A
-  IntView out_rows;
+  /// Compacted row keys from A (2D version)
+  RowKeyView out_rows;
 
   /// Compacted indices for A
   IntView out_idx_a;
@@ -81,8 +84,8 @@ struct IntersectionWorkspace {
   // Phase 4: Scan Buffers
   // ============================================================================
 
-  /// Scalar view for total interval count
-  SizeTView total_view;
+  /// Scalar view for total interval count - 0D view
+  ScalarView total_view;
 
   // ============================================================================
   // Phase 5: Final Compaction Buffers
@@ -94,8 +97,8 @@ struct IntersectionWorkspace {
   /// New positions for re-compaction
   SizeTView new_positions;
 
-  /// Scalar view for final row count
-  SizeTView final_num_rows_view;
+  /// Scalar view for final row count - 0D view
+  ScalarView final_num_rows_view;
 
   // ============================================================================
   // Metadata
@@ -132,8 +135,8 @@ struct IntersectionWorkspace {
     positions = SizeTView("workspace_positions", new_capacity_rows);
 
     // Phase 2 buffers
-    num_rows_out_view = SizeTView("workspace_num_rows_out");
-    out_rows = IntView("workspace_out_rows", new_capacity_rows);
+    num_rows_out_view = ScalarView("workspace_num_rows_out");  // 0D scalar view
+    out_rows = RowKeyView("workspace_out_rows", new_capacity_rows);
     out_idx_a = IntView("workspace_out_idx_a", new_capacity_rows);
     out_idx_b = IntView("workspace_out_idx_b", new_capacity_rows);
 
@@ -141,12 +144,12 @@ struct IntersectionWorkspace {
     row_counts = SizeTView("workspace_row_counts", new_capacity_rows);
 
     // Phase 4 buffers
-    total_view = SizeTView("workspace_total_intervals");
+    total_view = ScalarView("workspace_total_intervals");  // 0D scalar view
 
     // Phase 5 buffers
     has_intervals = IntView("workspace_has_intervals", new_capacity_rows);
     new_positions = SizeTView("workspace_new_positions", new_capacity_rows);
-    final_num_rows_view = SizeTView("workspace_final_num_rows");
+    final_num_rows_view = ScalarView("workspace_final_num_rows");  // 0D scalar view
 
     capacity_rows = new_capacity_rows;
     capacity_intervals = new_capacity_intervals;
@@ -173,6 +176,104 @@ struct IntersectionWorkspace {
     return {capacity_rows, capacity_intervals};
   }
 };
+
+/**
+ * @brief Reusable workspace for 3D intersection algorithms
+ */
+template <typename ExecSpace, typename IndexType = std::size_t, typename CoordType = int32_t>
+struct IntersectionWorkspace3D {
+  using MemorySpace = typename ExecSpace::memory_space;
+  using IntView = Kokkos::View<int*, MemorySpace>;
+  using SizeTView = Kokkos::View<IndexType*, MemorySpace>;
+  using ScalarView = Kokkos::View<IndexType, MemorySpace>;
+  using RowKeyView = Kokkos::View<RowKey3D<CoordType>*, MemorySpace>;
+
+  // ============================================================================
+  // Phase 1: Row Mapping Buffers
+  // ============================================================================
+
+  IntView flags;
+  IntView tmp_idx_a;
+  IntView tmp_idx_b;
+  SizeTView positions;
+
+  // ============================================================================
+  // Phase 2: Row Scan & Compaction Buffers
+  // ============================================================================
+
+  ScalarView num_rows_out_view;
+  RowKeyView out_rows;
+  IntView out_idx_a;
+  IntView out_idx_b;
+
+  // ============================================================================
+  // Phase 3: Interval Counting Buffers
+  // ============================================================================
+
+  SizeTView row_counts;
+
+  // ============================================================================
+  // Phase 4: Scan Buffers
+  // ============================================================================
+
+  ScalarView total_view;
+
+  // ============================================================================
+  // Phase 5: Final Compaction Buffers
+  // ============================================================================
+
+  IntView has_intervals;
+  SizeTView new_positions;
+  ScalarView final_num_rows_view;
+
+  // ============================================================================
+  // Metadata
+  // ============================================================================
+
+  std::size_t capacity_rows = 0;
+  std::size_t capacity_intervals = 0;
+
+  void ensure_capacity(std::size_t max_rows, std::size_t max_intervals) {
+    if (max_rows <= capacity_rows && max_intervals <= capacity_intervals) {
+      return;
+    }
+
+    std::size_t new_capacity_rows = std::max(max_rows, capacity_rows);
+    std::size_t new_capacity_intervals = std::max(max_intervals, capacity_intervals);
+
+    flags = IntView("workspace_flags", new_capacity_rows);
+    tmp_idx_a = IntView("workspace_tmp_idx_a", new_capacity_rows);
+    tmp_idx_b = IntView("workspace_tmp_idx_b", new_capacity_rows);
+    positions = SizeTView("workspace_positions", new_capacity_rows);
+
+    num_rows_out_view = ScalarView("workspace_num_rows_out");
+    out_rows = RowKeyView("workspace_out_rows", new_capacity_rows);
+    out_idx_a = IntView("workspace_out_idx_a", new_capacity_rows);
+    out_idx_b = IntView("workspace_out_idx_b", new_capacity_rows);
+
+    row_counts = SizeTView("workspace_row_counts", new_capacity_rows);
+    total_view = ScalarView("workspace_total_intervals");
+
+    has_intervals = IntView("workspace_has_intervals", new_capacity_rows);
+    new_positions = SizeTView("workspace_new_positions", new_capacity_rows);
+    final_num_rows_view = ScalarView("workspace_final_num_rows");
+
+    capacity_rows = new_capacity_rows;
+    capacity_intervals = new_capacity_intervals;
+  }
+
+  void reset() {
+    // No-op
+  }
+
+  std::pair<std::size_t, std::size_t> capacity() const {
+    return {capacity_rows, capacity_intervals};
+  }
+};
+
+// Generic workspace alias for backward compatibility (defaults to 2D)
+template <typename ExecSpace, typename IndexType = std::size_t, typename CoordType = int32_t>
+using IntersectionWorkspace = IntersectionWorkspace2D<ExecSpace, IndexType, CoordType>;
 
 } // namespace playground::subsetix::csr::intersection
 

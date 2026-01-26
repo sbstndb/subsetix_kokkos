@@ -25,7 +25,8 @@ using namespace playground::subsetix::csr::intersection::test;
 // Type aliases for convenience
 using Coord = int32_t;
 using IntervalType = playground::subsetix::csr::intersection::Interval<Coord>;
-using Workspace = IntersectionWorkspace<Kokkos::DefaultExecutionSpace>;
+using Workspace2D = IntersectionWorkspace2D<Kokkos::DefaultExecutionSpace>;
+using Workspace3D = IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>;
 
 // ============================================================================
 // Conversion helpers
@@ -35,6 +36,10 @@ namespace benchmark_helpers {
 
 inline baseline::Mesh2DDevice from_common_2d_baseline(const DefaultCommonMesh2D& mesh) {
   return MeshConverter2D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
+}
+
+inline baseline::Mesh3DDevice from_common_3d_baseline(const DefaultCommonMesh3D& mesh) {
+  return MeshConverter3D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh);
 }
 
 } // namespace benchmark_helpers
@@ -89,7 +94,49 @@ public:
 protected:
   baseline::Mesh2DDevice mesh_a_, mesh_b_;
   baseline::Mesh2DDevice result_;
-  Workspace workspace_;
+  Workspace2D workspace_;
+};
+
+// ============================================================================
+// 3D Workspace Benchmark Fixture
+// ============================================================================
+
+template <typename GetConfigFunc>
+class WorkspaceBenchmark3D : public benchmark::Fixture {
+public:
+  void SetUp(const ::benchmark::State&) override {
+    auto cfg = GetConfigFunc()();
+
+    // Generate input meshes
+    auto common_a = RegularMeshGenerator::generate_3d(cfg);
+    auto common_b = RegularMeshGenerator::generate_3d(cfg);
+
+    // Convert to device format
+    mesh_a_ = benchmark_helpers::from_common_3d_baseline(common_a);
+    mesh_b_ = benchmark_helpers::from_common_3d_baseline(common_b);
+
+    // Calculate maximum required size
+    std::size_t max_rows = std::max(mesh_a_.num_rows, mesh_b_.num_rows);
+    std::size_t max_intervals = std::max(mesh_a_.num_intervals, mesh_b_.num_intervals);
+
+    // Pre-allocate workspace with sufficient capacity
+    workspace_.ensure_capacity(max_rows, max_intervals);
+
+    // Pre-allocate result mesh (NO allocation during benchmark!)
+    result_.row_keys = Kokkos::View<RowKey3D<Coord>*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_keys", max_rows);
+    result_.row_ptr = Kokkos::View<std::size_t*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_ptr", max_rows + 1);
+    result_.intervals = Kokkos::View<IntervalType*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_intervals", max_intervals);
+  }
+
+  void TearDown(const ::benchmark::State&) override {}
+
+protected:
+  baseline::Mesh3DDevice mesh_a_, mesh_b_;
+  baseline::Mesh3DDevice result_;
+  Workspace3D workspace_;
 };
 
 // ============================================================================
@@ -172,6 +219,58 @@ BENCHMARK_TEMPLATE_F(WorkspaceBenchmark2D, Workspace_2D_ExtraLargeConfig, GetExt
 
   for (auto _ : state) {
     baseline::intersect_meshes_2d_in_place(mesh_a_, mesh_b_, result_, workspace_);
+
+    benchmark::DoNotOptimize(result_.num_rows);
+    benchmark::DoNotOptimize(result_.num_intervals);
+    Kokkos::fence();
+  }
+
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+// ============================================================================
+// 3D Workspace Benchmarks (NO allocations per iteration)
+// ============================================================================
+
+BENCHMARK_TEMPLATE_F(WorkspaceBenchmark3D, Workspace_3D_SmallConfig, GetSmallRegularConfig)
+(benchmark::State& state) {
+  const std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+
+  for (auto _ : state) {
+    baseline::intersect_meshes_3d_in_place(mesh_a_, mesh_b_, result_, workspace_);
+
+    benchmark::DoNotOptimize(result_.num_rows);
+    benchmark::DoNotOptimize(result_.num_intervals);
+    Kokkos::fence();
+  }
+
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(WorkspaceBenchmark3D, Workspace_3D_MediumConfig, GetMediumRegularConfig)
+(benchmark::State& state) {
+  const std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+
+  for (auto _ : state) {
+    baseline::intersect_meshes_3d_in_place(mesh_a_, mesh_b_, result_, workspace_);
+
+    benchmark::DoNotOptimize(result_.num_rows);
+    benchmark::DoNotOptimize(result_.num_intervals);
+    Kokkos::fence();
+  }
+
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(WorkspaceBenchmark3D, Workspace_3D_LargeConfig, GetLargeRegularConfig)
+(benchmark::State& state) {
+  const std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+
+  for (auto _ : state) {
+    baseline::intersect_meshes_3d_in_place(mesh_a_, mesh_b_, result_, workspace_);
 
     benchmark::DoNotOptimize(result_.num_rows);
     benchmark::DoNotOptimize(result_.num_intervals);

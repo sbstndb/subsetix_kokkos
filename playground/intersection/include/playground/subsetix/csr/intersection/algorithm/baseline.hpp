@@ -502,7 +502,7 @@ void intersect_meshes_2d_in_place(
     const Mesh2DDevice& A,
     const Mesh2DDevice& B,
     Mesh2DDevice& result_out,
-    IntersectionWorkspace<ExecSpace>& workspace
+    IntersectionWorkspace2D<ExecSpace>& workspace
 );
 
 /**
@@ -515,7 +515,7 @@ void intersect_meshes_3d_in_place(
     const Mesh3DDevice& A,
     const Mesh3DDevice& B,
     Mesh3DDevice& result_out,
-    IntersectionWorkspace<ExecSpace>& workspace
+    IntersectionWorkspace3D<ExecSpace>& workspace
 );
 
 // Include in-place implementations
