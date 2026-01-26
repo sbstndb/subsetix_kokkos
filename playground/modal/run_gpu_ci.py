@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2024 Sebastien DUBOIS and the HPC@Maths Team, CMAP Laboratory, Ecole Polytechnique
 """
-Modal CI for subsetix_kokkos experimental module on NVIDIA GPU.
+Modal CI for subsetix_kokkos playground module on NVIDIA GPU.
 
 Usage:
-    modal run experimental/modal/run_gpu_ci.py::run_t4_entry
-    modal run experimental/modal/run_gpu_ci.py::run_a100_entry
-    modal run experimental/modal/run_gpu_ci.py::run_h100_entry
-    modal run experimental/modal/run_gpu_ci.py::run_b200_entry
+    modal run playground/modal/run_gpu_ci.py::run_t4_entry
+    modal run playground/modal/run_gpu_ci.py::run_a100_entry
+    modal run playground/modal/run_gpu_ci.py::run_h100_entry
+    modal run playground/modal/run_gpu_ci.py::run_l40s_entry
 """
 
 from pathlib import Path
@@ -21,12 +21,11 @@ import modal
 # -----------------------------------------------------------------------------
 
 # GPU architecture mapping for Kokkos
-# NOTE: B200 requires Kokkos 5.0.1+ (detects CC 10.0) AND CUDA 13.0+ (can compile sm_100)
 GPU_ARCH_MAP = {
     "T4": "TURING75",
     "A100": "AMPERE80",
     "H100": "HOPPER90",
-    "B200": "BLACKWELL",  # Requires Kokkos 5.0.1+ and CUDA 13.0+
+    "L40S": "ADALATEST",
 }
 
 def create_image() -> modal.Image:
@@ -36,7 +35,7 @@ def create_image() -> modal.Image:
 
     return (
         modal.Image.from_registry(
-            "nvidia/cuda:13.0.0-devel-ubuntu22.04",  # CUDA 13 required for sm_100 (B200/BLACKWELL)
+            "nvidia/cuda:12.4.0-devel-ubuntu22.04",
             add_python="3.11",
         )
         .apt_install(
@@ -47,6 +46,7 @@ def create_image() -> modal.Image:
             "git",
             "libfmt-dev",
             "libmpfr-dev",
+            "libbenchmark-dev",
         )
         .env({
             "CC": "gcc-12",
@@ -58,7 +58,7 @@ def create_image() -> modal.Image:
 
 IMAGE = create_image()
 
-app = modal.App("subsetix-experimental-gpu-ci", image=IMAGE)
+app = modal.App("subsetix-playground-benchmarks", image=IMAGE)
 
 
 # -----------------------------------------------------------------------------
@@ -66,9 +66,9 @@ app = modal.App("subsetix-experimental-gpu-ci", image=IMAGE)
 # -----------------------------------------------------------------------------
 
 def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
-    """Build and run experimental tests on specified GPU."""
+    """Build and run playground benchmarks on specified GPU."""
     repo_root = Path("/workspace")
-    build_dir = Path("/tmp/build-experimental-cuda")
+    build_dir = Path("/tmp/build-playground-cuda")
 
     # Clean build directory to avoid cache issues
     if build_dir.exists():
@@ -94,11 +94,12 @@ def run_benchmarks(gpu_type: str, cuda_arch: str) -> str:
     cmake_cmd = [
         "cmake", "-S", str(repo_root), "-B", str(build_dir), "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
-        "-DSUBSETIX_ENABLE_EXPERIMENTAL=ON",
+        "-DSUBSETIX_ENABLE_PLAYGROUND=ON",
         "-DSUBSETIX_BUILD_STABLE_LIBS=OFF",
         "-DSUBSETIX_BUILD_STABLE_TESTS=OFF",
         "-DSUBSETIX_BUILD_STABLE_BENCHMARKS=OFF",
-        "-DSUBSETIX_KOKKOS_CUDA=ON",      # Correct subsetix project option
+        "-DSUBSETIX_KOKKOS_CUDA=ON",
+        f"-DKokkos_ARCH_{cuda_arch}=ON",
         "-DCMAKE_CXX_COMPILER=g++-12",
     ]
 
@@ -125,58 +126,48 @@ STDOUT:
 {result.stdout[:5000]}  # Truncate stdout to avoid overflow
 """
 
-    # Run tests
-    result = subprocess.run(
-        ["ctest", "--output-on-failure"],
-        cwd=str(build_dir), capture_output=True, text=True,
-    )
-    test_output = result.stdout + result.stderr
+    # Run benchmarks with benchmark_min_time=3s
+    benchmark_exes = [
+        build_dir / "playground" / "intersection" / "benchmarks" / "playground_intersection_regular_benchmark",
+        build_dir / "playground" / "intersection" / "benchmarks" / "playground_intersection_comparison_benchmark",
+    ]
 
-    # Run benchmarks
-    bench_exe = build_dir / "experimental" / "benchmarks" / "experimental_comparison_benchmark"
     bench_output = ""
-    if bench_exe.exists():
-        result = subprocess.run([str(bench_exe)], capture_output=True, text=True)
-        bench_output = result.stdout + result.stderr
-    else:
-        bench_output = "⚠️  Benchmark executable not found"
-
-    # Parse test output - handle both full and partial output formats
-    if "Test project" in test_output:
-        test_section = test_output.split('Test project')[1]
-    else:
-        test_section = test_output
+    for bench_exe in benchmark_exes:
+        if bench_exe.exists():
+            bench_output += f"\n{'='*60}\nRunning {bench_exe.name} (benchmark_min_time=3s)\n{'='*60}\n"
+            result = subprocess.run([str(bench_exe), "--benchmark_min_time=3s"], capture_output=True, text=True)
+            bench_output += result.stdout + result.stderr
+        else:
+            bench_output += f"\n⚠️  Benchmark executable not found: {bench_exe.name}\n"
 
     return f"""
 {'='*60}
 🎯 GPU: {gpu_type} | CUDA ARCH: {cuda_arch}
 {'='*60}
 
-TESTS:
-{test_section}
-
 {'='*60}
-ALL BENCHMARK RESULTS:
+BENCHMARK RESULTS (benchmark_min_time=3s):
 {'='*60}
 {bench_output}
 """
 
 
-@app.function(gpu="T4", cpu=16.0, timeout=1200)
+@app.function(gpu="T4", cpu=16.0, timeout=2400)
 def run_t4() -> str:
     return run_benchmarks("T4", GPU_ARCH_MAP["T4"])
 
-@app.function(gpu="A100", cpu=16.0, timeout=1200)
+@app.function(gpu="A100", cpu=16.0, timeout=2400)
 def run_a100() -> str:
     return run_benchmarks("A100", GPU_ARCH_MAP["A100"])
 
-@app.function(gpu="H100", cpu=16.0, timeout=1200)
+@app.function(gpu="H100", cpu=16.0, timeout=2400)
 def run_h100() -> str:
     return run_benchmarks("H100", GPU_ARCH_MAP["H100"])
 
-@app.function(gpu="B200", cpu=16.0, timeout=1200)
-def run_b200() -> str:
-    return run_benchmarks("B200", GPU_ARCH_MAP["B200"])
+@app.function(gpu="L40S", cpu=16.0, timeout=2400)
+def run_l40s() -> str:
+    return run_benchmarks("L40S", GPU_ARCH_MAP["L40S"])
 
 
 # -----------------------------------------------------------------------------
@@ -185,7 +176,10 @@ def run_b200() -> str:
 
 @app.local_entrypoint()
 def main():
-    """Run all GPU benchmarks."""
+    """Run all GPU benchmarks sequentially."""
+    print("🚀 Running playground benchmarks on all GPUs (benchmark_min_time=3s)...")
+
+    print("\n" + "="*60)
     print("🚀 Running benchmarks on T4...")
     t4_result = run_t4.remote()
     print(t4_result)
@@ -201,27 +195,27 @@ def main():
     print(h100_result)
 
     print("\n" + "="*60)
-    print("🚀 Running benchmarks on B200...")
-    b200_result = run_b200.remote()
-    print(b200_result)
+    print("🚀 Running benchmarks on L40S...")
+    l40s_result = run_l40s.remote()
+    print(l40s_result)
 
 
 @app.local_entrypoint()
 def run_t4_entry():
-    print("🚀 Running T4 benchmarks...")
+    print("🚀 Running T4 playground benchmarks (benchmark_min_time=3s)...")
     print(run_t4.remote())
 
 @app.local_entrypoint()
 def run_a100_entry():
-    print("🚀 Running A100 benchmarks...")
+    print("🚀 Running A100 playground benchmarks (benchmark_min_time=3s)...")
     print(run_a100.remote())
 
 @app.local_entrypoint()
 def run_h100_entry():
-    print("🚀 Running H100 benchmarks...")
+    print("🚀 Running H100 playground benchmarks (benchmark_min_time=3s)...")
     print(run_h100.remote())
 
 @app.local_entrypoint()
-def run_b200_entry():
-    print("🚀 Running B200 benchmarks...")
-    print(run_b200.remote())
+def run_l40s_entry():
+    print("🚀 Running L40S playground benchmarks (benchmark_min_time=3s)...")
+    print(run_l40s.remote())

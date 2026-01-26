@@ -292,6 +292,25 @@ inline RegularMeshConfig ExtraLargeRegularConfig() {
   return RegularMeshConfig{.num_rows_2d = 8192, .grid_size_3d = 8192};
 }
 
+/**
+ * @brief Extra Extra Large regular mesh configuration (100% dense)
+ *
+ * Matches 2x ExtraLarge grid extent:
+ * - 2D: 16384 rows (2x ExtraLarge)
+ * - 3D: grid_size=16384 → 16384×16384=268M rows (4x ExtraLarge, 16x Large)
+ *
+ * WARNING: 3D ExtraExtraLarge requires significant GPU memory:
+ * - Input: ~4.2 GB (268M intervals × 2 meshes × 8 bytes)
+ * - Total: ~6-8 GB with CSR structures
+ * - Safe for H100 (80GB) and A100 (80GB/40GB)
+ * - May OOM on smaller GPUs (T4 15GB, L40S 46GB)
+ *
+ * Use for maximum scale GPU benchmarks.
+ */
+inline RegularMeshConfig ExtraExtraLargeRegularConfig() {
+  return RegularMeshConfig{.num_rows_2d = 16384, .grid_size_3d = 16384};
+}
+
 // ============================================================================
 // Regular Mesh Generators
 // ============================================================================
