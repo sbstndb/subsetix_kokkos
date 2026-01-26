@@ -67,49 +67,96 @@ void intersect_meshes_2d_in_place_impl(
   auto tmp_idx_a = ws.tmp_idx_a;
   auto tmp_idx_b = ws.tmp_idx_b;
   auto positions = ws.positions;
+  auto team_counts = ws.team_counts;
+  auto team_offsets = ws.team_offsets;
 
   auto rows_a = A.row_keys;
   auto rows_b = B.row_keys;
   const std::size_t num_rows_b = B.num_rows;
 
-  // Phase 1: Row mapping - find rows of A that exist in B (2D: search by y only)
+  // Phase 1: Row mapping + hierarchical row scan setup
+  using Workspace = IntersectionWorkspace2D<ExecSpace, IndexType, CoordType>;
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using TeamMember = typename TeamPolicy::member_type;
+  constexpr std::size_t rows_per_team = Workspace::rows_per_team;
+  const std::size_t num_teams = (num_rows_a + rows_per_team - 1) / rows_per_team;
+
+  auto team_counts_sub =
+      Kokkos::subview(team_counts, std::make_pair(std::size_t(0), num_teams));
+  auto team_offsets_sub =
+      Kokkos::subview(team_offsets, std::make_pair(std::size_t(0), num_teams));
+
+  TeamPolicy team_policy(num_teams, Kokkos::AUTO());
+
+  // Pass A: row mapping and per-team match counts
   Kokkos::parallel_for(
-      "intersection_row_map_2d",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const RowKey2D<CoordType> key = rows_a(i);
-        const int idx_b = intersection::detail::find_row_by_y(rows_b, num_rows_b, key.y);
-        if (idx_b >= 0) {
-          flags(i) = 1;
-          tmp_idx_a(i) = static_cast<int>(i);
-          tmp_idx_b(i) = idx_b;
-        } else {
-          flags(i) = 0;
-          tmp_idx_a(i) = -1;
-          tmp_idx_b(i) = -1;
-        }
+      "intersection_row_map_team_count_2d",
+      team_policy,
+      KOKKOS_LAMBDA(const TeamMember& team) {
+        const std::size_t team_id = team.league_rank();
+        const std::size_t start = team_id * rows_per_team;
+        const std::size_t end = (start + rows_per_team < num_rows_a)
+                                    ? (start + rows_per_team)
+                                    : num_rows_a;
+
+        IndexType local_count = 0;
+        Kokkos::parallel_reduce(
+            Kokkos::TeamThreadRange(team, start, end),
+            [&](const std::size_t i, IndexType& count) {
+              const RowKey2D<CoordType> key = rows_a(i);
+              const int idx_b = intersection::detail::find_row_by_y(rows_b, num_rows_b, key.y);
+              const bool match = (idx_b >= 0);
+              flags(i) = match ? 1 : 0;
+              tmp_idx_a(i) = match ? static_cast<int>(i) : -1;
+              tmp_idx_b(i) = match ? idx_b : -1;
+              count += static_cast<IndexType>(match ? 1 : 0);
+            },
+            local_count);
+
+        Kokkos::single(Kokkos::PerTeam(team), [&]() {
+          team_counts_sub(team_id) = local_count;
+        });
       });
 
-  Kokkos::fence();
-
-  // Scan to count matching rows and compute positions
+  // Pass B: small global scan over team counts
   auto num_rows_out_view = ws.num_rows_out_view;
 
   Kokkos::parallel_scan(
-      "intersection_row_scan",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        const std::size_t count = static_cast<std::size_t>(flags(i));
+      "intersection_team_scan_2d",
+      Kokkos::RangePolicy<ExecSpace>(0, num_teams),
+      KOKKOS_LAMBDA(const std::size_t team_id, IndexType& update, const bool final_pass) {
+        const IndexType count = team_counts_sub(team_id);
         if (final_pass) {
-          positions(i) = update;
-          if (i + 1 == num_rows_a) {
+          team_offsets_sub(team_id) = update;
+          if (team_id + 1 == num_teams) {
             num_rows_out_view() = update + count;
           }
         }
         update += count;
       });
 
-  Kokkos::fence();
+  // Pass C: per-team local scans to compute global positions
+  Kokkos::parallel_for(
+      "intersection_row_positions_team_scan_2d",
+      team_policy,
+      KOKKOS_LAMBDA(const TeamMember& team) {
+        const std::size_t team_id = team.league_rank();
+        const std::size_t start = team_id * rows_per_team;
+        const std::size_t end = (start + rows_per_team < num_rows_a)
+                                    ? (start + rows_per_team)
+                                    : num_rows_a;
+        const IndexType team_offset = team_offsets_sub(team_id);
+
+        Kokkos::parallel_scan(
+            Kokkos::TeamThreadRange(team, start, end),
+            [&](const std::size_t i, IndexType& update, const bool final_pass) {
+              const IndexType count = static_cast<IndexType>(flags(i));
+              if (final_pass) {
+                positions(i) = team_offset + update;
+              }
+              update += count;
+            });
+      });
 
   std::size_t num_rows_out_host = 0;
   Kokkos::deep_copy(num_rows_out_host, num_rows_out_view);
@@ -281,48 +328,95 @@ void intersect_meshes_3d_in_place_impl(
   auto tmp_idx_a = ws.tmp_idx_a;
   auto tmp_idx_b = ws.tmp_idx_b;
   auto positions = ws.positions;
+  auto team_counts = ws.team_counts;
+  auto team_offsets = ws.team_offsets;
 
   auto rows_a = A.row_keys;
   auto rows_b = B.row_keys;
   const std::size_t num_rows_b = B.num_rows;
 
-  // Phase 1: Row mapping (3D: search by y,z)
-  Kokkos::parallel_for(
-      "intersection_row_map_3d",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i) {
-        const RowKey3D<CoordType> key = rows_a(i);
-        const int idx_b = intersection::detail::find_row_by_yz(rows_b, num_rows_b, key.y, key.z);
-        if (idx_b >= 0) {
-          flags(i) = 1;
-          tmp_idx_a(i) = static_cast<int>(i);
-          tmp_idx_b(i) = idx_b;
-        } else {
-          flags(i) = 0;
-          tmp_idx_a(i) = -1;
-          tmp_idx_b(i) = -1;
-        }
-      });
+  using Workspace = IntersectionWorkspace3D<ExecSpace, IndexType, CoordType>;
+  using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+  using TeamMember = typename TeamPolicy::member_type;
+  constexpr std::size_t rows_per_team = Workspace::rows_per_team;
+  const std::size_t num_teams = (num_rows_a + rows_per_team - 1) / rows_per_team;
 
-  Kokkos::fence();
+  auto team_counts_sub =
+      Kokkos::subview(team_counts, std::make_pair(std::size_t(0), num_teams));
+  auto team_offsets_sub =
+      Kokkos::subview(team_offsets, std::make_pair(std::size_t(0), num_teams));
+
+  TeamPolicy team_policy(num_teams, Kokkos::AUTO());
+
+  // Pass A: row mapping and per-team match counts
+  Kokkos::parallel_for(
+      "intersection_row_map_team_count_3d",
+      team_policy,
+      KOKKOS_LAMBDA(const TeamMember& team) {
+        const std::size_t team_id = team.league_rank();
+        const std::size_t start = team_id * rows_per_team;
+        const std::size_t end = (start + rows_per_team < num_rows_a)
+                                    ? (start + rows_per_team)
+                                    : num_rows_a;
+
+        IndexType local_count = 0;
+        Kokkos::parallel_reduce(
+            Kokkos::TeamThreadRange(team, start, end),
+            [&](const std::size_t i, IndexType& count) {
+              const RowKey3D<CoordType> key = rows_a(i);
+              const int idx_b =
+                  intersection::detail::find_row_by_yz(rows_b, num_rows_b, key.y, key.z);
+              const bool match = (idx_b >= 0);
+              flags(i) = match ? 1 : 0;
+              tmp_idx_a(i) = match ? static_cast<int>(i) : -1;
+              tmp_idx_b(i) = match ? idx_b : -1;
+              count += static_cast<IndexType>(match ? 1 : 0);
+            },
+            local_count);
+
+        Kokkos::single(Kokkos::PerTeam(team), [&]() {
+          team_counts_sub(team_id) = local_count;
+        });
+      });
 
   auto num_rows_out_view = ws.num_rows_out_view;
 
   Kokkos::parallel_scan(
-      "intersection_row_scan_3d",
-      Kokkos::RangePolicy<ExecSpace>(0, num_rows_a),
-      KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-        const std::size_t count = static_cast<std::size_t>(flags(i));
+      "intersection_team_scan_3d",
+      Kokkos::RangePolicy<ExecSpace>(0, num_teams),
+      KOKKOS_LAMBDA(const std::size_t team_id, IndexType& update, const bool final_pass) {
+        const IndexType count = team_counts_sub(team_id);
         if (final_pass) {
-          positions(i) = update;
-          if (i + 1 == num_rows_a) {
+          team_offsets_sub(team_id) = update;
+          if (team_id + 1 == num_teams) {
             num_rows_out_view() = update + count;
           }
         }
         update += count;
       });
 
-  Kokkos::fence();
+  // Pass C: per-team local scans to compute global positions
+  Kokkos::parallel_for(
+      "intersection_row_positions_team_scan_3d",
+      team_policy,
+      KOKKOS_LAMBDA(const TeamMember& team) {
+        const std::size_t team_id = team.league_rank();
+        const std::size_t start = team_id * rows_per_team;
+        const std::size_t end = (start + rows_per_team < num_rows_a)
+                                    ? (start + rows_per_team)
+                                    : num_rows_a;
+        const IndexType team_offset = team_offsets_sub(team_id);
+
+        Kokkos::parallel_scan(
+            Kokkos::TeamThreadRange(team, start, end),
+            [&](const std::size_t i, IndexType& update, const bool final_pass) {
+              const IndexType count = static_cast<IndexType>(flags(i));
+              if (final_pass) {
+                positions(i) = team_offset + update;
+              }
+              update += count;
+            });
+      });
 
   std::size_t num_rows_out_host = 0;
   Kokkos::deep_copy(num_rows_out_host, num_rows_out_view);

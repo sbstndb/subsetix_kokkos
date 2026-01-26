@@ -30,6 +30,172 @@ using Coord = int32_t;
 using IntervalType = playground::subsetix::csr::intersection::Interval<Coord>;
 using Workspace = IntersectionWorkspace2D<Kokkos::DefaultExecutionSpace>;
 
+namespace {
+
+using ExecSpace = Kokkos::DefaultExecutionSpace;
+using TeamPolicy = Kokkos::TeamPolicy<ExecSpace>;
+using TeamMember = TeamPolicy::member_type;
+
+inline std::size_t compute_num_teams(std::size_t num_rows, std::size_t rows_per_team) {
+  return (num_rows + rows_per_team - 1) / rows_per_team;
+}
+
+template <class FlagsView, class TeamCountsView, class TeamOffsetsView, class PositionsView, class NumRowsOutView>
+void hierarchical_row_scan_positions(
+    std::size_t num_rows_a,
+    std::size_t rows_per_team,
+    const FlagsView& flags,
+    const TeamCountsView& team_counts,
+    TeamOffsetsView team_offsets,
+    PositionsView positions,
+    NumRowsOutView num_rows_out_view) {
+  using IndexType = typename TeamCountsView::non_const_value_type;
+  const std::size_t num_teams = compute_num_teams(num_rows_a, rows_per_team);
+  if (num_teams == 0) {
+    Kokkos::deep_copy(num_rows_out_view, IndexType(0));
+    return;
+  }
+
+  auto team_counts_sub = Kokkos::subview(team_counts, std::make_pair(std::size_t(0), num_teams));
+  auto team_offsets_sub = Kokkos::subview(team_offsets, std::make_pair(std::size_t(0), num_teams));
+
+  Kokkos::parallel_scan(
+      "phase_team_scan",
+      Kokkos::RangePolicy<ExecSpace>(0, num_teams),
+      KOKKOS_LAMBDA(const std::size_t team_id, IndexType& update, const bool final_pass) {
+        const IndexType count = team_counts_sub(team_id);
+        if (final_pass) {
+          team_offsets_sub(team_id) = update;
+          if (team_id + 1 == num_teams) {
+            num_rows_out_view() = update + count;
+          }
+        }
+        update += count;
+      });
+
+  TeamPolicy team_policy(num_teams, Kokkos::AUTO());
+  Kokkos::parallel_for(
+      "phase_row_positions_team_scan",
+      team_policy,
+      KOKKOS_LAMBDA(const TeamMember& team) {
+        const std::size_t team_id = team.league_rank();
+        const std::size_t start = team_id * rows_per_team;
+        const std::size_t end =
+            (start + rows_per_team < num_rows_a) ? (start + rows_per_team) : num_rows_a;
+        const IndexType team_offset = team_offsets_sub(team_id);
+
+        Kokkos::parallel_scan(
+            Kokkos::TeamThreadRange(team, start, end),
+            [&](const std::size_t i, IndexType& update, const bool final_pass) {
+              const IndexType count = static_cast<IndexType>(flags(i));
+              if (final_pass) {
+                positions(i) = team_offset + update;
+              }
+              update += count;
+            });
+      });
+}
+
+template <class RowKeyViewA, class RowKeyViewB, class FlagsView, class TmpIdxAView, class TmpIdxBView, class TeamCountsView>
+void hierarchical_row_map_and_count_2d(
+    std::size_t num_rows_a,
+    const RowKeyViewA& row_keys_a,
+    const RowKeyViewB& row_keys_b,
+    std::size_t num_rows_b,
+    std::size_t rows_per_team,
+    FlagsView flags,
+    TmpIdxAView tmp_idx_a,
+    TmpIdxBView tmp_idx_b,
+    TeamCountsView team_counts) {
+  using IndexType = typename TeamCountsView::non_const_value_type;
+  const std::size_t num_teams = compute_num_teams(num_rows_a, rows_per_team);
+  if (num_teams == 0) {
+    return;
+  }
+
+  auto team_counts_sub = Kokkos::subview(team_counts, std::make_pair(std::size_t(0), num_teams));
+  TeamPolicy team_policy(num_teams, Kokkos::AUTO());
+
+  Kokkos::parallel_for(
+      "phase_row_map_team_count_2d",
+      team_policy,
+      KOKKOS_LAMBDA(const TeamMember& team) {
+        const std::size_t team_id = team.league_rank();
+        const std::size_t start = team_id * rows_per_team;
+        const std::size_t end =
+            (start + rows_per_team < num_rows_a) ? (start + rows_per_team) : num_rows_a;
+
+        IndexType local_count = 0;
+        Kokkos::parallel_reduce(
+            Kokkos::TeamThreadRange(team, start, end),
+            [&](const std::size_t i, IndexType& count) {
+              const RowKey2D<Coord> key = row_keys_a(i);
+              const int idx_b =
+                  playground::subsetix::csr::intersection::detail::find_row_by_y(
+                      row_keys_b, num_rows_b, key.y);
+              const bool match = (idx_b >= 0);
+              flags(i) = match ? 1 : 0;
+              tmp_idx_a(i) = match ? static_cast<int>(i) : -1;
+              tmp_idx_b(i) = match ? idx_b : -1;
+              count += static_cast<IndexType>(match ? 1 : 0);
+            },
+            local_count);
+
+        Kokkos::single(Kokkos::PerTeam(team), [&]() { team_counts_sub(team_id) = local_count; });
+      });
+}
+
+template <class RowKeyViewA, class RowKeyViewB, class FlagsView, class TmpIdxAView, class TmpIdxBView, class TeamCountsView>
+void hierarchical_row_map_and_count_3d(
+    std::size_t num_rows_a,
+    const RowKeyViewA& row_keys_a,
+    const RowKeyViewB& row_keys_b,
+    std::size_t num_rows_b,
+    std::size_t rows_per_team,
+    FlagsView flags,
+    TmpIdxAView tmp_idx_a,
+    TmpIdxBView tmp_idx_b,
+    TeamCountsView team_counts) {
+  using IndexType = typename TeamCountsView::non_const_value_type;
+  const std::size_t num_teams = compute_num_teams(num_rows_a, rows_per_team);
+  if (num_teams == 0) {
+    return;
+  }
+
+  auto team_counts_sub = Kokkos::subview(team_counts, std::make_pair(std::size_t(0), num_teams));
+  TeamPolicy team_policy(num_teams, Kokkos::AUTO());
+
+  Kokkos::parallel_for(
+      "phase_row_map_team_count_3d",
+      team_policy,
+      KOKKOS_LAMBDA(const TeamMember& team) {
+        const std::size_t team_id = team.league_rank();
+        const std::size_t start = team_id * rows_per_team;
+        const std::size_t end =
+            (start + rows_per_team < num_rows_a) ? (start + rows_per_team) : num_rows_a;
+
+        IndexType local_count = 0;
+        Kokkos::parallel_reduce(
+            Kokkos::TeamThreadRange(team, start, end),
+            [&](const std::size_t i, IndexType& count) {
+              const RowKey3D<Coord> key = row_keys_a(i);
+              const int idx_b =
+                  playground::subsetix::csr::intersection::detail::find_row_by_yz(
+                      row_keys_b, num_rows_b, key.y, key.z);
+              const bool match = (idx_b >= 0);
+              flags(i) = match ? 1 : 0;
+              tmp_idx_a(i) = match ? static_cast<int>(i) : -1;
+              tmp_idx_b(i) = match ? idx_b : -1;
+              count += static_cast<IndexType>(match ? 1 : 0);
+            },
+            local_count);
+
+        Kokkos::single(Kokkos::PerTeam(team), [&]() { team_counts_sub(team_id) = local_count; });
+      });
+}
+
+} // namespace
+
 // ============================================================================
 // Helper function to generate benchmark data
 // ============================================================================
@@ -75,41 +241,20 @@ struct PhaseBenchmarkData {
     const auto tmp_idx_a = workspace.tmp_idx_a;
     const auto tmp_idx_b = workspace.tmp_idx_b;
     const auto positions = workspace.positions;
+    const auto team_counts = workspace.team_counts;
+    const auto team_offsets = workspace.team_offsets;
     const auto out_rows = workspace.out_rows;
     const auto out_idx_a = workspace.out_idx_a;
     const auto out_idx_b = workspace.out_idx_b;
     const auto num_rows_out_view = workspace.num_rows_out_view;
+    constexpr std::size_t rows_per_team = Workspace::rows_per_team;
 
-    // Phase 1: Row Mapping
-    Kokkos::parallel_for(
-        "phase_benchmark_row_mapping",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i) {
-          const RowKey2D<Coord> key = row_keys_a(i);
-          const int idx_b = playground::subsetix::csr::intersection::detail::find_row_by_y(
-              row_keys_b, num_rows_b, key.y);
+    hierarchical_row_map_and_count_2d(
+        num_rows_a, row_keys_a, row_keys_b, num_rows_b, rows_per_team, flags, tmp_idx_a,
+        tmp_idx_b, team_counts);
 
-          flags(i) = (idx_b >= 0) ? 1 : 0;
-          tmp_idx_a(i) = (idx_b >= 0) ? static_cast<int>(i) : -1;
-          tmp_idx_b(i) = idx_b;
-        });
-
-    Kokkos::fence();
-
-    // Phase 2: Row Scan
-    Kokkos::parallel_scan(
-        "phase_benchmark_row_scan",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        },
-        num_rows_out_view);
-
-    Kokkos::fence();
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
 
     // Extract num_rows_out from device view to host
     Kokkos::deep_copy(num_rows_out, workspace.num_rows_out_view);
@@ -193,19 +338,15 @@ static void Phase2_RowScan_Small(benchmark::State& state) {
   PhaseBenchmarkData data(SmallRegularConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team = Workspace::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -218,19 +359,15 @@ static void Phase2_RowScan_Medium(benchmark::State& state) {
   PhaseBenchmarkData data(MediumRegularConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team = Workspace::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -332,41 +469,21 @@ struct PhaseBenchmarkData3D {
     const auto tmp_idx_a = workspace.tmp_idx_a;
     const auto tmp_idx_b = workspace.tmp_idx_b;
     const auto positions = workspace.positions;
+    const auto team_counts = workspace.team_counts;
+    const auto team_offsets = workspace.team_offsets;
     const auto out_rows = workspace.out_rows;
     const auto out_idx_a = workspace.out_idx_a;
     const auto out_idx_b = workspace.out_idx_b;
     const auto num_rows_out_view = workspace.num_rows_out_view;
+    constexpr std::size_t rows_per_team =
+        IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>::rows_per_team;
 
-    // Phase 1: Row Mapping (3D: search by y,z)
-    Kokkos::parallel_for(
-        "phase_benchmark_row_mapping_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i) {
-          const RowKey3D<Coord> key = row_keys_a(i);
-          const int idx_b = playground::subsetix::csr::intersection::detail::find_row_by_yz(
-              row_keys_b, num_rows_b, key.y, key.z);
+    hierarchical_row_map_and_count_3d(
+        num_rows_a, row_keys_a, row_keys_b, num_rows_b, rows_per_team, flags, tmp_idx_a,
+        tmp_idx_b, team_counts);
 
-          flags(i) = (idx_b >= 0) ? 1 : 0;
-          tmp_idx_a(i) = (idx_b >= 0) ? static_cast<int>(i) : -1;
-          tmp_idx_b(i) = idx_b;
-        });
-
-    Kokkos::fence();
-
-    // Phase 2: Row Scan
-    Kokkos::parallel_scan(
-        "phase_benchmark_row_scan_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        },
-        num_rows_out_view);
-
-    Kokkos::fence();
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
 
     // Extract num_rows_out from device view to host
     Kokkos::deep_copy(num_rows_out, workspace.num_rows_out_view);
@@ -450,19 +567,16 @@ static void Phase2_RowScan_3D_Small(benchmark::State& state) {
   PhaseBenchmarkData3D data(SmallRegularConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team =
+      IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -475,19 +589,16 @@ static void Phase2_RowScan_3D_Medium(benchmark::State& state) {
   PhaseBenchmarkData3D data(MediumRegularConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team =
+      IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -595,19 +706,16 @@ static void Phase2_RowScan_3D_Large(benchmark::State& state) {
   PhaseBenchmarkData3D data(LargeRegularConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team =
+      IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -1430,41 +1538,20 @@ struct PhaseBenchmarkDataRandom2D {
     const auto tmp_idx_a = workspace.tmp_idx_a;
     const auto tmp_idx_b = workspace.tmp_idx_b;
     const auto positions = workspace.positions;
+    const auto team_counts = workspace.team_counts;
+    const auto team_offsets = workspace.team_offsets;
     const auto out_rows = workspace.out_rows;
     const auto out_idx_a = workspace.out_idx_a;
     const auto out_idx_b = workspace.out_idx_b;
     const auto num_rows_out_view = workspace.num_rows_out_view;
+    constexpr std::size_t rows_per_team = Workspace::rows_per_team;
 
-    // Phase 1: Row Mapping
-    Kokkos::parallel_for(
-        "phase_benchmark_row_mapping_random",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i) {
-          const RowKey2D<Coord> key = row_keys_a(i);
-          const int idx_b = playground::subsetix::csr::intersection::detail::find_row_by_y(
-              row_keys_b, num_rows_b, key.y);
+    hierarchical_row_map_and_count_2d(
+        num_rows_a, row_keys_a, row_keys_b, num_rows_b, rows_per_team, flags, tmp_idx_a,
+        tmp_idx_b, team_counts);
 
-          flags(i) = (idx_b >= 0) ? 1 : 0;
-          tmp_idx_a(i) = (idx_b >= 0) ? static_cast<int>(i) : -1;
-          tmp_idx_b(i) = idx_b;
-        });
-
-    Kokkos::fence();
-
-    // Phase 2: Row Scan
-    Kokkos::parallel_scan(
-        "phase_benchmark_row_scan_random",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        },
-        num_rows_out_view);
-
-    Kokkos::fence();
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
 
     // Extract num_rows_out from device view to host
     Kokkos::deep_copy(num_rows_out, workspace.num_rows_out_view);
@@ -1529,41 +1616,21 @@ struct PhaseBenchmarkDataRandom3D {
     const auto tmp_idx_a = workspace.tmp_idx_a;
     const auto tmp_idx_b = workspace.tmp_idx_b;
     const auto positions = workspace.positions;
+    const auto team_counts = workspace.team_counts;
+    const auto team_offsets = workspace.team_offsets;
     const auto out_rows = workspace.out_rows;
     const auto out_idx_a = workspace.out_idx_a;
     const auto out_idx_b = workspace.out_idx_b;
     const auto num_rows_out_view = workspace.num_rows_out_view;
+    constexpr std::size_t rows_per_team =
+        IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>::rows_per_team;
 
-    // Phase 1: Row Mapping (3D: search by y,z)
-    Kokkos::parallel_for(
-        "phase_benchmark_row_mapping_random_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i) {
-          const RowKey3D<Coord> key = row_keys_a(i);
-          const int idx_b = playground::subsetix::csr::intersection::detail::find_row_by_yz(
-              row_keys_b, num_rows_b, key.y, key.z);
+    hierarchical_row_map_and_count_3d(
+        num_rows_a, row_keys_a, row_keys_b, num_rows_b, rows_per_team, flags, tmp_idx_a,
+        tmp_idx_b, team_counts);
 
-          flags(i) = (idx_b >= 0) ? 1 : 0;
-          tmp_idx_a(i) = (idx_b >= 0) ? static_cast<int>(i) : -1;
-          tmp_idx_b(i) = idx_b;
-        });
-
-    Kokkos::fence();
-
-    // Phase 2: Row Scan
-    Kokkos::parallel_scan(
-        "phase_benchmark_row_scan_random_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        },
-        num_rows_out_view);
-
-    Kokkos::fence();
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
 
     // Extract num_rows_out from device view to host
     Kokkos::deep_copy(num_rows_out, workspace.num_rows_out_view);
@@ -1812,19 +1879,15 @@ static void Phase2_RowScan_Random_2D_Small(benchmark::State& state) {
   PhaseBenchmarkDataRandom2D data(SmallConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team = Workspace::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_random",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -1837,19 +1900,15 @@ static void Phase2_RowScan_Random_2D_Medium(benchmark::State& state) {
   PhaseBenchmarkDataRandom2D data(MediumConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team = Workspace::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_random",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -1862,19 +1921,15 @@ static void Phase2_RowScan_Random_2D_Large(benchmark::State& state) {
   PhaseBenchmarkDataRandom2D data(LargeConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team = Workspace::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_random",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -1970,19 +2025,16 @@ static void Phase2_RowScan_Random_3D_Small(benchmark::State& state) {
   PhaseBenchmarkDataRandom3D data(SmallConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team =
+      IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_random_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -1995,19 +2047,16 @@ static void Phase2_RowScan_Random_3D_Medium(benchmark::State& state) {
   PhaseBenchmarkDataRandom3D data(MediumConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team =
+      IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_random_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 
@@ -2020,19 +2069,16 @@ static void Phase2_RowScan_Random_3D_Large(benchmark::State& state) {
   PhaseBenchmarkDataRandom3D data(LargeConfig());
   const auto num_rows_a = data.mesh_a.num_rows;
   const auto flags = data.workspace.flags;
+  const auto team_counts = data.workspace.team_counts;
+  const auto team_offsets = data.workspace.team_offsets;
   const auto positions = data.workspace.positions;
+  const auto num_rows_out_view = data.workspace.num_rows_out_view;
+  constexpr std::size_t rows_per_team =
+      IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace>::rows_per_team;
 
   for (auto _ : state) {
-    Kokkos::parallel_scan(
-        "phase_row_scan_random_3d",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_rows_a),
-        KOKKOS_LAMBDA(const std::size_t i, std::size_t& update, const bool final_pass) {
-          const std::size_t count = flags(i);
-          if (final_pass) {
-            positions(i) = update;
-          }
-          update += count;
-        });
+    hierarchical_row_scan_positions(
+        num_rows_a, rows_per_team, flags, team_counts, team_offsets, positions, num_rows_out_view);
     Kokkos::fence();
   }
 

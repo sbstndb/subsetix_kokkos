@@ -41,6 +41,9 @@ struct IntersectionWorkspace2D {
   using ScalarView = Kokkos::View<IndexType, MemorySpace>;
   using RowKeyView = Kokkos::View<RowKey2D<CoordType>*, MemorySpace>;
 
+  /// Chunk size used for hierarchical row scans
+  static constexpr std::size_t rows_per_team = 4096;
+
   // ============================================================================
   // Phase 1: Row Mapping Buffers
   // ============================================================================
@@ -56,6 +59,12 @@ struct IntersectionWorkspace2D {
 
   /// Positions for compaction after row mapping
   SizeTView positions;
+
+  /// Per-team match counts for hierarchical scans
+  SizeTView team_counts;
+
+  /// Per-team offsets for hierarchical scans
+  SizeTView team_offsets;
 
   // ============================================================================
   // Phase 2: Row Scan & Compaction Buffers
@@ -110,6 +119,9 @@ struct IntersectionWorkspace2D {
   /// Current allocated capacity (intervals)
   std::size_t capacity_intervals = 0;
 
+  /// Current allocated capacity (teams)
+  std::size_t capacity_teams = 0;
+
   /**
    * @brief Ensure workspace has sufficient capacity
    *
@@ -127,12 +139,16 @@ struct IntersectionWorkspace2D {
     // Allocate with new capacity (grow-only, never shrink)
     std::size_t new_capacity_rows = std::max(max_rows, capacity_rows);
     std::size_t new_capacity_intervals = std::max(max_intervals, capacity_intervals);
+    std::size_t new_capacity_teams =
+        std::max((new_capacity_rows + rows_per_team - 1) / rows_per_team, capacity_teams);
 
     // Phase 1 buffers
     flags = IntView("workspace_flags", new_capacity_rows);
     tmp_idx_a = IntView("workspace_tmp_idx_a", new_capacity_rows);
     tmp_idx_b = IntView("workspace_tmp_idx_b", new_capacity_rows);
     positions = SizeTView("workspace_positions", new_capacity_rows);
+    team_counts = SizeTView("workspace_team_counts", new_capacity_teams);
+    team_offsets = SizeTView("workspace_team_offsets", new_capacity_teams);
 
     // Phase 2 buffers
     num_rows_out_view = ScalarView("workspace_num_rows_out");  // 0D scalar view
@@ -153,6 +169,7 @@ struct IntersectionWorkspace2D {
 
     capacity_rows = new_capacity_rows;
     capacity_intervals = new_capacity_intervals;
+    capacity_teams = new_capacity_teams;
   }
 
   /**
@@ -188,6 +205,8 @@ struct IntersectionWorkspace3D {
   using ScalarView = Kokkos::View<IndexType, MemorySpace>;
   using RowKeyView = Kokkos::View<RowKey3D<CoordType>*, MemorySpace>;
 
+  static constexpr std::size_t rows_per_team = 4096;
+
   // ============================================================================
   // Phase 1: Row Mapping Buffers
   // ============================================================================
@@ -196,6 +215,8 @@ struct IntersectionWorkspace3D {
   IntView tmp_idx_a;
   IntView tmp_idx_b;
   SizeTView positions;
+  SizeTView team_counts;
+  SizeTView team_offsets;
 
   // ============================================================================
   // Phase 2: Row Scan & Compaction Buffers
@@ -232,6 +253,7 @@ struct IntersectionWorkspace3D {
 
   std::size_t capacity_rows = 0;
   std::size_t capacity_intervals = 0;
+  std::size_t capacity_teams = 0;
 
   void ensure_capacity(std::size_t max_rows, std::size_t max_intervals) {
     if (max_rows <= capacity_rows && max_intervals <= capacity_intervals) {
@@ -240,11 +262,15 @@ struct IntersectionWorkspace3D {
 
     std::size_t new_capacity_rows = std::max(max_rows, capacity_rows);
     std::size_t new_capacity_intervals = std::max(max_intervals, capacity_intervals);
+    std::size_t new_capacity_teams =
+        std::max((new_capacity_rows + rows_per_team - 1) / rows_per_team, capacity_teams);
 
     flags = IntView("workspace_flags", new_capacity_rows);
     tmp_idx_a = IntView("workspace_tmp_idx_a", new_capacity_rows);
     tmp_idx_b = IntView("workspace_tmp_idx_b", new_capacity_rows);
     positions = SizeTView("workspace_positions", new_capacity_rows);
+    team_counts = SizeTView("workspace_team_counts", new_capacity_teams);
+    team_offsets = SizeTView("workspace_team_offsets", new_capacity_teams);
 
     num_rows_out_view = ScalarView("workspace_num_rows_out");
     out_rows = RowKeyView("workspace_out_rows", new_capacity_rows);
@@ -260,6 +286,7 @@ struct IntersectionWorkspace3D {
 
     capacity_rows = new_capacity_rows;
     capacity_intervals = new_capacity_intervals;
+    capacity_teams = new_capacity_teams;
   }
 
   void reset() {
