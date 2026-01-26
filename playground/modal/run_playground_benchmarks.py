@@ -58,6 +58,7 @@ def create_image() -> modal.Image:
             "git",
             "libfmt-dev",
             "libmpfr-dev",
+            "libbenchmark-dev",
         )
         .env({
             "CC": "gcc-12",
