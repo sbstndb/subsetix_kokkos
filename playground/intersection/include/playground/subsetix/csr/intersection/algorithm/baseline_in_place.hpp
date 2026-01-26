@@ -8,7 +8,8 @@
 #include <playground/subsetix/csr/intersection/algorithm/baseline.hpp>
 #include <playground/subsetix/csr/intersection/workspace.hpp>
 
-namespace playground::subsetix::csr::intersection::baseline {
+// This file is included from within namespace playground::subsetix::csr::intersection::baseline
+// so we don't need to declare the namespace here.
 
 // ============================================================================
 // Mesh intersection with pre-allocated workspace - Implementation
@@ -589,7 +590,5 @@ void intersect_meshes_3d_in_place(
     result_out.num_rows = final_num_rows;
   }
 }
-
-} // namespace playground::subsetix::csr::intersection::baseline
 
 #endif // SUBSETIX_ENABLE_PLAYGROUND
