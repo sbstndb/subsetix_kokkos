@@ -152,10 +152,6 @@ struct GetExtraLargeRegularConfig {
   RegularMeshConfig operator()() const { return ExtraLargeRegularConfig(); }
 };
 
-struct GetExtraExtraLargeRegularConfig {
-  RegularMeshConfig operator()() const { return ExtraExtraLargeRegularConfig(); }
-};
-
 // ============================================================================
 // 2D Benchmarks
 // ============================================================================
@@ -375,11 +371,7 @@ BENCHMARK_TEMPLATE_F(OptimizedRegularMeshBenchmark3D, Optimized_3D_Regular_Extra
   state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
 }
 
-// 3D ExtraExtraLarge benchmarks DISABLED - OOM even on H100 (80GB VRAM)
-// ExtraExtraLarge 3D has 268M rows which requires >80GB GPU memory
-// 2D ExtraExtraLarge benchmarks are safe and functional
-
-// Note: 2D ExtraExtraLarge benchmarks below
+// Note: 2D ExtraLarge benchmarks are safe and functional
 
 // ============================================================================
 // Main
