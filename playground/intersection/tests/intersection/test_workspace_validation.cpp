@@ -325,4 +325,209 @@ TEST_F(WorkspaceValidationTest, InPlace_IsIdempotent_2D_Random) {
   }
 }
 
+// ============================================================================
+// Workspace Reuse Tests
+// ============================================================================
+
+TEST_F(WorkspaceValidationTest, WorkspaceReuse_2D_MultipleIntersections) {
+  // Test that the same workspace can be reused multiple times with different random meshes
+  std::mt19937 seed_gen(47);
+  const int num_reuses = 10;
+
+  // First pass: find max size needed across all meshes
+  std::size_t max_rows = 0;
+  std::size_t max_intervals = 0;
+  std::vector<int> seeds;
+
+  for (int iter = 0; iter < num_reuses; ++iter) {
+    seeds.push_back(seed_gen());
+  }
+
+  for (int seed : seeds) {
+    RandomMeshConfig config;
+    config.seed = seed;
+    config.y_max = 500;
+    config.sparsity = 0.2;
+    config.intervals_per_row_min = 2;
+    config.intervals_per_row_max = 8;
+
+    auto mesh_a = RandomMeshGenerator::generate_2d(config);
+    config.seed++;
+    auto mesh_b = RandomMeshGenerator::generate_2d(config);
+
+    auto device_a = MeshConverter2D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh_a);
+    auto device_b = MeshConverter2D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh_b);
+
+    max_rows = std::max(max_rows, std::max(device_a.num_rows, device_b.num_rows));
+    max_intervals = std::max(max_intervals, device_a.num_intervals + device_b.num_intervals);
+  }
+
+  // Pre-allocate workspace
+  IntersectionWorkspace2D<Kokkos::DefaultExecutionSpace> ws;
+  ws.ensure_capacity(max_rows, max_intervals);
+
+  // Second pass: reuse workspace for all intersections
+  for (size_t iter = 0; iter < seeds.size(); ++iter) {
+    int seed = seeds[iter];
+    RandomMeshConfig config;
+    config.seed = seed;
+    config.y_max = 500;
+    config.sparsity = 0.2;
+    config.intervals_per_row_min = 2;
+    config.intervals_per_row_max = 8;
+
+    auto mesh_a = RandomMeshGenerator::generate_2d(config);
+    config.seed++;
+    auto mesh_b = RandomMeshGenerator::generate_2d(config);
+
+    auto device_a = MeshConverter2D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh_a);
+    auto device_b = MeshConverter2D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh_b);
+
+    baseline::Mesh2DDevice result_device;
+    result_device.row_keys = Kokkos::View<RowKey2D<int32_t>*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_keys", max_rows);
+    result_device.row_ptr = Kokkos::View<std::size_t*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_ptr", max_rows + 1);
+    result_device.intervals = Kokkos::View<playground::subsetix::csr::intersection::Interval<int32_t>*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_intervals", max_intervals);
+
+    // Intersect using the SAME workspace
+    baseline::intersect_meshes_2d_in_place(device_a, device_b, result_device, ws);
+
+    // Compare with baseline
+    auto result_baseline = test::intersect_baseline_2d(mesh_a, mesh_b);
+    auto result_workspace = to_common_for_test(result_device);
+
+    EXPECT_TRUE(common_meshes_equal(result_baseline, result_workspace))
+        << "Workspace reuse produced different result at iteration=" << iter << " (seed=" << seed << ")";
+  }
+
+  // Verify workspace was not reallocated during reuse (capacity should remain stable)
+  auto [cap_rows, cap_intervals] = ws.capacity();
+  EXPECT_GE(cap_rows, max_rows) << "Workspace capacity rows shrank during reuse";
+  EXPECT_GE(cap_intervals, max_intervals) << "Workspace capacity intervals shrank during reuse";
+}
+
+TEST_F(WorkspaceValidationTest, WorkspaceReuse_3D_MultipleIntersections) {
+  // Test that the same workspace can be reused multiple times in 3D with random meshes
+  std::mt19937 seed_gen(48);
+  const int num_reuses = 8;
+
+  // First pass: find max size needed
+  std::size_t max_rows = 0;
+  std::size_t max_intervals = 0;
+  std::vector<int> seeds;
+
+  for (int iter = 0; iter < num_reuses; ++iter) {
+    seeds.push_back(seed_gen());
+  }
+
+  for (int seed : seeds) {
+    RandomMeshConfig config;
+    config.seed = seed;
+    config.y_max = 50;
+    config.z_max = 50;
+    config.sparsity = 0.3;
+    config.intervals_per_row_min = 1;
+    config.intervals_per_row_max = 5;
+
+    auto mesh_a = RandomMeshGenerator::generate_3d(config);
+    config.seed++;
+    auto mesh_b = RandomMeshGenerator::generate_3d(config);
+
+    auto device_a = MeshConverter3D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh_a);
+    auto device_b = MeshConverter3D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh_b);
+
+    max_rows = std::max(max_rows, std::max(device_a.num_rows, device_b.num_rows));
+    max_intervals = std::max(max_intervals, device_a.num_intervals + device_b.num_intervals);
+  }
+
+  // Pre-allocate workspace
+  IntersectionWorkspace3D<Kokkos::DefaultExecutionSpace> ws;
+  ws.ensure_capacity(max_rows, max_intervals);
+
+  // Second pass: reuse workspace for all intersections
+  for (size_t iter = 0; iter < seeds.size(); ++iter) {
+    int seed = seeds[iter];
+    RandomMeshConfig config;
+    config.seed = seed;
+    config.y_max = 50;
+    config.z_max = 50;
+    config.sparsity = 0.3;
+    config.intervals_per_row_min = 1;
+    config.intervals_per_row_max = 5;
+
+    auto mesh_a = RandomMeshGenerator::generate_3d(config);
+    config.seed++;
+    auto mesh_b = RandomMeshGenerator::generate_3d(config);
+
+    auto device_a = MeshConverter3D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh_a);
+    auto device_b = MeshConverter3D<baseline::Mesh, Kokkos::DefaultExecutionSpace::memory_space, int32_t, std::size_t>::from_common(mesh_b);
+
+    baseline::Mesh3DDevice result_device;
+    result_device.row_keys = Kokkos::View<RowKey3D<int32_t>*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_keys", max_rows);
+    result_device.row_ptr = Kokkos::View<std::size_t*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_ptr", max_rows + 1);
+    result_device.intervals = Kokkos::View<playground::subsetix::csr::intersection::Interval<int32_t>*, Kokkos::DefaultExecutionSpace::memory_space>(
+        "result_intervals", max_intervals);
+
+    baseline::intersect_meshes_3d_in_place(device_a, device_b, result_device, ws);
+
+    auto result_baseline = test::intersect_baseline_3d(mesh_a, mesh_b);
+    auto result_workspace = to_common_for_test_3d(result_device);
+
+    EXPECT_TRUE(common_meshes_equal(result_baseline, result_workspace))
+        << "3D workspace reuse produced different result at iteration=" << iter << " (seed=" << seed << ")";
+  }
+
+  auto [cap_rows, cap_intervals] = ws.capacity();
+  EXPECT_GE(cap_rows, max_rows) << "3D workspace capacity rows shrank during reuse";
+  EXPECT_GE(cap_intervals, max_intervals) << "3D workspace capacity intervals shrank during reuse";
+}
+
+// ============================================================================
+// Aggressive 3D Random Tests
+// ============================================================================
+
+TEST_F(WorkspaceValidationTest, InPlaceMatchesBaseline_3D_RandomBounds_Aggressive) {
+  std::mt19937 seed_gen(49);
+
+  // More aggressive parameters than the standard 3D random test
+  std::uniform_int_distribution<int> rows_dist(10, 100);  // Increased from 1-20
+  std::uniform_int_distribution<int> intervals_dist(2, 15);  // Increased from 1-8
+  std::uniform_int_distribution<int> seed_dist(1, 10000);
+  std::uniform_int_distribution<int> length_dist(10, 1000);  // Increased range
+
+  const int num_iterations = 25;  // Increased from 10
+
+  for (int iter = 0; iter < num_iterations; ++iter) {
+    int num_rows = rows_dist(seed_gen);
+    int min_intervals = intervals_dist(seed_gen);
+    int max_intervals = std::min(min_intervals + intervals_dist(seed_gen), 25);  // Increased from 15
+    int seed = seed_dist(seed_gen);
+    int max_length = length_dist(seed_gen);
+
+    RandomMeshConfig config = MediumConfig();
+    config.seed = seed;
+    int y_extent = config.y_max - config.y_min;
+    int z_extent = config.z_max - config.z_min;
+    config.sparsity = static_cast<double>(num_rows) / (y_extent * z_extent);
+    config.intervals_per_row_min = min_intervals;
+    config.intervals_per_row_max = max_intervals;
+    config.interval_length_max = max_length;
+
+    auto mesh_a = RandomMeshGenerator::generate_3d(config);
+    config.seed++;
+    auto mesh_b = RandomMeshGenerator::generate_3d(config);
+
+    auto result_baseline = test::intersect_baseline_3d(mesh_a, mesh_b);
+    auto result_in_place = intersect_in_place_3d(mesh_a, mesh_b);
+
+    EXPECT_TRUE(common_meshes_equal(result_baseline, result_in_place))
+        << "Workspace version produced different result than baseline (3D aggressive, iteration=" << iter
+        << ", seed=" << seed << ", rows=" << num_rows << ", intervals=[" << min_intervals << "," << max_intervals << "])";
+  }
+}
+
 #endif // SUBSETIX_ENABLE_PLAYGROUND
