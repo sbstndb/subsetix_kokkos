@@ -9,11 +9,8 @@ endif()
 
 message(STATUS "=== Configuring Playground Intersection Benchmarks ===")
 
-# Find Google Benchmark
-find_package(benchmark QUIET)
-
-if(NOT benchmark_FOUND)
-  message(STATUS "  - Google Benchmark not found, skipping playground benchmarks")
+if(NOT TARGET benchmark::benchmark)
+  message(STATUS "  - Google Benchmark target not found, skipping playground benchmarks")
   return()
 endif()
 
@@ -41,7 +38,6 @@ target_link_libraries(playground_intersection_regular_benchmark
     playground::intersection
     Kokkos::kokkos
     benchmark::benchmark
-    benchmark::benchmark_main
 )
 
 target_link_libraries(playground_intersection_comparison_benchmark
@@ -49,7 +45,6 @@ target_link_libraries(playground_intersection_comparison_benchmark
     playground::intersection
     Kokkos::kokkos
     benchmark::benchmark
-    benchmark::benchmark_main
 )
 
 target_link_libraries(playground_intersection_workspace_benchmark
@@ -57,7 +52,6 @@ target_link_libraries(playground_intersection_workspace_benchmark
     playground::intersection
     Kokkos::kokkos
     benchmark::benchmark
-    benchmark::benchmark_main
 )
 
 target_link_libraries(playground_intersection_phase_benchmark
@@ -65,7 +59,6 @@ target_link_libraries(playground_intersection_phase_benchmark
     playground::intersection
     Kokkos::kokkos
     benchmark::benchmark
-    benchmark::benchmark_main
 )
 
 target_include_directories(playground_intersection_regular_benchmark

@@ -26,9 +26,7 @@ target_link_libraries(playground_intersection_tests
   PRIVATE
     playground::intersection
     Kokkos::kokkos
-    gtest
-    gmock
-    gmock_main
+    GTest::gtest
 )
 
 target_include_directories(playground_intersection_tests
