@@ -42,7 +42,7 @@ struct IntersectionWorkspace2D {
   using RowKeyView = Kokkos::View<RowKey2D<CoordType>*, MemorySpace>;
 
   /// Chunk size used for hierarchical row scans
-  static constexpr std::size_t rows_per_team = 4096;
+  static constexpr std::size_t rows_per_team = 1024;
 
   // ============================================================================
   // Phase 1: Row Mapping Buffers
@@ -205,7 +205,7 @@ struct IntersectionWorkspace3D {
   using ScalarView = Kokkos::View<IndexType, MemorySpace>;
   using RowKeyView = Kokkos::View<RowKey3D<CoordType>*, MemorySpace>;
 
-  static constexpr std::size_t rows_per_team = 4096;
+  static constexpr std::size_t rows_per_team = 1024;
 
   // ============================================================================
   // Phase 1: Row Mapping Buffers
