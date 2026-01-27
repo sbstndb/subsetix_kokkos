@@ -35,6 +35,7 @@ GPU_ARCH_MAP = {
     "A100": "AMPERE80",
     "H100": "HOPPER90",
     "L40S": "ADALATEST",  # Ada Lovelace
+    "B200": "BLACKWELL",  # Blackwell (requires CUDA 13.0+)
 }
 
 # Benchmark configuration
@@ -47,7 +48,7 @@ def create_image() -> modal.Image:
 
     return (
         modal.Image.from_registry(
-            "nvidia/cuda:12.4.0-devel-ubuntu22.04",
+            "nvidia/cuda:13.0.0-devel-ubuntu22.04",
             add_python="3.11",
         )
         .apt_install(
@@ -332,6 +333,10 @@ def run_h100() -> dict:
 def run_l40s() -> dict:
     return run_benchmarks("L40S", GPU_ARCH_MAP["L40S"])
 
+@app.function(gpu="B200", cpu=16.0, timeout=2400)
+def run_b200() -> dict:
+    return run_benchmarks("B200", GPU_ARCH_MAP["B200"])
+
 
 # -----------------------------------------------------------------------------
 # Entry points
@@ -360,6 +365,8 @@ def main():
             result = run_h100.remote()
         elif gpu_name == "L40S":
             result = run_l40s.remote()
+        elif gpu_name == "B200":
+            result = run_b200.remote()
         else:
             print(f"⚠️  Unknown GPU: {gpu_name}")
             continue
@@ -415,4 +422,11 @@ def run_h100_entry():
 def run_l40s_entry():
     print(f"🚀 Running L40S benchmarks (min_time={BENCHMARK_MIN_TIME}s)...")
     result = run_l40s.remote()
+    print(result.get("raw_output", "No output"))
+
+
+@app.local_entrypoint()
+def run_b200_entry():
+    print(f"🚀 Running B200 benchmarks (min_time={BENCHMARK_MIN_TIME}s)...")
+    result = run_b200.remote()
     print(result.get("raw_output", "No output"))
