@@ -410,16 +410,16 @@ static void BM_DenseStencil7Pt_Uniform3D(benchmark::State& state) {
 }  // namespace
 
 BENCHMARK(BM_Stencil5Pt_Uniform2D)
-    ->Arg(32000)
+    ->Arg(8000)
     ->UseRealTime();
 BENCHMARK(BM_Stencil5Pt_Subfield2D)
-    ->Arg(32000)
+    ->Arg(8000)
     ->UseRealTime();
 BENCHMARK(BM_Stencil5Pt_RandomMask2D)
-    ->Args({32000, 10})->Args({32000, 25})->Args({32000, 50})
+    ->Args({8000, 10})->Args({8000, 25})->Args({8000, 50})
     ->UseRealTime();
 BENCHMARK(BM_DenseStencil5Pt_Uniform2D)
-    ->Arg(32000)
+    ->Arg(8000)
     ->UseRealTime();
 BENCHMARK(BM_Stencil7Pt_Uniform3D)
     ->Arg(256)
