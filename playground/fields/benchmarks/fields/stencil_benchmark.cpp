@@ -410,25 +410,25 @@ static void BM_DenseStencil7Pt_Uniform3D(benchmark::State& state) {
 }  // namespace
 
 BENCHMARK(BM_Stencil5Pt_Uniform2D)
-    ->Arg(256)->Arg(512)->Arg(1024)
+    ->Arg(32000)
     ->UseRealTime();
 BENCHMARK(BM_Stencil5Pt_Subfield2D)
-    ->Arg(256)->Arg(512)->Arg(1024)
+    ->Arg(32000)
     ->UseRealTime();
 BENCHMARK(BM_Stencil5Pt_RandomMask2D)
-    ->Args({512, 10})->Args({512, 25})->Args({512, 50})
+    ->Args({32000, 10})->Args({32000, 25})->Args({32000, 50})
     ->UseRealTime();
 BENCHMARK(BM_DenseStencil5Pt_Uniform2D)
-    ->Arg(256)->Arg(512)->Arg(1024)
+    ->Arg(32000)
     ->UseRealTime();
 BENCHMARK(BM_Stencil7Pt_Uniform3D)
-    ->Arg(64)
+    ->Arg(256)
     ->UseRealTime();
 BENCHMARK(BM_Stencil7Pt_RandomMask3D)
-    ->Args({64, 10})->Args({64, 25})->Args({64, 50})
+    ->Args({256, 10})->Args({256, 25})->Args({256, 50})
     ->UseRealTime();
 BENCHMARK(BM_DenseStencil7Pt_Uniform3D)
-    ->Arg(64)
+    ->Arg(256)
     ->UseRealTime();
 
 int main(int argc, char** argv) {
