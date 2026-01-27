@@ -170,5 +170,4 @@ RowRanges extract_row_ranges(int ia, int ib,
   }
   return r;
 }
-
 } // namespace playground::subsetix::csr::intersection::detail

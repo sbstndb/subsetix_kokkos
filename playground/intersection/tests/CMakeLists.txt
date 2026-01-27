@@ -19,6 +19,7 @@ add_executable(playground_intersection_tests
   intersection/test_sorted_rows.cpp
   intersection/test_large_mesh.cpp
   intersection/test_random_mesh_generator.cpp
+  intersection/test_workspace_validation.cpp
 )
 
 target_link_libraries(playground_intersection_tests

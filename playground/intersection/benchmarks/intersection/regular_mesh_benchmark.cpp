@@ -344,8 +344,34 @@ BENCHMARK_TEMPLATE_F(OptimizedRegularMeshBenchmark3D, Optimized_3D_Regular_Large
   state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
 }
 
-// Note: 3D ExtraLarge benchmarks removed due to GPU OOM (67M rows requires >512MB GPU memory)
-// 2D ExtraLarge benchmarks are safe and functional
+// 3D ExtraLarge benchmarks re-enabled for H100 (80GB VRAM)
+// Note: May still OOM on smaller GPUs (T4 15GB, A100 40GB, L40S 46GB)
+
+BENCHMARK_TEMPLATE_F(BaselineRegularMeshBenchmark3D, Baseline_3D_Regular_ExtraLargeConfig, GetExtraLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = baseline::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+BENCHMARK_TEMPLATE_F(OptimizedRegularMeshBenchmark3D, Optimized_3D_Regular_ExtraLargeConfig, GetExtraLargeRegularConfig)
+(benchmark::State& state) {
+  std::size_t total_intervals = mesh_a_.num_intervals + mesh_b_.num_intervals;
+  for (auto _ : state) {
+    auto result = optimized::intersect_meshes_3d(mesh_a_, mesh_b_);
+    benchmark::DoNotOptimize(result.num_intervals);
+    Kokkos::fence();
+  }
+  state.SetItemsProcessed(state.iterations() * total_intervals);
+  state.SetBytesProcessed(state.iterations() * total_intervals * sizeof(IntervalType));
+}
+
+// Note: 2D ExtraLarge benchmarks are safe and functional
 
 // ============================================================================
 // Main

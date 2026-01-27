@@ -28,6 +28,14 @@ add_executable(playground_intersection_comparison_benchmark
   intersection/unified_comparison_benchmark.cpp
 )
 
+add_executable(playground_intersection_workspace_benchmark
+  intersection/workspace_benchmark.cpp
+)
+
+add_executable(playground_intersection_phase_benchmark
+  intersection/phase_benchmark.cpp
+)
+
 target_link_libraries(playground_intersection_regular_benchmark
   PRIVATE
     playground::intersection
@@ -37,6 +45,22 @@ target_link_libraries(playground_intersection_regular_benchmark
 )
 
 target_link_libraries(playground_intersection_comparison_benchmark
+  PRIVATE
+    playground::intersection
+    Kokkos::kokkos
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
+target_link_libraries(playground_intersection_workspace_benchmark
+  PRIVATE
+    playground::intersection
+    Kokkos::kokkos
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
+target_link_libraries(playground_intersection_phase_benchmark
   PRIVATE
     playground::intersection
     Kokkos::kokkos
@@ -56,7 +80,21 @@ target_include_directories(playground_intersection_comparison_benchmark
     ${CMAKE_SOURCE_DIR}/playground/intersection/tests
 )
 
+target_include_directories(playground_intersection_workspace_benchmark
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/playground/intersection/tests
+)
+
+target_include_directories(playground_intersection_phase_benchmark
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/playground/intersection/tests
+)
+
 message(STATUS "  - playground_intersection_regular_benchmark configured")
 message(STATUS "  - playground_intersection_comparison_benchmark configured")
+message(STATUS "  - playground_intersection_workspace_benchmark configured")
+message(STATUS "  - playground_intersection_phase_benchmark configured")
 
 message(STATUS "=== Playground Intersection Benchmarks Configured ===")

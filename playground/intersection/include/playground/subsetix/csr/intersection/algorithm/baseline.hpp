@@ -5,6 +5,7 @@
 
 #include <playground/subsetix/csr/intersection/types.hpp>
 #include <playground/subsetix/csr/intersection/detail/utils.hpp>
+#include <playground/subsetix/csr/intersection/workspace.hpp>
 
 namespace playground::subsetix::csr::intersection::baseline {
 
@@ -474,6 +475,51 @@ inline Mesh2DDevice intersect_meshes_2d(const Mesh2DDevice& A, const Mesh2DDevic
 inline Mesh3DDevice intersect_meshes_3d(const Mesh3DDevice& A, const Mesh3DDevice& B) {
   return intersect_meshes<3>(A, B);
 }
+
+// ============================================================================
+// Mesh intersection with pre-allocated workspace (no allocations)
+// ============================================================================
+
+/**
+ * @brief Compute intersection of 2D meshes using pre-allocated workspace
+ *
+ * This version performs NO memory allocations - all temporary buffers are
+ * provided by the workspace. The result mesh must also be pre-allocated by
+ * the caller with sufficient capacity.
+ *
+ * This is the preferred API for benchmarking as it measures pure algorithm
+ * performance without allocation overhead.
+ *
+ * @param A First input mesh
+ * @param B Second input mesh
+ * @param result_out Pre-allocated output mesh (will be filled in-place)
+ * @param workspace Reusable workspace containing all temporary buffers
+ *
+ * @note result_out must be pre-allocated with capacity >= max(A, B)
+ */
+template <typename ExecSpace = Kokkos::DefaultExecutionSpace>
+void intersect_meshes_2d_in_place(
+    const Mesh2DDevice& A,
+    const Mesh2DDevice& B,
+    Mesh2DDevice& result_out,
+    IntersectionWorkspace2D<ExecSpace>& workspace
+);
+
+/**
+ * @brief Compute intersection of 3D meshes using pre-allocated workspace
+ *
+ * 3D version of intersect_meshes_2d_in_place - see that function for details.
+ */
+template <typename ExecSpace = Kokkos::DefaultExecutionSpace>
+void intersect_meshes_3d_in_place(
+    const Mesh3DDevice& A,
+    const Mesh3DDevice& B,
+    Mesh3DDevice& result_out,
+    IntersectionWorkspace3D<ExecSpace>& workspace
+);
+
+// Include in-place implementations
+#include <playground/subsetix/csr/intersection/algorithm/baseline_in_place.hpp>
 
 // ============================================================================
 // Conversion between memory spaces
